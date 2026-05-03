@@ -1,0 +1,13 @@
+system: c64
+rom: Boulder Dash.crt
+title: Boulder Dash
+notes: 'Uses unusual joystick port 1 (CIA-shared with keyboard). Most C64
+
+  games default to port 2 — Boulder Dash is the well-known exception.
+
+  F-keys handle menus; controller Y (→F1) cycles player count.
+
+  Tested live on 2026-05-03.'
+es_settings:
+  GameFocus: '1'
+  vice_joyport: '1'

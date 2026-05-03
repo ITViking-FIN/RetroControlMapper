@@ -1,0 +1,13 @@
+system: c64
+rom: IK+.crt
+title: International Karate +
+year: 1987
+confidence: K
+notes: 'Multi-fighter karate. C64 IK+ uses joystick + 1 fire button with
+
+  8 directional moves; the fire button alone handles most attacks.
+
+  F-keys configure number of players in pre-game menu.'
+es_settings:
+  GameFocus: '1'
+  c64_model: C64 PAL auto

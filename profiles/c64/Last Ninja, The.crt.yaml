@@ -1,0 +1,10 @@
+system: c64
+rom: Last Ninja, The.crt
+title: The Last Ninja
+year: 1987
+confidence: K
+notes: "Joystick + fire. Inventory is via keyboard:\n  RUN/STOP = inventory toggle\n  Number keys = item select\nGameFocus\
+  \ required so physical keyboard reaches the game."
+es_settings:
+  GameFocus: '1'
+  c64_model: C64 PAL auto

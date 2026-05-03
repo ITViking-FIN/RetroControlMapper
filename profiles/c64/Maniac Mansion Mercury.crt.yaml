@@ -1,0 +1,11 @@
+system: c64
+rom: Maniac Mansion Mercury.crt
+title: Maniac Mansion (Mercury)
+year: 1987
+confidence: K
+notes: 'Point-and-click adventure. C64 version is keyboard/joystick hybrid.
+
+  GameFocus essential for verb selection via keyboard.'
+es_settings:
+  GameFocus: '1'
+  c64_model: C64 PAL auto

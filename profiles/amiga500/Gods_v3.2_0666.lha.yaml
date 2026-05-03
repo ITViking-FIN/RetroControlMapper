@@ -1,0 +1,7 @@
+system: amiga500
+rom: Gods_v3.2_0666.lha
+title: Gods
+year: 1991
+confidence: K
+notes: "Bitmap Brothers platformer. Single-button original; with 'rotate'\npreset, Up replaces Jump and fire becomes shoot.\
+  \ Consider:\n  puae_retropad_options = jump  — for single-button + jump-on-up"

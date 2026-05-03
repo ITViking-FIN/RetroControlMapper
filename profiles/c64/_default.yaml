@@ -1,0 +1,11 @@
+system: c64
+title: C64 system defaults
+confidence: V
+notes: "Cross-game defaults for all C64 (VICE x64 / x64sc) games.\nThese core_options are NOT in RetroBat's Configurevice()\
+  \ bind list,\nso they survive launch-time config regeneration.\n\n  vice_mapper_y = RETROK_F1   — controller Y → F1 (standard\
+  \ C64 menu start key)\n  vice_physical_keyboard_pass_through = enabled — physical keys reach VICE\n  vice_analogmouse =\
+  \ disabled — left stick joins joystick instead of being mouse\n"
+core_options:
+  vice_mapper_y: RETROK_F1
+  vice_physical_keyboard_pass_through: enabled
+  vice_analogmouse: disabled

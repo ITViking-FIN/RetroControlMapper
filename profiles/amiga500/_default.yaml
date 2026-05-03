@@ -1,0 +1,10 @@
+system: amiga500
+title: Amiga 500 system defaults
+confidence: T
+notes: 'Amiga 500 base config currently uses RetroPad device (1) — the
+
+  default 1-button joystick mode. Most Amiga games are 1-button.
+
+  Per-game profiles override device type for specific titles
+
+  (e.g. 2-button games or mouse-required adventures).'

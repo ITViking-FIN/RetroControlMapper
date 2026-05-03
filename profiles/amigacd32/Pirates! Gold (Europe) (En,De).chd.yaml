@@ -1,0 +1,14 @@
+system: amigacd32
+rom: Pirates! Gold (Europe) (En,De).chd
+title: Pirates! Gold
+year: 1994
+confidence: V
+notes: 'CD32 7-button pad. System-default puae_controller1=517 covers it.
+
+  Tested live on 2026-05-03.'
+button_semantics:
+  B (Red): Action / select / fire cannon
+  A (Blue): Cancel / back / exit map screen
+  Y (Yellow): (in-game function — TBD by play)
+  X (Green): (in-game function — TBD by play)
+  Start (Play): Pause / menu

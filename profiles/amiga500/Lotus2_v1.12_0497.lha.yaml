@@ -1,0 +1,12 @@
+system: amiga500
+rom: Lotus2_v1.12_0497.lha
+title: Lotus Esprit Turbo Challenge II
+year: 1991
+confidence: T
+notes: 'Racing game with stick-shift gear change. Original Amiga supports
+
+  2-button via ''Up = button 2'' style or proper 2-button pad. CD32 Pad
+
+  device type (517) gives full button distinction. May want to set
+
+  puae_controller1=517 for this title.'

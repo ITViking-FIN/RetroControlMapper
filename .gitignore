@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+
+# Virtualenvs
+.venv/
+venv/
+env/
+
+# RetroBat config backups (created on first edit per day)
+*.bak.rbcf.*
+
+# Runtime state — machine-specific, regenerated
+controller_sync.log
+sync_manifest.json
+
+# Local Claude Code settings (project agents are tracked; personal overrides aren't)
+.claude/settings.local.json
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*~
+
+# OS
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.DS_Store
+
+# Packaging output (future PyInstaller builds)
+build/
+dist/
+*.spec

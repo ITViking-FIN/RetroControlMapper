@@ -1,0 +1,9 @@
+system: c64
+rom: Impossible Mission.crt
+title: Impossible Mission
+year: 1984
+confidence: K
+notes: Joystick + fire. Hold fire to search furniture.
+es_settings:
+  GameFocus: '1'
+  c64_model: C64 PAL auto

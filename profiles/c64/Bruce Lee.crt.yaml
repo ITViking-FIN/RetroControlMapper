@@ -1,0 +1,9 @@
+system: c64
+rom: Bruce Lee.crt
+title: Bruce Lee
+year: 1984
+confidence: K
+notes: Joystick + 1 fire button. F1 starts game. RUN/STOP pauses.
+es_settings:
+  GameFocus: '1'
+  c64_model: C64 PAL auto

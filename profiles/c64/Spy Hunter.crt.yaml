@@ -1,0 +1,25 @@
+system: c64
+rom: Spy Hunter.crt
+title: Spy Hunter
+year: 1985
+confidence: T
+notes: 'An old .keys file shipped with this ROM mapped L2→J and R2→N.
+
+  Those are likely Spy Hunter''s weapon-fire keys. pad2key is inert
+
+  for libretro VICE — these can only be expressed via vice_mapper_l2
+
+  / vice_mapper_r2 globally, but those are currently RETROK_ESCAPE
+
+  and RETROK_RETURN (used by other games). Per-game free remap not
+
+  yet possible without additional plumbing.
+
+  Action: profile is documentation-only for now.'
+es_settings:
+  GameFocus: '1'
+  c64_model: C64 PAL auto
+button_semantics:
+  L2: (would be 'J' — weapon select if remap was wired)
+  R2: (would be 'N' — weapon select if remap was wired)
+  B: joy fire (machine gun)

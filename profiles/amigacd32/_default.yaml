@@ -1,0 +1,8 @@
+system: amigacd32
+title: Amiga CD32 system defaults
+confidence: V
+notes: "CD32 games require the CD32 Pad device type (517) to expose all\nseven CD32 buttons distinctly:\n  Red   = RetroPad\
+  \ B    Blue  = RetroPad A\n  Yellow = RetroPad Y   Green = RetroPad X\n  Play   = Start        Reverse = Select\n  Forward\
+  \ = R           Rewind = L\nWithout this, every face button produces 'fire' (RetroPad device 1)."
+es_settings:
+  puae_controller1: '517'

@@ -1,0 +1,12 @@
+system: amigacd32
+rom: Beneath a Steel Sky (Europe) (En,Fr,De,It).chd
+title: Beneath a Steel Sky
+year: 1994
+confidence: K
+notes: 'Point-and-click adventure (Revolution Software). CD32 controls
+
+  use stick for cursor, Red/Blue for verb cycling and interaction.'
+button_semantics:
+  Stick: Move cursor
+  B (Red): Interact / use
+  A (Blue): Examine / cycle verb

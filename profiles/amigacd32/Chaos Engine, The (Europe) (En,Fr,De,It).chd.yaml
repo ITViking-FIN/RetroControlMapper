@@ -1,0 +1,13 @@
+system: amigacd32
+rom: Chaos Engine, The (Europe) (En,Fr,De,It).chd
+title: The Chaos Engine
+year: 1993
+confidence: K
+notes: 'Bitmap Brothers run-and-gun. Multi-button: shoot, special weapon,
+
+  switch character. CD32 pad maps these distinctly when device=517.'
+button_semantics:
+  B (Red): Shoot
+  A (Blue): Special weapon
+  Y (Yellow): Switch character
+  X (Green): Use item

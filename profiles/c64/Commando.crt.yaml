@@ -1,0 +1,9 @@
+system: c64
+rom: Commando.crt
+title: Commando
+year: 1985
+confidence: K
+notes: Joystick + fire (gun). Hold fire to lob grenades.
+es_settings:
+  GameFocus: '1'
+  c64_model: C64 PAL auto

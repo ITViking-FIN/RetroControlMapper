@@ -1,0 +1,148 @@
+# RB-Controller_fix — controller image catalog.
+#
+# Maps USB VID:PID identifiers to Wikimedia Commons file names. The sync
+# tool (controller_sync.py) re-downloads each file from Commons and caches
+# it locally at gui/img/known/<vid>_<pid>.jpg|png so the GUI can render
+# without an internet round-trip.
+#
+# Scope: PC-compatible controllers only (native XInput / clean Windows HID).
+# Controllers that require driver hacks to work on PC (e.g. DualShock 3 via
+# SCP/MotioninJoy) are intentionally excluded — they don't deliver a
+# "plug-and-play" RetroBat experience.
+#
+# To add a new controller:
+#   1. Browse https://commons.wikimedia.org and find an image of the device
+#   2. Copy the filename (without the leading "File:")
+#   3. Add an entry below with the VID:PID (uppercase, no separators)
+#   4. Run `py controller_sync.py` to fetch it
+#
+# Field reference:
+#   vid          — 4-char hex USB Vendor ID (uppercase)
+#   pid          — 4-char hex USB Product ID (uppercase)
+#   name         — friendly display name in the GUI
+#   wiki_file    — Wikimedia Commons file name (no "File:" prefix); blank
+#                  to skip image sync (schematic fallback in GUI)
+#   notes        — optional free text
+#   pc_support   — "native" | "shim" — informational; entries listed here
+#                  all work on Windows out of the box or with mainstream
+#                  shims (DS4Windows / Steam Input)
+
+schema: 1
+
+controllers:
+  # ---- Microsoft Xbox (native XInput) ----
+  - vid: "045E"
+    pid: "028E"
+    name: "Xbox 360 Wired Controller"
+    wiki_file: "Xbox-360-Controller-Black.jpg"
+    pc_support: native
+
+  - vid: "045E"
+    pid: "0719"
+    name: "Xbox 360 Wireless Receiver / Controller"
+    wiki_file: "Xbox-360-Controller-Black.jpg"
+    pc_support: native
+
+  - vid: "045E"
+    pid: "02FF"
+    name: "Xbox One Controller (XInput)"
+    wiki_file: "Microsoft-Xbox-One-controller.jpg"
+    pc_support: native
+
+  - vid: "045E"
+    pid: "02EA"
+    name: "Xbox One S Controller"
+    wiki_file: "Microsoft-Xbox-One-controller.jpg"
+    pc_support: native
+
+  - vid: "045E"
+    pid: "0B12"
+    name: "Xbox Series X|S Controller (USB)"
+    wiki_file: "Xbox_Series_Controller_Carbon_Black.jpg"
+    pc_support: native
+
+  - vid: "045E"
+    pid: "0B13"
+    name: "Xbox Series X|S Controller (Bluetooth)"
+    wiki_file: "Xbox_Series_Controller_Carbon_Black.jpg"
+    pc_support: native
+
+  # ---- Sony (native HID, with DS4Windows / Steam Input shims widely used) ----
+  - vid: "054C"
+    pid: "05C4"
+    name: "DualShock 4 v1"
+    wiki_file: "DualShock_4.jpg"
+    pc_support: shim
+    notes: "Use DS4Windows or Steam Input for XInput emulation."
+
+  - vid: "054C"
+    pid: "09CC"
+    name: "DualShock 4 v2"
+    wiki_file: "DualShock_4.jpg"
+    pc_support: shim
+    notes: "Use DS4Windows or Steam Input for XInput emulation."
+
+  - vid: "054C"
+    pid: "0CE6"
+    name: "DualSense (PS5)"
+    wiki_file: "Playstation_DualSense_Controller.png"
+    pc_support: shim
+    notes: "Native Windows recognition + DS4Windows / Steam Input."
+
+  # ---- Nintendo (native HID via Bluetooth or USB) ----
+  - vid: "057E"
+    pid: "2009"
+    name: "Switch Pro Controller"
+    wiki_file: "Nintendo-Switch-Pro-Controller-FL.jpg"
+    pc_support: shim
+    notes: "Best via Steam Input. USB or Bluetooth."
+
+  # ---- 8BitDo (native XInput; no Wikimedia images yet) ----
+  - vid: "2DC8"
+    pid: "310B"
+    name: "8BitDo Ultimate 2 Wireless (XInput)"
+    wiki_file: ""
+    pc_support: native
+
+  - vid: "2DC8"
+    pid: "3106"
+    name: "8BitDo Ultimate Wireless (XInput)"
+    wiki_file: ""
+    pc_support: native
+
+  - vid: "2DC8"
+    pid: "3015"
+    name: "8BitDo Ultimate Wireless C-form (XInput)"
+    wiki_file: ""
+    pc_support: native
+
+  - vid: "2DC8"
+    pid: "3012"
+    name: "8BitDo SN30 Pro (XInput)"
+    wiki_file: ""
+    pc_support: native
+
+  - vid: "2DC8"
+    pid: "6101"
+    name: "8BitDo SN30 Pro+ (XInput)"
+    wiki_file: ""
+    pc_support: native
+
+  # ---- Logitech (native HID, broadly compatible) ----
+  - vid: "046D"
+    pid: "C216"
+    name: "Logitech Dual Action"
+    wiki_file: ""
+    pc_support: native
+    notes: "Generic HID gamepad. Works without drivers."
+
+  - vid: "046D"
+    pid: "C218"
+    name: "Logitech RumblePad 2"
+    wiki_file: ""
+    pc_support: native
+
+# Intentionally excluded:
+#   054C:0268  DualShock 3       — requires SCP/MotioninJoy driver hacks
+#   057E:2006  Joy-Con (L)       — Bluetooth-only edge case; doesn't act
+#   057E:2007  Joy-Con (R)         like a single gamepad without shim

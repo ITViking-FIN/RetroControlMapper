@@ -1,0 +1,9 @@
+system: c64
+rom: Bubble Bobble.crt
+title: Bubble Bobble
+year: 1987
+confidence: K
+notes: 2-player co-op. F1 = 1P, F3 = 2P, F5 = options, F7 = start.
+es_settings:
+  GameFocus: '1'
+  c64_model: C64 PAL auto

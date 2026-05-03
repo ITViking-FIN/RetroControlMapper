@@ -1,0 +1,13 @@
+system: amigacd32
+rom: Cannon Fodder (Europe).chd
+title: Cannon Fodder
+year: 1993
+confidence: K
+notes: 'Mouse-driven action-strategy. CD32 version supports CD32 Pad as
+
+  mouse-emulation: stick = pointer, Red = left-click (move), Blue =
+
+  right-click (shoot/grenade). System default device 517 sufficient.'
+button_semantics:
+  B (Red): Left mouse click — move squad
+  A (Blue): Right mouse click — fire / lob grenade
