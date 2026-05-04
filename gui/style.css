@@ -1260,10 +1260,43 @@ html.rbcf-onb-locked body { overflow: hidden; }
   clip: rect(0, 0, 0, 0); border: 0;
 }
 
+.rbcf-onb-mode-toggle {
+  display: flex;
+  gap: 8px;
+  margin: 16px 0 6px;
+}
+.rbcf-onb-mode-btn {
+  flex: 1;
+  padding: 10px 12px;
+  border: 1px solid var(--bd-2);
+  background: transparent;
+  color: var(--tx-2);
+  font: inherit;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+.rbcf-onb-mode-btn:hover:not(.rbcf-onb-mode-active) {
+  background: #1c2128;
+  border-color: var(--bd-3);
+  color: var(--tx-1);
+}
+.rbcf-onb-mode-active {
+  background: var(--accent-1, #2b5cff);
+  border-color: var(--accent-1, #2b5cff);
+  color: #fff;
+}
+.rbcf-onb-mode-help {
+  margin: 0 0 12px;
+  font-style: italic;
+  font-size: 0.92em;
+}
+
 @media (max-width: 600px) {
   .rbcf-onb-card { width: 100%; }
   .rbcf-onb-foot { flex-wrap: wrap; }
   .rbcf-onb-foot-primary { margin-left: 0; width: 100%; }
   .rbcf-onb-foot-primary .rbcf-onb-btn { flex: 1; }
   .rbcf-onb-rootform { flex-direction: column; }
+  .rbcf-onb-mode-toggle { flex-direction: column; }
 }

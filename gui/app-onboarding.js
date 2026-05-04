@@ -140,7 +140,8 @@
     step: 1,
     rootInfo: null,    // last /api/retrobat-root result
     scan: null,        // last /api/scan result
-    preview: null,     // last /api/scaffold-all (no apply) result
+    preview: null,     // last scaffold preview result
+    scaffoldMode: 'defaults', // 'defaults' (safe, ~258 max) or 'all' (per-game)
     busy: false,
     overlayEl: null,
     bodyEl: null,
@@ -421,7 +422,7 @@
     ]);
     state.bodyEl.appendChild(wrap);
 
-    setFooterPrimary('Scaffold all (preview)', () => goToStep3(), { disabled: true });
+    setFooterPrimary('Scaffold defaults (preview)', () => goToStep3(), { disabled: true });
     setFooterSecondary("Skip — I'll do this later", requestSkip, 'tertiary');
 
     try {
@@ -483,20 +484,80 @@
     wrap.appendChild(tbl);
 
     const missingTotal = totals.missing ?? systems.reduce((a, s) => a + (s.missing || 0), 0);
-    if (missingTotal > 0) {
-      if (state.primaryEl) {
-        state.primaryEl.disabled = false;
-        state.primaryEl.textContent = `Scaffold ${missingTotal} missing (preview)`;
+    const systemsWithoutDefault = systems.filter(s => (s.rom_count || 0) > 0 && !s.has_default).length;
+
+    function updatePrimaryForMode() {
+      if (!state.primaryEl) return;
+      if (state.scaffoldMode === 'defaults') {
+        if (systemsWithoutDefault > 0) {
+          state.primaryEl.disabled = false;
+          state.primaryEl.textContent = `Scaffold ${systemsWithoutDefault} system default${systemsWithoutDefault === 1 ? '' : 's'} (preview)`;
+        } else {
+          state.primaryEl.disabled = true;
+          state.primaryEl.textContent = 'All systems have defaults';
+        }
+      } else {
+        if (missingTotal > 0) {
+          state.primaryEl.disabled = false;
+          state.primaryEl.textContent = `Scaffold ${missingTotal} per-game stub${missingTotal === 1 ? '' : 's'} (preview)`;
+        } else {
+          state.primaryEl.disabled = true;
+          state.primaryEl.textContent = 'Every ROM already has a profile';
+        }
       }
-    } else {
+    }
+
+    if (missingTotal === 0 && systemsWithoutDefault === 0) {
+      wrap.appendChild(el('p', {
+        class: 'rbcf-onb-muted',
+        text: 'Every detected system has a default and every ROM has a profile. Nothing to do here.',
+      }));
       if (state.primaryEl) {
         state.primaryEl.disabled = true;
         state.primaryEl.textContent = 'Nothing to scaffold';
       }
-      wrap.appendChild(el('p', {
-        class: 'rbcf-onb-muted',
-        text: 'Every detected ROM already has a profile. Nothing to do here.',
-      }));
+    } else {
+      // Mode toggle: defaults (safe) vs per-game stubs (advanced).
+      const modeWrap = el('div', { class: 'rbcf-onb-mode-toggle' });
+      const helpText = el('p', { class: 'rbcf-onb-muted rbcf-onb-mode-help' });
+
+      function refreshModeHelp() {
+        helpText.textContent = state.scaffoldMode === 'defaults'
+          ? `Recommended. Creates one _default.yaml per system that's missing one (${systemsWithoutDefault} files). Empty stubs you fill in over time.`
+          : `Advanced. Creates one .yaml per ROM that doesn't have a per-game profile (${missingTotal} files). Use only after a system's _default is set.`;
+      }
+
+      const btnDefaults = el('button', {
+        type: 'button',
+        class: 'rbcf-onb-mode-btn' + (state.scaffoldMode === 'defaults' ? ' rbcf-onb-mode-active' : ''),
+        text: `Defaults only (${systemsWithoutDefault})`,
+      });
+      const btnAll = el('button', {
+        type: 'button',
+        class: 'rbcf-onb-mode-btn' + (state.scaffoldMode === 'all' ? ' rbcf-onb-mode-active' : ''),
+        text: `Every ROM (${missingTotal})`,
+      });
+      btnDefaults.addEventListener('click', () => {
+        state.scaffoldMode = 'defaults';
+        btnDefaults.classList.add('rbcf-onb-mode-active');
+        btnAll.classList.remove('rbcf-onb-mode-active');
+        refreshModeHelp();
+        updatePrimaryForMode();
+      });
+      btnAll.addEventListener('click', () => {
+        state.scaffoldMode = 'all';
+        btnAll.classList.add('rbcf-onb-mode-active');
+        btnDefaults.classList.remove('rbcf-onb-mode-active');
+        refreshModeHelp();
+        updatePrimaryForMode();
+      });
+      modeWrap.appendChild(btnDefaults);
+      modeWrap.appendChild(btnAll);
+      wrap.appendChild(modeWrap);
+      refreshModeHelp();
+      wrap.appendChild(helpText);
+
+      updatePrimaryForMode();
     }
     focusPrimary();
   }
@@ -539,7 +600,8 @@
     // Tertiary "skip for now" lives inline in the preview body once it lands.
 
     try {
-      const data = await fetchJson('GET', '/api/scaffold-all');
+      const endpoint = state.scaffoldMode === 'defaults' ? '/api/scaffold-defaults' : '/api/scaffold-all';
+      const data = await fetchJson('GET', endpoint);
       state.preview = data;
       paintPreview(data);
     } catch (e) {
@@ -592,8 +654,12 @@
       ]));
       const ul = el('ul', { class: 'rbcf-onb-preview-files' });
       for (const r of rows) {
+        // defaults entries have {system, path, rom_count}; per-game entries have {system, rom, path}
+        const label = r.rom
+          ? r.rom
+          : `_default.yaml (${r.rom_count ?? '?'} ROM${r.rom_count === 1 ? '' : 's'} in this system)`;
         ul.appendChild(el('li', {}, [
-          el('span', { class: 'rbcf-onb-rom', text: r.rom || '(no rom)' }),
+          el('span', { class: 'rbcf-onb-rom', text: label }),
           el('span', { class: 'rbcf-onb-arrow', 'aria-hidden': 'true', text: ' → ' }),
           el('code', { text: r.path || '?' }),
         ]));
@@ -651,7 +717,8 @@
       state.primaryEl.textContent = 'Applying…';
     }
     try {
-      const data = await fetchJson('GET', '/api/scaffold-all?apply=true');
+      const endpoint = state.scaffoldMode === 'defaults' ? '/api/scaffold-defaults' : '/api/scaffold-all';
+      const data = await fetchJson('GET', `${endpoint}?apply=true`);
       const written = (data && Array.isArray(data.written)) ? data.written.length : (data && data.count) || 0;
       lightToast(`Scaffolded ${written} profile${written === 1 ? '' : 's'}.`, 'success');
       markOnboarded();

@@ -652,6 +652,101 @@ def _scaffold_all(apply: bool) -> dict:
     return result
 
 
+def _scaffold_defaults(apply: bool) -> dict:
+    """Build the response for GET /api/scaffold-defaults (preview or apply).
+
+    Per-system safe scaffold: creates `<system>/_default.yaml` for every
+    system that has ≥1 ROM but no existing default. Bounded by the number
+    of systems (~258 max), unlike scaffold-all which is bounded by the
+    total ROM count (285k+ for the user's library). Empty es_settings /
+    core_options — user fills them in incrementally via `rbcf` or the GUI.
+    """
+    if RETROBAT_ROOT is None or not ROMS_ROOT.exists():
+        return {"preview": [], "applied": False, "count": 0}
+
+    existing_defaults: set[str] = set()
+    for p in load_profiles():
+        if p.is_system_default:
+            existing_defaults.add(p.system)
+
+    today = date.today().isoformat()
+    preview: list[dict] = []
+    write_targets: list[tuple[Path, dict]] = []
+
+    try:
+        sys_dirs = list(ROMS_ROOT.iterdir())
+    except OSError:
+        sys_dirs = []
+
+    for sys_dir in sys_dirs:
+        if not sys_dir.is_dir():
+            continue
+        sys_name = sys_dir.name
+        if sys_name.startswith(".") or sys_name.lower() in ONBOARD_RESERVED_DIRS:
+            continue
+        if sys_name in existing_defaults:
+            continue
+        # Only scaffold defaults for systems that actually contain ROMs.
+        rom_count = _count_roms_in_system(sys_dir)
+        if rom_count == 0:
+            continue
+        target = PROFILES_DIR / sys_name / "_default.yaml"
+        rel_display = f"profiles/{sys_name}/_default.yaml"
+        scaffold = {
+            "system": sys_name,
+            "title": f"{sys_name} (system default)",
+            "confidence": "T",
+            "notes": (
+                f"Auto-scaffolded by /api/scaffold-defaults on {today}.\n"
+                f"Empty placeholder — fill in es_settings / core_options as you "
+                f"verify which keys survive RetroBat regeneration. See CLAUDE.md "
+                f"and docs/GUID_DRIFT_DESIGN.md for the rules.\n"
+            ),
+            "es_settings": {},
+            "core_options": {},
+        }
+        preview.append({
+            "system": sys_name,
+            "path": rel_display,
+            "rom_count": rom_count,
+        })
+        write_targets.append((target, scaffold))
+
+    result = {"preview": preview, "applied": False, "count": len(preview)}
+    if not apply:
+        return result
+
+    written: list[str] = []
+    profiles_root = PROFILES_DIR.resolve()
+    for target, scaffold in write_targets:
+        try:
+            resolved_parent = target.parent.resolve()
+        except OSError:
+            continue
+        try:
+            resolved_parent.relative_to(profiles_root)
+        except ValueError:
+            print(f"[scaffold-defaults] refusing path outside profiles/: {target}",
+                  file=sys.stderr)
+            continue
+        if target.exists():
+            continue
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(
+                yaml.safe_dump(scaffold, sort_keys=False, allow_unicode=True, width=120),
+                encoding="utf-8",
+            )
+        except OSError as e:
+            print(f"[scaffold-defaults] failed to write {target}: {e}", file=sys.stderr)
+            continue
+        written.append(f"profiles/{target.parent.name}/{target.name}")
+
+    result["applied"] = bool(written)
+    result["written"] = written
+    return result
+
+
 # ------------------------------ HTTP layer ------------------------------
 
 class Handler(http.server.SimpleHTTPRequestHandler):
@@ -710,6 +805,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             q = self._query()
             apply_flag = (q.get("apply", ["false"])[0] or "").strip().lower() in ("1", "true", "yes")
             return self._json(_scaffold_all(apply=apply_flag))
+        if u.path == "/api/scaffold-defaults":
+            q = self._query()
+            apply_flag = (q.get("apply", ["false"])[0] or "").strip().lower() in ("1", "true", "yes")
+            return self._json(_scaffold_defaults(apply=apply_flag))
         if u.path in ("", "/"):
             self.path = "/index.html"
         return super().do_GET()
