@@ -194,12 +194,67 @@ def _build_tray_image(size: int = 64):
     return img
 
 
+_EDGE_PATHS = (
+    r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+    r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
+)
+_CHROME_PATHS = (
+    r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+    r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+)
+
+
+def _find_app_browser() -> str | None:
+    """Locate a Chromium-family browser that supports `--app=<url>`.
+
+    --app mode opens the URL in a frameless window with no address bar,
+    no tabs — looks and behaves like a real desktop app. Edge ships
+    with Windows 10/11 so this almost always finds something. Falls
+    back to webbrowser.open if not.
+    """
+    import shutil
+    # PATH-resolution first (common case if Edge has been put on PATH
+    # by the user's profile).
+    for name in ("msedge", "msedge.exe", "chrome", "chrome.exe"):
+        hit = shutil.which(name)
+        if hit:
+            return hit
+    # Standard install locations on Windows 10/11.
+    for candidate in _EDGE_PATHS + _CHROME_PATHS:
+        if Path(candidate).is_file():
+            return candidate
+    return None
+
+
+def _open_app_window(url: str) -> None:
+    """Open `url` as a frameless desktop window via Chromium --app mode.
+
+    Falls back to the user's default browser if neither Edge nor Chrome
+    is found at the standard locations.
+    """
+    import subprocess
+    browser = _find_app_browser()
+    if browser:
+        try:
+            # CREATE_NEW_PROCESS_GROUP so the window survives if the tray
+            # is restarted; the window is fully detached.
+            subprocess.Popen(
+                [browser, f"--app={url}"],
+                creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0),
+                close_fds=True,
+            )
+            return
+        except OSError:
+            pass  # fall through to webbrowser
+    webbrowser.open(url)
+
+
 def _open_main_window(port: int = DEFAULT_PORT) -> None:
-    webbrowser.open(f"http://localhost:{port}/")
+    _open_app_window(f"http://localhost:{port}/")
 
 
 def _open_about(port: int = DEFAULT_PORT) -> None:
-    webbrowser.open(f"http://localhost:{port}/?about=1")
+    _open_app_window(f"http://localhost:{port}/?about=1")
 
 
 def _foreground_fallback(open_browser_on_start: bool) -> None:
