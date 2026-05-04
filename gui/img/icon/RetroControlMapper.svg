@@ -1,0 +1,213 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <!-- Synthwave background gradient -->
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#0d0221"/>
+      <stop offset="45%" stop-color="#240046"/>
+      <stop offset="100%" stop-color="#5a189a"/>
+    </linearGradient>
+
+    <!-- Sun gradient -->
+    <linearGradient id="sunGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffd60a"/>
+      <stop offset="50%" stop-color="#ff7b00"/>
+      <stop offset="100%" stop-color="#ff006e"/>
+    </linearGradient>
+
+    <!-- Controller body gradient -->
+    <linearGradient id="bodyGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#1a1a2e"/>
+      <stop offset="100%" stop-color="#0f0f1e"/>
+    </linearGradient>
+
+    <!-- Grid floor gradient -->
+    <linearGradient id="gridGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ff006e" stop-opacity="0.9"/>
+      <stop offset="100%" stop-color="#ff006e" stop-opacity="0"/>
+    </linearGradient>
+
+    <!-- Neon glow filters -->
+    <filter id="neonCyan" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="4" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <filter id="neonPink" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="6" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <filter id="softGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="10"/>
+    </filter>
+
+    <!-- Clip for the rounded square frame -->
+    <clipPath id="frameClip">
+      <rect x="0" y="0" width="512" height="512" rx="96" ry="96"/>
+    </clipPath>
+
+    <!-- Scanline pattern -->
+    <pattern id="scanlines" x="0" y="0" width="4" height="4" patternUnits="userSpaceOnUse">
+      <rect width="4" height="4" fill="transparent"/>
+      <rect width="4" height="1" fill="#ffffff" fill-opacity="0.04"/>
+    </pattern>
+  </defs>
+
+  <g clip-path="url(#frameClip)">
+    <!-- Background -->
+    <rect width="512" height="512" fill="url(#bgGrad)"/>
+
+    <!-- Setting sun -->
+    <circle cx="256" cy="240" r="140" fill="url(#sunGrad)" filter="url(#softGlow)" opacity="0.9"/>
+    <circle cx="256" cy="240" r="140" fill="url(#sunGrad)"/>
+
+    <!-- Sun horizontal slits (retro look) -->
+    <g fill="#0d0221">
+      <rect x="116" y="290" width="280" height="6"/>
+      <rect x="116" y="305" width="280" height="5"/>
+      <rect x="116" y="318" width="280" height="4"/>
+      <rect x="116" y="329" width="280" height="3"/>
+      <rect x="116" y="338" width="280" height="3"/>
+      <rect x="116" y="346" width="280" height="2"/>
+    </g>
+
+    <!-- Perspective grid floor -->
+    <g stroke="#ff006e" stroke-width="1.5" fill="none" opacity="0.85" filter="url(#neonPink)">
+      <!-- horizon line -->
+      <line x1="0" y1="360" x2="512" y2="360"/>
+      <!-- horizontal grid lines getting denser toward horizon -->
+      <line x1="-20" y1="380" x2="532" y2="380" opacity="0.9"/>
+      <line x1="-40" y1="405" x2="552" y2="405" opacity="0.85"/>
+      <line x1="-70" y1="435" x2="582" y2="435" opacity="0.8"/>
+      <line x1="-110" y1="470" x2="622" y2="470" opacity="0.75"/>
+      <line x1="-160" y1="510" x2="672" y2="510" opacity="0.7"/>
+    </g>
+
+    <!-- Vanishing point lines -->
+    <g stroke="#ff006e" stroke-width="1.2" opacity="0.7" filter="url(#neonPink)">
+      <line x1="256" y1="360" x2="-80" y2="560"/>
+      <line x1="256" y1="360" x2="40" y2="560"/>
+      <line x1="256" y1="360" x2="140" y2="560"/>
+      <line x1="256" y1="360" x2="210" y2="560"/>
+      <line x1="256" y1="360" x2="302" y2="560"/>
+      <line x1="256" y1="360" x2="372" y2="560"/>
+      <line x1="256" y1="360" x2="472" y2="560"/>
+      <line x1="256" y1="360" x2="592" y2="560"/>
+    </g>
+
+    <!-- Stars -->
+    <g fill="#ffffff">
+      <circle cx="60" cy="80" r="1.5"/>
+      <circle cx="120" cy="50" r="1"/>
+      <circle cx="200" cy="90" r="1.2"/>
+      <circle cx="350" cy="60" r="1.5"/>
+      <circle cx="430" cy="100" r="1"/>
+      <circle cx="470" cy="50" r="1.3"/>
+      <circle cx="80" cy="140" r="1"/>
+      <circle cx="440" cy="160" r="1.2"/>
+      <circle cx="30" cy="200" r="1"/>
+      <circle cx="490" cy="220" r="1.4"/>
+    </g>
+
+    <!-- Controller -->
+    <g transform="translate(256, 290)">
+      <!-- Controller drop shadow -->
+      <ellipse cx="0" cy="125" rx="155" ry="12" fill="#000" opacity="0.5" filter="url(#softGlow)"/>
+
+      <!-- Controller body (gamepad shape) -->
+      <g filter="url(#neonCyan)">
+        <path d="M -130 -30
+                 Q -150 -30 -155 -10
+                 L -165 60
+                 Q -168 90 -140 95
+                 Q -110 95 -95 70
+                 L -80 50
+                 Q -65 35 -45 35
+                 L 45 35
+                 Q 65 35 80 50
+                 L 95 70
+                 Q 110 95 140 95
+                 Q 168 90 165 60
+                 L 155 -10
+                 Q 150 -30 130 -30
+                 Z"
+              fill="url(#bodyGrad)"
+              stroke="#00f5ff"
+              stroke-width="3"/>
+      </g>
+
+      <!-- D-Pad (left side) -->
+      <g transform="translate(-90, 15)">
+        <path d="M -8 -22 L 8 -22 L 8 -8 L 22 -8 L 22 8 L 8 8 L 8 22 L -8 22 L -8 8 L -22 8 L -22 -8 L -8 -8 Z"
+              fill="#00f5ff"
+              stroke="#00f5ff"
+              stroke-width="1"
+              filter="url(#neonCyan)"/>
+      </g>
+
+      <!-- Action buttons (right side) -->
+      <g transform="translate(90, 15)" filter="url(#neonPink)">
+        <circle cx="0" cy="-22" r="9" fill="#ffd60a"/>
+        <circle cx="22" cy="0" r="9" fill="#ff006e"/>
+        <circle cx="0" cy="22" r="9" fill="#06ffa5"/>
+        <circle cx="-22" cy="0" r="9" fill="#00f5ff"/>
+      </g>
+
+      <!-- Center start/select buttons -->
+      <rect x="-18" y="-5" width="14" height="5" rx="2" fill="#00f5ff" opacity="0.9"/>
+      <rect x="4" y="-5" width="14" height="5" rx="2" fill="#00f5ff" opacity="0.9"/>
+
+      <!-- Center logo dot -->
+      <circle cx="0" cy="20" r="5" fill="#ff006e" filter="url(#neonPink)"/>
+      <circle cx="0" cy="20" r="2" fill="#ffffff"/>
+
+      <!-- Cable/wire arrow indicating "mapping" -->
+      <g stroke="#06ffa5" stroke-width="3" fill="none" stroke-linecap="round" filter="url(#neonCyan)">
+        <path d="M -55 -5 Q -30 -25 0 -10 Q 30 5 55 -5" opacity="0.85"/>
+        <!-- Arrowhead -->
+        <path d="M 50 -10 L 58 -5 L 50 0" stroke-linejoin="round"/>
+      </g>
+    </g>
+
+    <!-- "RC" monogram in upper left, like a chip label -->
+    <g transform="translate(60, 75)">
+      <text x="0" y="0"
+            font-family="'Courier New', monospace"
+            font-size="22"
+            font-weight="bold"
+            fill="#06ffa5"
+            filter="url(#neonCyan)"
+            letter-spacing="2">RCM</text>
+      <rect x="-4" y="6" width="56" height="2" fill="#06ffa5" opacity="0.7"/>
+    </g>
+
+    <!-- Pixel decoration top right -->
+    <g fill="#ffd60a" filter="url(#neonPink)">
+      <rect x="430" y="60" width="6" height="6"/>
+      <rect x="440" y="60" width="6" height="6"/>
+      <rect x="450" y="60" width="6" height="6"/>
+      <rect x="440" y="70" width="6" height="6"/>
+      <rect x="430" y="80" width="6" height="6"/>
+      <rect x="450" y="80" width="6" height="6"/>
+    </g>
+
+    <!-- Scanline overlay -->
+    <rect width="512" height="512" fill="url(#scanlines)"/>
+
+    <!-- Inner border glow -->
+    <rect x="6" y="6" width="500" height="500" rx="90" ry="90"
+          fill="none"
+          stroke="#ff006e"
+          stroke-width="2"
+          opacity="0.6"
+          filter="url(#neonPink)"/>
+  </g>
+</svg>
