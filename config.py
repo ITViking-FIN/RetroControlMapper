@@ -37,6 +37,61 @@ except ImportError:  # non-Windows; tool is Windows-only but keep import safe
 
 ENV_OVERRIDE = "RBCF_RETROBAT_ROOT"
 
+
+def _rbcfrc_path() -> Path:
+    """Location of the persisted user override file.
+
+    Stored under %APPDATA%\\RB-Controller_fix\\rbcfrc (single-line text:
+    the RetroBat install root). Created by PUT /api/retrobat-root and
+    read here at module import time. If %APPDATA% is unavailable, falls
+    back to the project directory.
+    """
+    appdata = os.environ.get("APPDATA")
+    if appdata:
+        return Path(appdata) / "RB-Controller_fix" / "rbcfrc"
+    return Path(__file__).resolve().parent / ".rbcfrc"
+
+
+RBCFRC_PATH = _rbcfrc_path()
+
+
+def _read_rbcfrc() -> Path | None:
+    """Read the persisted override path from .rbcfrc, if present."""
+    try:
+        if not RBCFRC_PATH.is_file():
+            return None
+        raw = RBCFRC_PATH.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    if not raw:
+        return None
+    cleaned = raw.strip().strip('"').strip("'")
+    return Path(cleaned)
+
+
+def write_rbcfrc(path: Path | str) -> None:
+    """Persist a user-supplied RetroBat root path to .rbcfrc.
+
+    Caller (PUT /api/retrobat-root) is responsible for prompting the user
+    to restart the server — RETROBAT_ROOT is cached at import time, so a
+    written .rbcfrc only takes effect on next process start.
+    """
+    raw = str(path).strip().strip('"').strip("'")
+    RBCFRC_PATH.parent.mkdir(parents=True, exist_ok=True)
+    RBCFRC_PATH.write_text(raw + "\n", encoding="utf-8")
+
+
+def clear_rbcfrc() -> bool:
+    """Remove the .rbcfrc override. Returns True if a file was removed."""
+    try:
+        if RBCFRC_PATH.is_file():
+            RBCFRC_PATH.unlink()
+            return True
+    except OSError:
+        pass
+    return False
+
+
 # Marker file: if this file exists under a candidate root, we accept the
 # candidate. Chosen because RetroBat always ships an ES settings file even
 # on a fresh install (the launcher creates it on first run).
@@ -123,20 +178,27 @@ def find_retrobat() -> Path | None:
         seen.add(key)
         return p if _is_valid_root(p) else None
 
-    # 1. Env override.
+    # 1. .rbcfrc persisted user override (highest priority — set explicitly).
+    rcfile = _read_rbcfrc()
+    if rcfile is not None:
+        hit = _try(rcfile)
+        if hit is not None:
+            return hit
+
+    # 2. Env override.
     override = os.environ.get(ENV_OVERRIDE)
     if override:
         hit = _try(Path(override.strip().strip('"').strip("'")))
         if hit is not None:
             return hit
 
-    # 2. Registry.
+    # 3. Registry.
     for candidate in _registry_candidates():
         hit = _try(candidate)
         if hit is not None:
             return hit
 
-    # 3. Common install paths.
+    # 4. Common install paths.
     for candidate in _common_paths():
         hit = _try(candidate)
         if hit is not None:
@@ -148,6 +210,11 @@ def find_retrobat() -> Path | None:
 def _probed_locations_summary() -> list[str]:
     """Human-readable list of every place we looked, for error reporting."""
     locations: list[str] = []
+    rc = _read_rbcfrc()
+    if rc is not None:
+        locations.append(f".rbcfrc: {rc}")
+    else:
+        locations.append(f".rbcfrc: {RBCFRC_PATH} (absent)")
     override = os.environ.get(ENV_OVERRIDE)
     if override:
         locations.append(f"env {ENV_OVERRIDE}={override}")
@@ -191,6 +258,9 @@ ROMS_ROOT: Path = _ROOT_OR_SENTINEL / "roms"
 
 __all__ = [
     "ENV_OVERRIDE",
+    "RBCFRC_PATH",
+    "write_rbcfrc",
+    "clear_rbcfrc",
     "find_retrobat",
     "RETROBAT_ROOT",
     "ES_SETTINGS",

@@ -34,7 +34,10 @@ from pathlib import Path
 
 import yaml
 
-from config import RETROBAT_ROOT, ROMS_ROOT, ES_SYSTEMS_CFG, _probed_locations_summary
+from config import (
+    RETROBAT_ROOT, ROMS_ROOT, ES_SYSTEMS_CFG, RBCFRC_PATH,
+    write_rbcfrc, clear_rbcfrc, _probed_locations_summary,
+)
 from rbcf import load_profiles
 
 ROOT = Path(__file__).resolve().parent
@@ -791,6 +794,71 @@ def _scaffold_defaults(apply: bool) -> dict:
     return result
 
 
+def _set_retrobat_root(data: dict) -> dict:
+    """Persist a user-supplied RetroBat root path to .rbcfrc.
+
+    Body: {"root": "<path>"}  or  {"root": null}  to clear.
+
+    Returns: { ok, root, found, message, path_to_rbcfrc, restart_required }.
+    Validates the candidate path before writing — does not write if the
+    marker file (es_settings.cfg) is missing under the candidate. The
+    server must be restarted for the new root to take effect (RETROBAT_ROOT
+    is computed at module import time).
+    """
+    raw = data.get("root")
+    if raw is None or (isinstance(raw, str) and not raw.strip()):
+        cleared = clear_rbcfrc()
+        return {
+            "ok": True,
+            "root": None,
+            "found": False,
+            "cleared": cleared,
+            "message": (
+                ".rbcfrc cleared. Restart the server for the change to take effect."
+                if cleared else
+                "No .rbcfrc was set."
+            ),
+            "path_to_rbcfrc": str(RBCFRC_PATH),
+            "restart_required": cleared,
+        }
+    if not isinstance(raw, str):
+        return {"ok": False, "error": "root must be a string or null"}
+
+    candidate = Path(raw.strip().strip('"').strip("'"))
+    marker = candidate / "emulationstation" / ".emulationstation" / "es_settings.cfg"
+    if not marker.is_file():
+        return {
+            "ok": False,
+            "root": str(candidate),
+            "found": False,
+            "error": (
+                f"That path doesn't look like a RetroBat install — "
+                f"{marker} is missing. Nothing was written."
+            ),
+            "path_to_rbcfrc": str(RBCFRC_PATH),
+            "restart_required": False,
+        }
+
+    try:
+        write_rbcfrc(candidate)
+    except OSError as e:
+        return {
+            "ok": False,
+            "error": f"Could not write {RBCFRC_PATH}: {e}",
+        }
+    return {
+        "ok": True,
+        "root": str(candidate).replace("\\", "/"),
+        "found": True,
+        "message": (
+            f"Saved RetroBat root to {RBCFRC_PATH}. "
+            f"Restart the server for the change to take effect."
+        ),
+        "path_to_rbcfrc": str(RBCFRC_PATH),
+        "restart_required": True,
+    }
+
+
 # ------------------------------ HTTP layer ------------------------------
 
 class Handler(http.server.SimpleHTTPRequestHandler):
@@ -878,6 +946,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             refresh_catalog()
             result["status"] = load_sync_status()
             return self._json(result)
+        if u.path == "/api/retrobat-root":
+            return self._json(_set_retrobat_root(data))
         return self._json({"ok": False, "error": "unknown endpoint"}, status=404)
 
 
