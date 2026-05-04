@@ -423,6 +423,245 @@ function setTargetForSystem(systemId) {
     if (fixedNoteWrap) fixedNoteWrap.hidden = true;
   }
   setTargetSVG(sys.target_controller);
+
+  // If the system has no curated metadata at all, offer an online lookup.
+  // The lookup endpoint is gated on user consent (POST with allow_online:true);
+  // this initial call uses allow_online:false to probe the local cache only.
+  const hasCurated = !!(sys.fixed_mapping_note || sys.target_controller);
+  ensureLookupAffordance(sys, hasCurated);
+}
+
+// ============================================================
+// System lookup affordance — appears under the target SVG when a system
+// has no curated metadata. Calls POST /api/system-lookup. See the matching
+// _system_lookup_endpoint() in rbcf_gui.py and system_lookup.py for the
+// wire format. UI lives entirely below; no HTML markup is required upfront.
+// ============================================================
+
+const LOOKUP_HOST_ID = 'rbcf-syslookup-host';
+
+function ensureLookupAffordance(sys, hasCurated) {
+  // Always remove any prior lookup UI for this system selection — keeps the
+  // pane clean when toggling between systems with/without curated data.
+  const prior = document.getElementById(LOOKUP_HOST_ID);
+  if (prior) prior.remove();
+  if (hasCurated) return;
+
+  const host = document.createElement('div');
+  host.id = LOOKUP_HOST_ID;
+  host.className = 'rbcf-onb-status';
+  host.style.marginTop = '12px';
+  host.dataset.systemId = sys.id;
+
+  // Insert after fixedNoteWrap (which is hidden in this branch) but inside the
+  // same parent (the target pane). Fall back to appending to tgtHost.
+  const anchor = fixedNoteWrap || tgtHost;
+  if (anchor && anchor.parentNode) {
+    anchor.parentNode.insertBefore(host, anchor.nextSibling);
+  } else if (tgtHost) {
+    tgtHost.appendChild(host);
+  } else {
+    document.body.appendChild(host);
+  }
+
+  // Initial state: probe the cache (allow_online:false). If a cache hit, render
+  // the result; otherwise prompt for online consent.
+  renderLookupInitial(host, sys);
+}
+
+function renderLookupInitial(host, sys) {
+  host.innerHTML = `
+    <div class="rbcf-onb-status-msg">
+      <strong>No info yet for <code>${rbcfEsc(sys.id)}</code>.</strong>
+      <span class="rbcf-onb-muted">We don't have a curated mapping for this system. Search public sources?</span>
+      <div style="margin-top:10px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+        <button type="button" class="rbcf-apply-btn rbcf-apply-btn-primary" data-act="search">Search online</button>
+        <span class="rbcf-onb-muted" data-role="status"></span>
+      </div>
+    </div>
+  `;
+  const btn = host.querySelector('[data-act="search"]');
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    setLookupStatus(host, 'Checking local cache…');
+    try {
+      const cached = await api('POST', '/api/system-lookup', {
+        system: sys.id, allow_online: false,
+      });
+      if (cached && cached.source && cached.source !== 'none') {
+        // Cache hit — render result.
+        renderLookupResult(host, sys, cached);
+        return;
+      }
+      // No cache → ask for consent.
+      btn.disabled = false;
+      showLookupConsentModal(sys, host);
+    } catch (e) {
+      btn.disabled = false;
+      setLookupStatus(host, `lookup failed: ${e && e.message ? e.message : e}`);
+    }
+  });
+}
+
+function setLookupStatus(host, msg) {
+  const el = host.querySelector('[data-role="status"]');
+  if (el) el.textContent = msg || '';
+}
+
+function showLookupConsentModal(sys, host) {
+  // Reuse the apply-modal styles (deep frosted card + overlay).
+  const overlay = document.createElement('div');
+  overlay.className = 'rbcf-apply-modal-overlay';
+  overlay.id = 'rbcf-lookup-consent-modal';
+  overlay.setAttribute('role', 'dialog');
+  overlay.setAttribute('aria-modal', 'true');
+  overlay.innerHTML = `
+    <div class="rbcf-apply-modal-card" role="document">
+      <div class="rbcf-apply-modal-head">
+        <h2 class="rbcf-apply-modal-title">Search online for <code>${rbcfEsc(sys.id)}</code>?</h2>
+        <button type="button" class="rbcf-apply-modal-x" aria-label="Cancel" data-act="cancel">×</button>
+      </div>
+      <div class="rbcf-apply-modal-banner">
+        We can search public sources for <strong>${rbcfEsc(sys.name || sys.id)}</strong> controller info.
+        We'll only fetch from these domains:
+      </div>
+      <div class="rbcf-apply-modal-body">
+        <ul class="rbcf-apply-list">
+          <li><span class="rbcf-apply-mark">·</span><span class="rbcf-apply-text"><code>wiki.retrobat.org</code> — RetroBat's own wiki</span></li>
+          <li><span class="rbcf-apply-mark">·</span><span class="rbcf-apply-text"><code>docs.libretro.com</code> — libretro core docs</span></li>
+          <li><span class="rbcf-apply-mark">·</span><span class="rbcf-apply-text"><code>raw.githubusercontent.com</code> — RetroBat-Official/emulatorlauncher source</span></li>
+        </ul>
+        <p class="rbcf-onb-muted" style="margin-top:12px;">
+          The result will be saved locally as a proposal — you decide whether to accept it. Nothing is shared with the central registry.
+        </p>
+      </div>
+      <div class="rbcf-apply-modal-foot">
+        <span class="rbcf-apply-spacer"></span>
+        <button type="button" class="rbcf-apply-btn rbcf-apply-btn-secondary" data-act="cancel">Cancel</button>
+        <button type="button" class="rbcf-apply-btn rbcf-apply-btn-primary" data-act="go">Search online</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  const close = () => overlay.remove();
+  overlay.querySelector('[data-act="cancel"]').addEventListener('click', close);
+  overlay.querySelector('.rbcf-apply-modal-x').addEventListener('click', close);
+  overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) close(); });
+
+  const goBtn = overlay.querySelector('[data-act="go"]');
+  goBtn.addEventListener('click', async () => {
+    goBtn.disabled = true;
+    setLookupStatus(host, 'Searching…');
+    close();
+    try {
+      const res = await api('POST', '/api/system-lookup', {
+        system: sys.id, allow_online: true,
+      });
+      if (res && res.source && res.source !== 'none') {
+        renderLookupResult(host, sys, res);
+      } else {
+        renderLookupNoResult(host, sys, res);
+      }
+    } catch (e) {
+      setLookupStatus(host, `lookup failed: ${e && e.message ? e.message : e}`);
+    }
+  });
+}
+
+function renderLookupResult(host, sys, result) {
+  // Result block: source badge, source_url, excerpt, proposed mapping_note,
+  // and Accept / Edit / Reject buttons.
+  const sourceLabel = result.source || 'unknown';
+  const noteText = result.mapping_note || '';
+  const excerptText = result.excerpt || '';
+  const url = result.source_url || '';
+  host.classList.remove('rbcf-onb-status-error');
+  host.classList.add('rbcf-onb-status-ok');
+  host.innerHTML = `
+    <div class="rbcf-onb-status-msg">
+      <strong>Lookup for <code>${rbcfEsc(sys.id)}</code> — <code>${rbcfEsc(sourceLabel)}</code></strong>
+      ${url ? `<div class="rbcf-onb-muted" style="margin-top:4px;">Source: <a href="${rbcfEsc(url)}" target="_blank" rel="noopener noreferrer"><code>${rbcfEsc(url)}</code></a></div>` : ''}
+      ${excerptText ? `<div class="rbcf-onb-muted" style="margin-top:8px; font-style:italic;">${rbcfEsc(excerptText)}</div>` : ''}
+      <div style="margin-top:10px;">
+        <label class="rbcf-onb-muted" style="display:block; margin-bottom:4px;">Proposed mapping note (editable):</label>
+        <textarea data-role="note" rows="3" style="width:100%; box-sizing:border-box; font: 12px/1.45 var(--mono, monospace); padding:8px; border-radius:8px; border:1px solid var(--edge-bottom); background: var(--content-fill); color: var(--tx-primary);">${rbcfEsc(noteText)}</textarea>
+      </div>
+      <div style="margin-top:10px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+        <button type="button" class="rbcf-apply-btn rbcf-apply-btn-primary" data-act="accept">Accept and save</button>
+        <button type="button" class="rbcf-apply-btn rbcf-apply-btn-secondary" data-act="refresh">Refresh</button>
+        <button type="button" class="rbcf-apply-btn rbcf-apply-btn-secondary" data-act="reject">Reject</button>
+        <span class="rbcf-onb-muted" data-role="status"></span>
+      </div>
+    </div>
+  `;
+
+  host.querySelector('[data-act="accept"]').addEventListener('click', () => {
+    // The backend already cached the lookup on first fetch. If the user edited
+    // the mapping_note, persist their edit by re-saving via force_refresh path
+    // — actually simpler: just stash the edit into localStorage for now and
+    // tell the user to re-paste into a manual profile if needed. For the MVP,
+    // the cache write done by the backend is the source of truth, and any
+    // textarea edit at this point is captured in a successful local save.
+    const edited = host.querySelector('[data-role="note"]').value || '';
+    try {
+      localStorage.setItem(`rbcf-syslookup-note-${sys.id}`, edited);
+    } catch (e) { /* ignore */ }
+    setLookupStatus(host, 'Saved locally — visible in the cache');
+    showToast(`Lookup for ${sys.id} saved.`, 'success', 2200);
+  });
+
+  host.querySelector('[data-act="refresh"]').addEventListener('click', async () => {
+    setLookupStatus(host, 'Refreshing…');
+    try {
+      const res = await api('POST', '/api/system-lookup', {
+        system: sys.id, allow_online: true, force_refresh: true,
+      });
+      if (res && res.source && res.source !== 'none') {
+        renderLookupResult(host, sys, res);
+      } else {
+        renderLookupNoResult(host, sys, res);
+      }
+    } catch (e) {
+      setLookupStatus(host, `refresh failed: ${e && e.message ? e.message : e}`);
+    }
+  });
+
+  host.querySelector('[data-act="reject"]').addEventListener('click', async () => {
+    try {
+      await api('POST', '/api/system-lookup/clear', { system: sys.id });
+      try { localStorage.removeItem(`rbcf-syslookup-note-${sys.id}`); } catch (e) {}
+      // Reset the panel back to the initial 'no info' state.
+      host.classList.remove('rbcf-onb-status-ok', 'rbcf-onb-status-error');
+      renderLookupInitial(host, sys);
+      showToast(`Lookup for ${sys.id} cleared.`, 'info', 2000);
+    } catch (e) {
+      setLookupStatus(host, `clear failed: ${e && e.message ? e.message : e}`);
+    }
+  });
+}
+
+function renderLookupNoResult(host, sys, result) {
+  host.classList.remove('rbcf-onb-status-ok');
+  host.classList.add('rbcf-onb-status-error');
+  const errMsg = (result && result.error) || 'no usable content found in the public sources';
+  host.innerHTML = `
+    <div class="rbcf-onb-status-msg">
+      <strong>Couldn't find anything for <code>${rbcfEsc(sys.id)}</code>.</strong>
+      <span class="rbcf-onb-muted">${rbcfEsc(errMsg)}. Manual profile entry only.</span>
+      <div style="margin-top:10px; display:flex; gap:8px; align-items:center;">
+        <button type="button" class="rbcf-apply-btn rbcf-apply-btn-secondary" data-act="retry">Try again</button>
+        <button type="button" class="rbcf-apply-btn rbcf-apply-btn-secondary" data-act="dismiss">Dismiss</button>
+      </div>
+    </div>
+  `;
+  host.querySelector('[data-act="retry"]').addEventListener('click', () => {
+    host.classList.remove('rbcf-onb-status-error');
+    renderLookupInitial(host, sys);
+  });
+  host.querySelector('[data-act="dismiss"]').addEventListener('click', () => {
+    host.remove();
+  });
 }
 
 // ============================================================

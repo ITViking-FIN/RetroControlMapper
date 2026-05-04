@@ -29,6 +29,11 @@ Endpoints:
                                         body: {description}.
     POST /api/backup/restore            preview by default; body {id, apply}
                                         — apply:true actually writes back.
+    POST /api/system-lookup             best-effort online lookup of controller
+                                        info for a system that has no curated
+                                        metadata; gated behind explicit user
+                                        consent. Body: {system, allow_online,
+                                        force_refresh}. See system_lookup.py.
 """
 from __future__ import annotations
 
@@ -53,6 +58,7 @@ from config import (
     write_rbcfrc, clear_rbcfrc, _probed_locations_summary,
 )
 from rbcf import load_profiles
+import system_lookup
 
 ROOT = Path(__file__).resolve().parent
 GUI_DIR = ROOT / "gui"
@@ -1373,6 +1379,73 @@ def _backup_restore(data: dict) -> dict:
         return {"ok": False, "error": f"restore failed: {e}"}
 
 
+def _system_lookup_endpoint(data: dict) -> dict:
+    """POST /api/system-lookup — surface system_lookup.lookup() result over HTTP.
+
+    Body: ``{system, allow_online?, force_refresh?}``.
+
+    Returns a dict shaped like LookupResult plus a ``cached`` flag (true if
+    served from disk cache). If a curated entry exists for this system in
+    HARDCODED_SYSTEMS we return ``source='curated'`` so the frontend can
+    avoid showing a lookup affordance for systems we already cover — defence
+    in depth, since the frontend already filters this case before calling.
+    """
+    sys_id = (data.get("system") or "").strip()
+    allow_online = bool(data.get("allow_online"))
+    force_refresh = bool(data.get("force_refresh"))
+
+    if not sys_id:
+        return {"ok": False, "error": "missing 'system' in body"}
+
+    # Defence in depth: refuse to look up systems that already have curated
+    # metadata. The frontend should never call us for these but we don't want
+    # to ever overwrite a curated entry with a guessed online proposal.
+    curated = next(
+        (s for s in HARDCODED_SYSTEMS
+         if s["id"] == sys_id
+         and (s.get("fixed_mapping_note") or s.get("target_controller"))),
+        None,
+    )
+    if curated is not None:
+        return {
+            "ok": True,
+            "system_id": sys_id,
+            "source": "curated",
+            "name": curated.get("name"),
+            "mapping_note": curated.get("fixed_mapping_note"),
+            "target_controller": curated.get("target_controller"),
+            "source_url": None,
+            "excerpt": None,
+            "error": None,
+            "cached_at": None,
+            "cached": False,
+        }
+
+    try:
+        result = system_lookup.lookup(
+            sys_id,
+            allow_online=allow_online,
+            force_refresh=force_refresh,
+        )
+    except Exception as e:
+        return {"ok": False, "error": f"lookup failed: {e}"}
+
+    payload = result.to_dict()
+    payload["ok"] = True
+    payload["cached"] = (result.source == "cache")
+    return payload
+
+
+def _system_lookup_clear(data: dict) -> dict:
+    """Helper invoked by the frontend's 'Reject' button — drops the cache."""
+    sys_id = (data.get("system") or "").strip() or None
+    try:
+        n = system_lookup.clear_cache(sys_id)
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+    return {"ok": True, "removed": n}
+
+
 # ------------------------------ HTTP layer ------------------------------
 
 class Handler(http.server.SimpleHTTPRequestHandler):
@@ -1484,6 +1557,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._json(_backup_snapshot(data))
         if u.path == "/api/backup/restore":
             return self._json(_backup_restore(data))
+        if u.path == "/api/system-lookup":
+            return self._json(_system_lookup_endpoint(data))
+        if u.path == "/api/system-lookup/clear":
+            return self._json(_system_lookup_clear(data))
         return self._json({"ok": False, "error": "unknown endpoint"}, status=404)
 
 
