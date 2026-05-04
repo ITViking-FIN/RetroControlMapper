@@ -36,3 +36,6 @@ Desktop.ini
 build/
 dist/
 *.spec
+
+# Research scratchpads — agents stage downloaded source for inspection here
+.tmp_research/
