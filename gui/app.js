@@ -4,6 +4,32 @@
 const $  = (id) => document.getElementById(id);
 const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
+// ============================================================
+// Theme (Frosted Acrylic — Light / Dark / Auto)
+// Runs *before* init() so the page never flashes the wrong theme.
+// localStorage 'rbcf-theme' = 'light' | 'dark' | 'auto'  (default: 'auto').
+// The body's data-theme attribute drives the CSS token cascade.
+// ============================================================
+
+const THEME_STORAGE_KEY = 'rbcf-theme';
+const THEME_VALUES = ['light', 'dark', 'auto'];
+
+function getTheme() {
+  try {
+    const v = localStorage.getItem(THEME_STORAGE_KEY);
+    return THEME_VALUES.includes(v) ? v : 'auto';
+  } catch (e) { return 'auto'; }
+}
+function setTheme(value) {
+  const v = THEME_VALUES.includes(value) ? value : 'auto';
+  try { localStorage.setItem(THEME_STORAGE_KEY, v); } catch (e) { /* ignore */ }
+  document.body.setAttribute('data-theme', v);
+  return v;
+}
+// Apply immediately (body always exists by the time app.js runs since the
+// script tag is at the end of <body>).
+setTheme(getTheme());
+
 const padStatus = $('pad-status');
 const padName   = $('pad-name');
 const targetName = $('target-name');
@@ -677,12 +703,31 @@ function showSettingsPopover() {
   pop.className = 'rbcf-apply-settings-popover';
   pop.setAttribute('role', 'dialog');
   pop.setAttribute('aria-label', 'RB-Controller_fix Settings');
+  const currentTheme = getTheme();
+  const themeBtn = (val, label, icon) => `
+    <button type="button" class="rbcf-apply-theme-btn${currentTheme === val ? ' rbcf-apply-theme-btn-active' : ''}"
+            data-rbcf-theme="${val}" aria-pressed="${currentTheme === val}">
+      ${icon}<span>${label}</span>
+    </button>`;
+  const ICON_LIGHT = '<svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>';
+  const ICON_DARK  = '<svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
+  const ICON_AUTO  = '<svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 3v18"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor" stroke="none"/></svg>';
+
   pop.innerHTML = `
     <div class="rbcf-apply-settings-head">
       <h3 class="rbcf-apply-settings-title">RB-Controller_fix Settings</h3>
       <button type="button" class="rbcf-apply-modal-x" aria-label="Close" data-act="close">×</button>
     </div>
     <div class="rbcf-apply-settings-body">
+      <div class="rbcf-apply-theme-row" role="group" aria-label="Theme">
+        <span class="rbcf-apply-theme-label-main">Theme</span>
+        <span class="rbcf-apply-theme-label-help">Light, Dark, or follow system preference.</span>
+        <div class="rbcf-apply-theme-segmented" id="rbcf-apply-theme-segmented">
+          ${themeBtn('light', 'Light', ICON_LIGHT)}
+          ${themeBtn('dark',  'Dark',  ICON_DARK)}
+          ${themeBtn('auto',  'Auto',  ICON_AUTO)}
+        </div>
+      </div>
       <label class="rbcf-apply-settings-row">
         <input type="checkbox" id="rbcf-apply-one-click-toggle" ${isOneClickApplyEnabled() ? 'checked' : ''}>
         <span class="rbcf-apply-settings-label">
@@ -694,9 +739,24 @@ function showSettingsPopover() {
   `;
   document.body.appendChild(pop);
 
+  // Theme segmented control wiring.
+  pop.querySelectorAll('.rbcf-apply-theme-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const val = btn.dataset.rbcfTheme;
+      setTheme(val);
+      pop.querySelectorAll('.rbcf-apply-theme-btn').forEach(b => {
+        const on = b.dataset.rbcfTheme === val;
+        b.classList.toggle('rbcf-apply-theme-btn-active', on);
+        b.setAttribute('aria-pressed', String(on));
+      });
+      const label = val === 'auto' ? 'Auto (system)' : (val[0].toUpperCase() + val.slice(1));
+      showToast(`Theme: ${label}.`, 'info', 1800);
+    });
+  });
+
   // Position the popover under the cog (right-aligned).
   const r = cog.getBoundingClientRect();
-  const popW = 320;
+  const popW = 340;
   let left = r.right - popW;
   if (left < 8) left = 8;
   pop.style.position = 'fixed';
