@@ -9,139 +9,191 @@
 //
 // IDs and exported constants are load-bearing — app.js keys off them.
 // Visuals can be reworked freely; do not rename ids or remove buttons.
+//
+// Visual language: "Frosted Acrylic" (see docs/DESIGN_LANGUAGE.md).
+// Light-theme-friendly pearl-grey bodies, soft scattered shadows, single
+// upper-left light source. Theme awareness is handled in style.css via
+// the `.src-btn`/`.tgt-btn`/`.face.*` class hooks.
 
 const SRC_XINPUT = `
 <svg viewBox="0 0 620 360" xmlns="http://www.w3.org/2000/svg" class="ctrl-svg" aria-label="Your XInput controller">
   <defs>
-    <linearGradient id="xiBody" x1="0.5" y1="0" x2="0.5" y2="1">
-      <stop offset="0%"   stop-color="#444c57"/>
-      <stop offset="55%"  stop-color="#2a3038"/>
-      <stop offset="100%" stop-color="#161b22"/>
+    <!-- Pearl-grey body, lit from upper left -->
+    <linearGradient id="xiBody" x1="0.25" y1="0" x2="0.75" y2="1">
+      <stop offset="0%"   stop-color="#eef1f6"/>
+      <stop offset="45%"  stop-color="#cfd5de"/>
+      <stop offset="100%" stop-color="#9aa3b0"/>
     </linearGradient>
     <linearGradient id="xiBodyHi" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%"  stop-color="rgba(255,255,255,0.10)"/>
+      <stop offset="0%"  stop-color="rgba(255,255,255,0.85)"/>
       <stop offset="55%" stop-color="rgba(255,255,255,0)"/>
     </linearGradient>
-    <radialGradient id="xiStickBase" cx="0.5" cy="0.4" r="0.7">
-      <stop offset="0%"  stop-color="#0a0d11"/>
-      <stop offset="100%" stop-color="#1c2128"/>
+    <linearGradient id="xiBodyLo" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0%"  stop-color="rgba(20,24,38,0.18)"/>
+      <stop offset="60%" stop-color="rgba(20,24,38,0)"/>
+    </linearGradient>
+
+    <!-- Recessed area for d-pad / stick (subtle inset) -->
+    <radialGradient id="xiRecess" cx="0.5" cy="0.4" r="0.7">
+      <stop offset="0%"  stop-color="rgba(20,24,38,0.04)"/>
+      <stop offset="100%" stop-color="rgba(20,24,38,0.20)"/>
     </radialGradient>
-    <radialGradient id="xiStickKnob" cx="0.4" cy="0.35" r="0.7">
-      <stop offset="0%"  stop-color="#3a4049"/>
-      <stop offset="100%" stop-color="#1a1e24"/>
+
+    <!-- Stick rim and knob -->
+    <radialGradient id="xiStickBase" cx="0.5" cy="0.4" r="0.65">
+      <stop offset="0%"   stop-color="#d6dbe3"/>
+      <stop offset="65%"  stop-color="#a7afba"/>
+      <stop offset="100%" stop-color="#6b7280"/>
     </radialGradient>
-    <filter id="xiShadow" x="-10%" y="-10%" width="120%" height="130%">
-      <feGaussianBlur stdDeviation="3" in="SourceAlpha"/>
-      <feOffset dy="4" result="off"/>
-      <feComponentTransfer><feFuncA type="linear" slope="0.5"/></feComponentTransfer>
+    <radialGradient id="xiStickKnob" cx="0.4" cy="0.32" r="0.75">
+      <stop offset="0%"   stop-color="#3a4049"/>
+      <stop offset="60%"  stop-color="#22272f"/>
+      <stop offset="100%" stop-color="#0d1117"/>
+    </radialGradient>
+
+    <!-- Soft drop-shadow under elevated body -->
+    <filter id="xiBodyShadow" x="-10%" y="-10%" width="120%" height="135%">
+      <feGaussianBlur stdDeviation="5" in="SourceAlpha"/>
+      <feOffset dy="6" result="off"/>
+      <feComponentTransfer><feFuncA type="linear" slope="0.30"/></feComponentTransfer>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+
+    <!-- Tighter shadow for face buttons / shoulders -->
+    <filter id="xiBtnShadow" x="-30%" y="-30%" width="160%" height="170%">
+      <feGaussianBlur stdDeviation="1.5" in="SourceAlpha"/>
+      <feOffset dy="2" result="off"/>
+      <feComponentTransfer><feFuncA type="linear" slope="0.32"/></feComponentTransfer>
       <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
     </filter>
   </defs>
 
-  <!-- Body -->
-  <g filter="url(#xiShadow)">
-    <path d="M 110 95
-             Q 60 95 60 155
-             L 60 245
-             Q 60 300 130 300
-             L 205 300
-             Q 245 300 258 278
-             Q 278 252 310 252
-             Q 342 252 362 278
-             Q 375 300 415 300
-             L 490 300
-             Q 560 300 560 245
-             L 560 155
-             Q 560 95 510 95
+  <!-- Body — gentle 8BitDo-style curves -->
+  <g filter="url(#xiBodyShadow)">
+    <path d="M 130 96
+             Q 78 96 70 152
+             L 70 232
+             Q 70 296 142 302
+             L 215 302
+             Q 250 302 268 282
+             Q 290 258 310 258
+             Q 330 258 352 282
+             Q 370 302 405 302
+             L 478 302
+             Q 550 296 550 232
+             L 550 152
+             Q 542 96 490 96
              Z"
-          fill="url(#xiBody)" stroke="#000" stroke-width="2"/>
+          fill="url(#xiBody)" stroke="rgba(20,24,38,0.25)" stroke-width="1.25"/>
     <!-- Top sheen -->
-    <path d="M 120 96
-             Q 70 96 65 145
-             Q 200 130 310 130
-             Q 420 130 555 145
-             Q 550 96 500 96 Z"
-          fill="url(#xiBodyHi)" opacity="0.7"/>
+    <path d="M 132 100
+             Q 84 100 78 148
+             Q 200 132 310 132
+             Q 420 132 542 148
+             Q 536 100 488 100 Z"
+          fill="url(#xiBodyHi)"/>
+    <!-- Bottom shading -->
+    <path d="M 78 230
+             Q 86 296 142 298
+             L 215 298
+             Q 250 298 268 280
+             Q 290 256 310 256
+             Q 330 256 352 280
+             Q 370 298 405 298
+             L 478 298
+             Q 534 296 542 230
+             Q 430 250 310 250
+             Q 190 250 78 230 Z"
+          fill="url(#xiBodyLo)" opacity="0.65"/>
+    <!-- Centre console (slightly recessed plate where home/select/start sit) -->
+    <ellipse cx="310" cy="170" rx="68" ry="34" fill="rgba(20,24,38,0.06)"/>
   </g>
 
   <!-- Triggers (top, drawn behind shoulders) -->
-  <g id="src-btn-l2" class="src-btn">
-    <rect x="100" y="40" width="80" height="22" rx="9" />
-    <text x="140" y="56" text-anchor="middle">LT</text>
-  </g>
-  <g id="src-btn-r2" class="src-btn">
-    <rect x="440" y="40" width="80" height="22" rx="9" />
-    <text x="480" y="56" text-anchor="middle">RT</text>
-  </g>
+  <g filter="url(#xiBtnShadow)">
+    <g id="src-btn-l2" class="src-btn">
+      <rect x="100" y="40" width="84" height="22" rx="10"/>
+      <text x="142" y="55" text-anchor="middle">LT</text>
+    </g>
+    <g id="src-btn-r2" class="src-btn">
+      <rect x="436" y="40" width="84" height="22" rx="10"/>
+      <text x="478" y="55" text-anchor="middle">RT</text>
+    </g>
 
-  <!-- Shoulders -->
-  <g id="src-btn-l" class="src-btn">
-    <rect x="92" y="70" width="96" height="20" rx="9" />
-    <text x="140" y="85" text-anchor="middle">LB</text>
-  </g>
-  <g id="src-btn-r" class="src-btn">
-    <rect x="432" y="70" width="96" height="20" rx="9" />
-    <text x="480" y="85" text-anchor="middle">RB</text>
+    <!-- Shoulders -->
+    <g id="src-btn-l" class="src-btn">
+      <rect x="92" y="68" width="100" height="22" rx="10"/>
+      <text x="142" y="83" text-anchor="middle">LB</text>
+    </g>
+    <g id="src-btn-r" class="src-btn">
+      <rect x="428" y="68" width="100" height="22" rx="10"/>
+      <text x="478" y="83" text-anchor="middle">RB</text>
+    </g>
   </g>
 
   <!-- D-pad recess -->
-  <circle cx="171" cy="211" r="38" fill="#0a0d11" opacity="0.55"/>
-  <g class="dpad">
+  <circle cx="171" cy="216" r="40" fill="url(#xiRecess)"/>
+  <g class="dpad" filter="url(#xiBtnShadow)">
     <g id="src-btn-up" class="src-btn dpad">
-      <rect x="160" y="178" width="22" height="22" rx="3"/>
+      <rect x="160" y="180" width="22" height="24" rx="3"/>
     </g>
     <g id="src-btn-down" class="src-btn dpad">
-      <rect x="160" y="222" width="22" height="22" rx="3"/>
+      <rect x="160" y="228" width="22" height="24" rx="3"/>
     </g>
     <g id="src-btn-left" class="src-btn dpad">
-      <rect x="138" y="200" width="22" height="22" rx="3"/>
+      <rect x="136" y="204" width="24" height="22" rx="3"/>
     </g>
     <g id="src-btn-right" class="src-btn dpad">
-      <rect x="182" y="200" width="22" height="22" rx="3"/>
+      <rect x="182" y="204" width="24" height="22" rx="3"/>
     </g>
-    <rect x="160" y="200" width="22" height="22" fill="#0d1117"/>
+    <!-- Centre cap -->
+    <circle cx="171" cy="216" r="6" fill="rgba(20,24,38,0.55)"/>
   </g>
 
-  <!-- Left stick -->
+  <!-- Left stick (upper-left of centre, like 8BitDo Ultimate) -->
   <g id="src-btn-l3" class="src-btn stick">
-    <circle cx="240" cy="155" r="36" class="stick-base" fill="url(#xiStickBase)"/>
-    <circle cx="240" cy="155" r="22" class="stick-knob" id="src-l3-knob" fill="url(#xiStickKnob)"/>
-    <text x="240" y="159" text-anchor="middle" class="tiny" fill="#6e7681">L3</text>
+    <circle cx="240" cy="158" r="34" class="stick-base" fill="url(#xiStickBase)"/>
+    <circle cx="240" cy="158" r="22" class="stick-knob" id="src-l3-knob" fill="url(#xiStickKnob)"/>
+    <ellipse cx="234" cy="151" rx="9" ry="5" fill="rgba(255,255,255,0.18)"/>
   </g>
 
-  <!-- Right stick -->
+  <!-- Right stick (lower-right of centre) -->
   <g id="src-btn-r3" class="src-btn stick">
-    <circle cx="380" cy="225" r="36" class="stick-base" fill="url(#xiStickBase)"/>
-    <circle cx="380" cy="225" r="22" class="stick-knob" id="src-r3-knob" fill="url(#xiStickKnob)"/>
-    <text x="380" y="229" text-anchor="middle" class="tiny" fill="#6e7681">R3</text>
+    <circle cx="380" cy="228" r="34" class="stick-base" fill="url(#xiStickBase)"/>
+    <circle cx="380" cy="228" r="22" class="stick-knob" id="src-r3-knob" fill="url(#xiStickKnob)"/>
+    <ellipse cx="374" cy="221" rx="9" ry="5" fill="rgba(255,255,255,0.18)"/>
   </g>
 
-  <!-- Select / Start -->
-  <g id="src-btn-select" class="src-btn">
-    <rect x="265" y="146" width="36" height="14" rx="7"/>
-    <text x="283" y="156" text-anchor="middle" class="tiny">View</text>
-  </g>
-  <g id="src-btn-start" class="src-btn">
-    <rect x="320" y="146" width="36" height="14" rx="7"/>
-    <text x="338" y="156" text-anchor="middle" class="tiny">Menu</text>
+  <!-- Select / Start (View / Menu) on centre console -->
+  <g filter="url(#xiBtnShadow)">
+    <g id="src-btn-select" class="src-btn">
+      <rect x="278" y="160" width="26" height="14" rx="7"/>
+      <text x="291" y="170" text-anchor="middle" class="tiny">View</text>
+    </g>
+    <g id="src-btn-start" class="src-btn">
+      <rect x="316" y="160" width="26" height="14" rx="7"/>
+      <text x="329" y="170" text-anchor="middle" class="tiny">Menu</text>
+    </g>
   </g>
 
   <!-- Face buttons (right cluster diamond) -->
-  <g id="src-btn-y" class="src-btn face yellow">
-    <circle cx="480" cy="130" r="20"/>
-    <text x="480" y="136" text-anchor="middle">Y</text>
-  </g>
-  <g id="src-btn-a" class="src-btn face green">
-    <circle cx="480" cy="190" r="20"/>
-    <text x="480" y="196" text-anchor="middle">A</text>
-  </g>
-  <g id="src-btn-x" class="src-btn face blue">
-    <circle cx="450" cy="160" r="20"/>
-    <text x="450" y="166" text-anchor="middle">X</text>
-  </g>
-  <g id="src-btn-b" class="src-btn face red">
-    <circle cx="510" cy="160" r="20"/>
-    <text x="510" y="166" text-anchor="middle">B</text>
+  <g filter="url(#xiBtnShadow)">
+    <g id="src-btn-y" class="src-btn face yellow">
+      <circle cx="478" cy="132" r="20"/>
+      <text x="478" y="138" text-anchor="middle">Y</text>
+    </g>
+    <g id="src-btn-a" class="src-btn face green">
+      <circle cx="478" cy="192" r="20"/>
+      <text x="478" y="198" text-anchor="middle">A</text>
+    </g>
+    <g id="src-btn-x" class="src-btn face blue">
+      <circle cx="448" cy="162" r="20"/>
+      <text x="448" y="168" text-anchor="middle">X</text>
+    </g>
+    <g id="src-btn-b" class="src-btn face red">
+      <circle cx="508" cy="162" r="20"/>
+      <text x="508" y="168" text-anchor="middle">B</text>
+    </g>
   </g>
 
   <!-- Title -->
@@ -152,156 +204,326 @@ const SRC_XINPUT = `
 const TGT_CD32_PAD = `
 <svg viewBox="0 0 620 300" xmlns="http://www.w3.org/2000/svg" class="ctrl-svg" aria-label="Amiga CD32 control pad">
   <defs>
-    <linearGradient id="cd32body" x1="0.5" y1="0" x2="0.5" y2="1">
-      <stop offset="0%"  stop-color="#5a5a5a"/>
-      <stop offset="55%" stop-color="#333"/>
-      <stop offset="100%" stop-color="#161616"/>
+    <!-- CD32 black plastic body — light-theme readable mid-grey gradient -->
+    <linearGradient id="cd32body" x1="0.3" y1="0" x2="0.7" y2="1">
+      <stop offset="0%"   stop-color="#5b6371"/>
+      <stop offset="55%"  stop-color="#3a4049"/>
+      <stop offset="100%" stop-color="#1c2128"/>
     </linearGradient>
     <linearGradient id="cd32hi" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%"  stop-color="rgba(255,255,255,0.12)"/>
-      <stop offset="50%" stop-color="rgba(255,255,255,0)"/>
+      <stop offset="0%"  stop-color="rgba(255,255,255,0.30)"/>
+      <stop offset="55%" stop-color="rgba(255,255,255,0)"/>
     </linearGradient>
-    <filter id="cd32Shadow" x="-10%" y="-10%" width="120%" height="130%">
-      <feGaussianBlur stdDeviation="3" in="SourceAlpha"/>
-      <feOffset dy="4" result="off"/>
-      <feComponentTransfer><feFuncA type="linear" slope="0.5"/></feComponentTransfer>
+    <linearGradient id="cd32lo" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0%"  stop-color="rgba(0,0,0,0.35)"/>
+      <stop offset="60%" stop-color="rgba(0,0,0,0)"/>
+    </linearGradient>
+    <radialGradient id="cd32dpadDish" cx="0.5" cy="0.4" r="0.7">
+      <stop offset="0%"  stop-color="#1a1d24"/>
+      <stop offset="100%" stop-color="#2a2f38"/>
+    </radialGradient>
+
+    <filter id="cd32BodyShadow" x="-10%" y="-10%" width="120%" height="140%">
+      <feGaussianBlur stdDeviation="5" in="SourceAlpha"/>
+      <feOffset dy="7" result="off"/>
+      <feComponentTransfer><feFuncA type="linear" slope="0.32"/></feComponentTransfer>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="cd32BtnShadow" x="-30%" y="-30%" width="160%" height="170%">
+      <feGaussianBlur stdDeviation="1.5" in="SourceAlpha"/>
+      <feOffset dy="2" result="off"/>
+      <feComponentTransfer><feFuncA type="linear" slope="0.40"/></feComponentTransfer>
       <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
     </filter>
   </defs>
 
-  <!-- Body (CD32 has a wedge / racetrack shape) -->
-  <g filter="url(#cd32Shadow)">
-    <path d="M 80 130
-             Q 80 70 140 70
-             L 480 70
-             Q 540 70 540 130
-             L 540 190
-             Q 540 250 480 250
-             L 140 250
-             Q 80 250 80 190 Z"
-          fill="url(#cd32body)" stroke="#000" stroke-width="2"/>
-    <!-- Top sheen -->
-    <path d="M 90 125
-             Q 90 76 145 76
-             L 475 76
-             Q 530 76 530 125
-             Q 310 110 90 125 Z"
-          fill="url(#cd32hi)" opacity="0.85"/>
+  <!-- Body — characteristic CD32 wing-curve. Higher in the middle,
+       wings drop on the sides where the d-pad and face cluster sit. -->
+  <g filter="url(#cd32BodyShadow)">
+    <path d="M 78 168
+             Q 80 110 140 100
+             L 195 92
+             Q 235 88 240 132
+             L 240 188
+             Q 240 224 205 232
+             L 145 240
+             Q 78 244 78 200 Z
+             M 380 132
+             Q 385 88 425 92
+             L 480 100
+             Q 540 110 542 168
+             L 542 200
+             Q 542 244 475 240
+             L 415 232
+             Q 380 224 380 188 Z"
+          fill="url(#cd32body)" stroke="rgba(0,0,0,0.45)" stroke-width="1.25"/>
+    <!-- Centre bar — connects the two wings. Houses the AMIGA CD32 logo
+         and the play/reverse mid-buttons. -->
+    <path d="M 220 140
+             L 400 140
+             Q 412 140 412 152
+             L 412 198
+             Q 412 212 400 212
+             L 220 212
+             Q 208 212 208 198
+             L 208 152
+             Q 208 140 220 140 Z"
+          fill="url(#cd32body)" stroke="rgba(0,0,0,0.45)" stroke-width="1.25"/>
+
+    <!-- Top sheen on both wings + centre -->
+    <path d="M 86 168 Q 90 112 145 104 L 195 96 Q 232 92 236 130 L 236 140 Q 160 130 86 168 Z"
+          fill="url(#cd32hi)"/>
+    <path d="M 384 130 Q 388 92 425 96 L 478 104 Q 533 112 538 168 Q 460 130 384 140 Z"
+          fill="url(#cd32hi)"/>
+    <path d="M 220 144 L 400 144 Q 408 144 408 152 L 408 162 Q 310 156 212 162 L 212 152 Q 212 144 220 144 Z"
+          fill="url(#cd32hi)"/>
+
+    <!-- Subtle bottom shading -->
+    <path d="M 78 200 Q 78 244 145 240 L 205 232 Q 240 224 240 188 L 240 200 Q 235 230 200 234 L 145 240 Q 88 244 84 220 Z"
+          fill="url(#cd32lo)" opacity="0.6"/>
+
+    <!-- AMIGA CD32 wordmark -->
+    <text x="270" y="180" font-family="-apple-system, 'Segoe UI', system-ui, sans-serif"
+          font-size="14" font-weight="800" letter-spacing="0.06em"
+          fill="#c44a2c" opacity="0.92">AMIGA</text>
+    <text x="318" y="180" font-family="-apple-system, 'Segoe UI', system-ui, sans-serif"
+          font-size="14" font-weight="800" letter-spacing="0.04em"
+          fill="rgba(255,255,255,0.85)">CD</text>
+    <text x="343" y="184" font-family="-apple-system, 'Segoe UI', system-ui, sans-serif"
+          font-size="9" font-weight="700"
+          fill="rgba(255,255,255,0.85)">32</text>
   </g>
 
-  <!-- Top transport row: Rewind, Reverse, Play, Forward -->
-  <g id="tgt-btn-rewind" class="tgt-btn">
-    <rect x="120" y="100" width="44" height="14" rx="6"/>
-    <text x="142" y="110" text-anchor="middle" class="tiny">REW · LB</text>
-  </g>
-  <g id="tgt-btn-reverse" class="tgt-btn">
-    <rect x="200" y="100" width="60" height="14" rx="6"/>
-    <text x="230" y="110" text-anchor="middle" class="tiny">REV · Sel</text>
-  </g>
-  <g id="tgt-btn-play" class="tgt-btn">
-    <rect x="300" y="100" width="60" height="14" rx="6"/>
-    <text x="330" y="110" text-anchor="middle" class="tiny">PLAY · Sta</text>
-  </g>
-  <g id="tgt-btn-forward" class="tgt-btn">
-    <rect x="400" y="100" width="44" height="14" rx="6"/>
-    <text x="422" y="110" text-anchor="middle" class="tiny">FWD · RB</text>
+  <!-- Top transport buttons: REW (top of left wing), FWD (top of right wing) -->
+  <g filter="url(#cd32BtnShadow)">
+    <g id="tgt-btn-rewind" class="tgt-btn">
+      <rect x="116" y="74" width="60" height="20" rx="8"/>
+      <text x="146" y="87" text-anchor="middle" class="tiny">REW · LB</text>
+    </g>
+    <g id="tgt-btn-forward" class="tgt-btn">
+      <rect x="444" y="74" width="60" height="20" rx="8"/>
+      <text x="474" y="87" text-anchor="middle" class="tiny">FWD · RB</text>
+    </g>
   </g>
 
-  <!-- D-pad recess -->
-  <circle cx="181" cy="171" r="38" fill="#0a0d11" opacity="0.55"/>
-  <g class="dpad">
+  <!-- Mid-bar pause/play strip: REVERSE (left of centre), PLAY (right) -->
+  <g filter="url(#cd32BtnShadow)">
+    <g id="tgt-btn-reverse" class="tgt-btn">
+      <rect x="246" y="194" width="64" height="14" rx="6"/>
+      <text x="278" y="204" text-anchor="middle" class="tiny">REV · Sel</text>
+    </g>
+    <g id="tgt-btn-play" class="tgt-btn">
+      <rect x="318" y="194" width="64" height="14" rx="6"/>
+      <text x="350" y="204" text-anchor="middle" class="tiny">PLAY · Sta</text>
+    </g>
+  </g>
+
+  <!-- D-pad: lives in a small dish on the upper-left wing -->
+  <circle cx="146" cy="148" r="34" fill="url(#cd32dpadDish)" stroke="rgba(0,0,0,0.5)" stroke-width="1"/>
+  <g class="dpad" filter="url(#cd32BtnShadow)">
     <g id="tgt-btn-up" class="tgt-btn dpad">
-      <rect x="170" y="138" width="22" height="22" rx="3"/>
+      <rect x="136" y="118" width="20" height="22" rx="3"/>
     </g>
     <g id="tgt-btn-down" class="tgt-btn dpad">
-      <rect x="170" y="182" width="22" height="22" rx="3"/>
+      <rect x="136" y="156" width="20" height="22" rx="3"/>
     </g>
     <g id="tgt-btn-left" class="tgt-btn dpad">
-      <rect x="148" y="160" width="22" height="22" rx="3"/>
+      <rect x="116" y="138" width="22" height="20" rx="3"/>
     </g>
     <g id="tgt-btn-right" class="tgt-btn dpad">
-      <rect x="192" y="160" width="22" height="22" rx="3"/>
+      <rect x="154" y="138" width="22" height="20" rx="3"/>
     </g>
-    <rect x="170" y="160" width="22" height="22" fill="#0d1117"/>
+    <circle cx="146" cy="148" r="5" fill="rgba(255,255,255,0.25)"/>
   </g>
 
-  <!-- Coloured face buttons (CD32 layout: Yellow top, Red right, Blue bottom, Green left) -->
-  <g id="tgt-btn-yellow" class="tgt-btn face yellow">
-    <circle cx="430" cy="135" r="22"/>
-    <text x="430" y="141" text-anchor="middle">Y</text>
-  </g>
-  <g id="tgt-btn-blue" class="tgt-btn face blue">
-    <circle cx="430" cy="195" r="22"/>
-    <text x="430" y="201" text-anchor="middle">A</text>
-  </g>
-  <g id="tgt-btn-green" class="tgt-btn face green">
-    <circle cx="398" cy="165" r="22"/>
-    <text x="398" y="171" text-anchor="middle">X</text>
-  </g>
-  <g id="tgt-btn-red" class="tgt-btn face red">
-    <circle cx="462" cy="165" r="22"/>
-    <text x="462" y="171" text-anchor="middle">B</text>
+  <!-- Coloured face buttons on the right wing.
+       Photo layout: green top-left, yellow top-right, red bottom-left,
+       blue bottom-right. Matches the IDs encoding A=blue, B=red,
+       X=green, Y=yellow. -->
+  <g filter="url(#cd32BtnShadow)">
+    <g id="tgt-btn-green" class="tgt-btn face green">
+      <circle cx="438" cy="132" r="17"/>
+      <text x="438" y="138" text-anchor="middle">X</text>
+    </g>
+    <g id="tgt-btn-yellow" class="tgt-btn face yellow">
+      <circle cx="488" cy="132" r="17"/>
+      <text x="488" y="138" text-anchor="middle">Y</text>
+    </g>
+    <g id="tgt-btn-red" class="tgt-btn face red">
+      <circle cx="438" cy="180" r="17"/>
+      <text x="438" y="186" text-anchor="middle">B</text>
+    </g>
+    <g id="tgt-btn-blue" class="tgt-btn face blue">
+      <circle cx="488" cy="180" r="17"/>
+      <text x="488" y="186" text-anchor="middle">A</text>
+    </g>
   </g>
 
-  <text x="310" y="285" text-anchor="middle" class="ctrl-caption">Amiga CD32 Pad — 7 buttons</text>
+  <text x="310" y="280" text-anchor="middle" class="ctrl-caption">Amiga CD32 Pad — 7 buttons</text>
 </svg>
 `;
 
 const TGT_JOYSTICK_1BTN = `
-<svg viewBox="0 0 620 300" xmlns="http://www.w3.org/2000/svg" class="ctrl-svg" aria-label="C64 / Amiga single-button joystick">
+<svg viewBox="0 0 620 300" xmlns="http://www.w3.org/2000/svg" class="ctrl-svg" aria-label="Competition Pro — single-button joystick">
   <defs>
-    <linearGradient id="joybase" x1="0.5" y1="0" x2="0.5" y2="1">
-      <stop offset="0%"  stop-color="#262b33"/>
-      <stop offset="55%" stop-color="#13171d"/>
-      <stop offset="100%" stop-color="#06080b"/>
+    <!-- Black textured base -->
+    <linearGradient id="cpBase" x1="0.5" y1="0" x2="0.5" y2="1">
+      <stop offset="0%"   stop-color="#2c313a"/>
+      <stop offset="55%"  stop-color="#171b22"/>
+      <stop offset="100%" stop-color="#0a0d11"/>
     </linearGradient>
-    <linearGradient id="joybaseHi" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%"  stop-color="rgba(255,255,255,0.10)"/>
-      <stop offset="40%" stop-color="rgba(255,255,255,0)"/>
+    <linearGradient id="cpBaseHi" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%"  stop-color="rgba(255,255,255,0.35)"/>
+      <stop offset="50%" stop-color="rgba(255,255,255,0)"/>
     </linearGradient>
-    <radialGradient id="joyBall" cx="0.35" cy="0.3" r="0.8">
-      <stop offset="0%"  stop-color="#e76055"/>
-      <stop offset="55%" stop-color="#a8281e"/>
-      <stop offset="100%" stop-color="#5e150f"/>
+    <linearGradient id="cpBaseLo" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0%"  stop-color="rgba(0,0,0,0.55)"/>
+      <stop offset="60%" stop-color="rgba(0,0,0,0)"/>
+    </linearGradient>
+
+    <!-- Cream stripe along the top edge -->
+    <linearGradient id="cpStripe" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%"   stop-color="#f6efd9"/>
+      <stop offset="60%"  stop-color="#e8dfbe"/>
+      <stop offset="100%" stop-color="#bdb389"/>
+    </linearGradient>
+
+    <!-- Stick black hat / collar -->
+    <radialGradient id="cpHat" cx="0.5" cy="0.4" r="0.7">
+      <stop offset="0%"   stop-color="#3a4049"/>
+      <stop offset="60%"  stop-color="#1a1e24"/>
+      <stop offset="100%" stop-color="#0a0d11"/>
     </radialGradient>
-    <linearGradient id="joyShaft" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%"  stop-color="#1a1e24"/>
-      <stop offset="50%" stop-color="#3a4049"/>
-      <stop offset="100%" stop-color="#1a1e24"/>
+
+    <!-- Red shaft (pencil-thin column) -->
+    <linearGradient id="cpShaft" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%"   stop-color="#7d1a14"/>
+      <stop offset="50%"  stop-color="#d43d31"/>
+      <stop offset="100%" stop-color="#7d1a14"/>
     </linearGradient>
-    <filter id="joyShadow" x="-10%" y="-10%" width="120%" height="130%">
-      <feGaussianBlur stdDeviation="3" in="SourceAlpha"/>
-      <feOffset dy="4" result="off"/>
-      <feComponentTransfer><feFuncA type="linear" slope="0.55"/></feComponentTransfer>
+
+    <!-- Big red ball top -->
+    <radialGradient id="cpBall" cx="0.32" cy="0.28" r="0.85">
+      <stop offset="0%"   stop-color="#ff8a7a"/>
+      <stop offset="35%"  stop-color="#e8453a"/>
+      <stop offset="80%"  stop-color="#a01f17"/>
+      <stop offset="100%" stop-color="#5e0f08"/>
+    </radialGradient>
+
+    <!-- Red dome fire button -->
+    <radialGradient id="cpFire" cx="0.35" cy="0.32" r="0.85">
+      <stop offset="0%"   stop-color="#ff7a6a"/>
+      <stop offset="50%"  stop-color="#d43a2e"/>
+      <stop offset="100%" stop-color="#7a1810"/>
+    </radialGradient>
+
+    <filter id="cpBodyShadow" x="-10%" y="-15%" width="120%" height="135%">
+      <feGaussianBlur stdDeviation="5" in="SourceAlpha"/>
+      <feOffset dy="7" result="off"/>
+      <feComponentTransfer><feFuncA type="linear" slope="0.40"/></feComponentTransfer>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="cpBtnShadow" x="-30%" y="-30%" width="160%" height="170%">
+      <feGaussianBlur stdDeviation="2" in="SourceAlpha"/>
+      <feOffset dy="3" result="off"/>
+      <feComponentTransfer><feFuncA type="linear" slope="0.45"/></feComponentTransfer>
       <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
     </filter>
   </defs>
 
-  <!-- Square base -->
-  <g filter="url(#joyShadow)">
-    <rect x="170" y="130" width="280" height="140" rx="14" fill="url(#joybase)" stroke="#000" stroke-width="2"/>
-    <rect x="172" y="132" width="276" height="50" rx="13" fill="url(#joybaseHi)" opacity="0.9"/>
+  <!-- Square base with rounded corners + cream stripe along top edge -->
+  <g filter="url(#cpBodyShadow)">
+    <!-- Main body -->
+    <path d="M 165 138
+             Q 165 122 181 122
+             L 439 122
+             Q 455 122 455 138
+             L 455 254
+             Q 455 270 439 270
+             L 181 270
+             Q 165 270 165 254 Z"
+          fill="url(#cpBase)" stroke="rgba(0,0,0,0.6)" stroke-width="1.5"/>
+    <!-- Cream stripe (a thin band along the top, like the photo) -->
+    <path d="M 165 138
+             Q 165 122 181 122
+             L 439 122
+             Q 455 122 455 138
+             L 455 152
+             L 165 152 Z"
+          fill="url(#cpStripe)" stroke="rgba(0,0,0,0.35)" stroke-width="0.75"/>
+    <!-- Top sheen on the black portion -->
+    <path d="M 165 152 L 455 152 L 455 178 Q 310 168 165 178 Z"
+          fill="url(#cpBaseHi)" opacity="0.55"/>
+    <!-- Bottom shading -->
+    <path d="M 165 240 Q 310 250 455 240 L 455 254 Q 455 270 439 270 L 181 270 Q 165 270 165 254 Z"
+          fill="url(#cpBaseLo)" opacity="0.7"/>
+
+    <!-- Recessed dish for stick (where the rubber hat sits) -->
+    <ellipse cx="320" cy="206" rx="60" ry="32" fill="rgba(0,0,0,0.35)"/>
+    <ellipse cx="320" cy="204" rx="56" ry="28" fill="#0d1117" stroke="rgba(255,255,255,0.05)" stroke-width="1"/>
+
+    <!-- Competition Pro wordmark on the cream stripe -->
+    <text x="178" y="143" font-family="-apple-system, 'Segoe UI', system-ui, sans-serif"
+          font-size="11" font-weight="800" letter-spacing="0.10em"
+          fill="#1f1a0d">COMPETITION</text>
+    <text x="269" y="143" font-family="-apple-system, 'Segoe UI', system-ui, sans-serif"
+          font-size="11" font-weight="800" letter-spacing="0.10em"
+          fill="#9c2018">PRO</text>
   </g>
 
-  <!-- Stick column -->
-  <rect x="298" y="70" width="24" height="70" rx="6" fill="url(#joyShaft)" stroke="#000" stroke-width="1"/>
+  <!-- Direction indicators around the stick base (light up via .pressed) -->
+  <g class="dpad">
+    <g id="tgt-btn-up" class="tgt-btn dpad">
+      <polygon points="320,162 308,180 332,180"/>
+    </g>
+    <g id="tgt-btn-down" class="tgt-btn dpad">
+      <polygon points="320,250 308,232 332,232"/>
+    </g>
+    <g id="tgt-btn-left" class="tgt-btn dpad">
+      <polygon points="248,206 268,196 268,216"/>
+    </g>
+    <g id="tgt-btn-right" class="tgt-btn dpad">
+      <polygon points="392,206 372,196 372,216"/>
+    </g>
+  </g>
 
-  <!-- Stick directions are the d-pad equivalent, shown as 4 arrows around the base -->
-  <g id="tgt-btn-up"    class="tgt-btn dpad"><polygon points="310,30 290,55 330,55"/></g>
-  <g id="tgt-btn-down"  class="tgt-btn dpad"><polygon points="310,290 290,265 330,265"/></g>
-  <g id="tgt-btn-left"  class="tgt-btn dpad"><polygon points="170,200 195,180 195,220"/></g>
-  <g id="tgt-btn-right" class="tgt-btn dpad"><polygon points="450,200 425,180 425,220"/></g>
+  <!-- Stick column: black collar / hat at base, red shaft rising up -->
+  <g filter="url(#cpBtnShadow)">
+    <!-- Hat / rubber collar -->
+    <ellipse cx="320" cy="200" rx="42" ry="20" fill="url(#cpHat)" stroke="rgba(0,0,0,0.6)" stroke-width="1.25"/>
+    <ellipse cx="320" cy="196" rx="32" ry="13" fill="#0a0d11" stroke="rgba(255,255,255,0.05)" stroke-width="0.75"/>
+    <!-- Red shaft -->
+    <rect x="308" y="86" width="24" height="118" rx="6" fill="url(#cpShaft)" stroke="rgba(0,0,0,0.6)" stroke-width="1"/>
+    <!-- Highlight on shaft -->
+    <rect x="312" y="90" width="5" height="110" rx="2" fill="rgba(255,255,255,0.30)"/>
+  </g>
 
-  <!-- Red ball top of stick -->
-  <circle cx="310" cy="60" r="24" fill="url(#joyBall)" stroke="#000" stroke-width="1.5"/>
+  <!-- Big red ball top — the iconic Competition Pro feature -->
+  <g filter="url(#cpBtnShadow)">
+    <circle cx="320" cy="64" r="36" fill="url(#cpBall)" stroke="rgba(0,0,0,0.55)" stroke-width="1.25"/>
+    <!-- Specular highlight (upper-left light source) -->
+    <ellipse cx="306" cy="50" rx="14" ry="9" fill="rgba(255,255,255,0.55)"/>
+    <ellipse cx="302" cy="46" rx="6" ry="3" fill="rgba(255,255,255,0.85)"/>
+  </g>
 
-  <!-- Single fire button (libretro default: RetroPad B = fire) -->
+  <!-- FIRE button: red dome on the base, photo-accurate placement (front-left of stick) -->
   <g id="tgt-btn-fire" class="tgt-btn face red">
-    <circle cx="385" cy="200" r="22"/>
-    <text x="385" y="206" text-anchor="middle">FIRE</text>
+    <!-- The face.red CSS rule fills <circle> elements; we wrap a halo
+         and label OUTSIDE this group so they aren't recoloured on press -->
+    <circle cx="206" cy="206" r="20"/>
   </g>
+  <!-- Decorative halo + label (outside the .tgt-btn group so CSS
+       doesn't repaint them; purely visual base under the button) -->
+  <circle cx="206" cy="206" r="26" fill="#0d1117" stroke="rgba(0,0,0,0.6)"
+          stroke-width="1" opacity="0.85" pointer-events="none"/>
+  <!-- Re-render the dome highlight on top so the button reads as a 3D dome -->
+  <ellipse cx="200" cy="198" rx="9" ry="5" fill="rgba(255,255,255,0.45)" pointer-events="none"/>
+  <text x="206" y="246" text-anchor="middle"
+        font-family="-apple-system, 'Segoe UI', system-ui, sans-serif"
+        font-size="10" font-weight="700" letter-spacing="0.18em"
+        fill="#e8dfbe">FIRE</text>
 
-  <text x="310" y="290" text-anchor="middle" class="ctrl-caption">C64 / Amiga 1-button joystick</text>
+  <text x="310" y="290" text-anchor="middle" class="ctrl-caption">Competition Pro — 1-button joystick</text>
 </svg>
 `;
 
