@@ -346,6 +346,25 @@ def cmd_apply(profiles: list[Profile], target_id: str | None):
         if not selected:
             print(f"[fatal] no profile with id '{target_id}'")
             sys.exit(1)
+
+    # Tier-2 auto-snapshot before any writes (DECISIONS.md #5). Failures
+    # are logged but do not block apply — the .bak.rbcf.<date> daily
+    # backups still run inside apply_es_settings / apply_core_options.
+    snap_id = None
+    try:
+        from backups import snapshot as _snapshot
+        snap = _snapshot(
+            "working",
+            description=f"auto-snap before apply ({len(selected)} profiles)",
+        )
+        if snap is not None:
+            snap_id = snap.id
+            print(f"  pre-apply snapshot: {snap_id}")
+        else:
+            print("  pre-apply snapshot: skipped (see warning above)")
+    except Exception as e:  # broad: never let snapshot break apply
+        print(f"[warn] pre-apply snapshot failed: {e}", file=sys.stderr)
+
     print(f"Applying {len(selected)} profile(s)...")
     es_changes, es_adds = apply_es_settings(planned_es_changes(selected))
     co_changes, co_adds = apply_core_options(planned_core_changes(selected))
@@ -353,6 +372,8 @@ def cmd_apply(profiles: list[Profile], target_id: str | None):
     print(f"  retroarch-core-options.cfg: {len(co_changes)} updated, {len(co_adds)} added")
     if es_changes or es_adds or co_changes or co_adds:
         print(f"  backups tagged: {BACKUP_TAG}")
+        if snap_id:
+            print(f"  revert with: rbcf backup restore {snap_id} --apply")
 
 
 def cmd_revert(profiles: list[Profile], target_id: str):
@@ -481,6 +502,130 @@ See docs/GUID_DRIFT_DESIGN.md for the full design.
 """.strip())
 
 
+# ------------------------------ backup commands ------------------------------
+
+def _format_snapshot_row(s) -> str:
+    # s is a backups.Snapshot; we keep this loose to avoid a hard import
+    # at module level (so rbcf can still load if backups.py is missing).
+    created = s.created_at or "(unknown)"
+    # Trim ISO microsecond fractions for the table; keep YYYY-MM-DD HH:MM.
+    if "T" in created:
+        date_part, _, time_part = created.partition("T")
+        created = f"{date_part} {time_part[:5]}"
+    desc = (s.description or "").replace("\n", " ")
+    if len(desc) > 50:
+        desc = desc[:47] + "..."
+    return f"{s.id:<19} {s.kind:<8} {created:<20} {desc}"
+
+
+def cmd_backup_factory():
+    from backups import snapshot as _snapshot, factory_exists, _read_manifest
+    if factory_exists():
+        existing = _read_manifest("factory")
+        when = existing.created_at if existing else "(unknown date)"
+        print(f"Factory snapshot already taken on {when}.")
+        print("It is permanent and never overwritten — no action.")
+        return
+    snap = _snapshot("factory", description="pre-install factory snapshot")
+    if snap is None:
+        print("[fatal] could not capture factory snapshot.")
+        sys.exit(1)
+    print(f"Factory snapshot captured: {snap.id}")
+    print(f"  created_at: {snap.created_at}")
+    print(f"  files:      {len(snap.files)}")
+    for f in snap.files:
+        print(f"    - {f}")
+
+
+def cmd_backup_snapshot(description: str):
+    from backups import snapshot as _snapshot
+    snap = _snapshot("working", description=description or "manual snapshot")
+    if snap is None:
+        print("[fatal] could not capture working snapshot.")
+        sys.exit(1)
+    print(f"Working snapshot captured: {snap.id}")
+    print(f"  description: {snap.description}")
+    print(f"  files:       {len(snap.files)}")
+
+
+def cmd_backup_list():
+    from backups import list_snapshots, factory_exists
+    snaps = list_snapshots()
+    if not snaps:
+        print("(no snapshots — capture one with `rbcf backup snapshot` "
+              "or `rbcf backup factory`)")
+        return
+    print(f"{'ID':<19} {'KIND':<8} {'CREATED':<20} DESCRIPTION")
+    for s in snaps:
+        print(_format_snapshot_row(s))
+    print()
+    print(f"Total: {len(snaps)} snapshot(s)"
+          f"{' (incl. factory)' if factory_exists() else ''}.")
+
+
+def cmd_backup_restore(snapshot_id: str, dry: bool):
+    from backups import restore as _restore, _read_manifest
+    snap = _read_manifest(snapshot_id)
+    if snap is None:
+        print(f"[fatal] no such snapshot: {snapshot_id}")
+        sys.exit(1)
+    mode = "DRY-RUN" if dry else "APPLY"
+    print(f"\nbackup restore ({mode}) — snapshot {snapshot_id}")
+    print(f"  kind:        {snap.kind}")
+    print(f"  created_at:  {snap.created_at}")
+    print(f"  description: {snap.description}")
+    print(f"  files in snapshot: {len(snap.files)}")
+    if dry:
+        print()
+        print("  Will first auto-capture a working snapshot of the CURRENT")
+        print("  state (description: \"auto-snap before restoring "
+              f"{snapshot_id}\") so the restore is itself revertible.")
+    print()
+
+    restored, skipped = _restore(snapshot_id, dry=dry)
+    label = "Would restore" if dry else "Restored"
+    print(f"{label} {len(restored)} file(s):")
+    for r in restored:
+        print(f"  + {r}")
+    if skipped:
+        print(f"\nSkipped {len(skipped)}:")
+        for path, reason in skipped:
+            print(f"  ! {path}: {reason}")
+    if dry:
+        print()
+        print("Re-run with --apply to actually write.")
+
+
+def cmd_backup_help():
+    print("""
+rbcf backup — two-tier backup / snapshot management
+
+Subcommands:
+  factory               Capture the tier-1 pre-install snapshot. One-shot:
+                        if already taken, prints the existing date and exits.
+                        Stored at %APPDATA%/RB-Controller_fix/factory/.
+  snapshot [opts]       Capture a tier-2 working snapshot manually.
+    --description TEXT  Free-text label written into the manifest.
+  list                  Show all snapshots in a table. Most-recent working
+                        first; factory pinned to the bottom (last-resort).
+  restore <id> [opts]   Restore a snapshot back to RetroBat. Defaults to a
+                        dry-run preview; pass --apply to actually write.
+                        ALWAYS auto-captures a working snapshot of the
+                        current state first so the restore is revertible.
+    --dry-run           Preview only (default).
+    --apply             Actually copy files back to RetroBat.
+  help                  This message.
+
+Storage:
+  %APPDATA%/RB-Controller_fix/factory/         (tier 1, permanent)
+  %APPDATA%/RB-Controller_fix/snapshots/<id>/  (tier 2, capped at 30)
+
+Tier-2 snapshots are taken automatically before every `rbcf apply` and
+before every restore — see the snapshot id printed at the top of those
+commands' output.
+""".strip())
+
+
 def cmd_validate(profiles: list[Profile]):
     issues = 0
     for p in profiles:
@@ -514,6 +659,24 @@ def main():
     r.add_argument("--id", required=True)
     sub.add_parser("validate", help="Lint profiles for issues")
 
+    b = sub.add_parser("backup", help="Two-tier snapshot / restore subsystem")
+    b_sub = b.add_subparsers(dest="backup_cmd", required=True)
+    b_sub.add_parser("factory",
+                     help="Capture the one-shot pre-install (tier 1) snapshot")
+    bs = b_sub.add_parser("snapshot",
+                          help="Capture a working (tier 2) snapshot manually")
+    bs.add_argument("--description", default="",
+                    help="Free-text label stored in the snapshot manifest")
+    b_sub.add_parser("list", help="List all snapshots in a table")
+    br = b_sub.add_parser("restore", help="Restore a snapshot")
+    br.add_argument("id", help="Snapshot id (e.g. '20260504-120030' or 'factory')")
+    bmode = br.add_mutually_exclusive_group()
+    bmode.add_argument("--dry-run", action="store_true",
+                       help="Preview only (default).")
+    bmode.add_argument("--apply", action="store_true",
+                       help="Actually restore.")
+    b_sub.add_parser("help", help="Show backup subcommand help")
+
     g = sub.add_parser("guid", help="Manage SDL controller GUID aliases (es_input.cfg)")
     g_sub = g.add_subparsers(dest="guid_cmd", required=True)
     g_sub.add_parser("status", help="List alias groups in es_input.cfg")
@@ -527,6 +690,21 @@ def main():
                       help="Actually rewrite es_input.cfg.")
 
     args = ap.parse_args()
+
+    # `backup` commands don't need profiles loaded — handle early.
+    if args.cmd == "backup":
+        if args.backup_cmd == "factory":
+            cmd_backup_factory()
+        elif args.backup_cmd == "snapshot":
+            cmd_backup_snapshot(args.description)
+        elif args.backup_cmd == "list":
+            cmd_backup_list()
+        elif args.backup_cmd == "restore":
+            dry = not args.apply
+            cmd_backup_restore(args.id, dry=dry)
+        else:  # help
+            cmd_backup_help()
+        return
 
     # `guid` commands don't need profiles loaded — handle early.
     if args.cmd == "guid":

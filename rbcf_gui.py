@@ -22,6 +22,13 @@ Endpoints:
                                         for bezels with alpha-235 cutoff.
     POST /api/save                      write a profile YAML
     POST /api/apply                     invoke rbcf.py apply as subprocess
+    GET  /api/backup/list               two-tier snapshot inventory + factory
+                                        existence flag (DECISIONS.md #5).
+    POST /api/backup/factory            capture the one-shot factory snapshot.
+    POST /api/backup/snapshot           capture a working (tier-2) snapshot;
+                                        body: {description}.
+    POST /api/backup/restore            preview by default; body {id, apply}
+                                        — apply:true actually writes back.
 """
 from __future__ import annotations
 
@@ -1049,6 +1056,118 @@ def _set_retrobat_root(data: dict) -> dict:
     }
 
 
+# ------------------------------ backup endpoints ------------------------------
+#
+# Two-tier backup subsystem (DECISIONS.md #5). Implementation lives in
+# backups.py — these helpers just adapt module calls to JSON-friendly
+# dicts and surface refusal modes (factory-already-taken, snapshot-not-
+# found, etc.) as 200 responses with ``ok: False`` so the front-end can
+# render them as error banners without dealing with HTTP status codes.
+
+def _snapshot_to_dict(snap) -> dict:
+    """backups.Snapshot → JSON-serializable dict."""
+    return {
+        "id": snap.id,
+        "kind": snap.kind,
+        "created_at": snap.created_at,
+        "description": snap.description,
+        "files": list(snap.files),
+        "retrobat_root": snap.retrobat_root,
+    }
+
+
+def _backup_list() -> dict:
+    """GET /api/backup/list — return all snapshots + factory_exists flag."""
+    try:
+        from backups import list_snapshots, factory_exists
+        snaps = list_snapshots()
+        return {
+            "ok": True,
+            "snapshots": [_snapshot_to_dict(s) for s in snaps],
+            "factory_exists": factory_exists(),
+        }
+    except Exception as e:
+        return {"ok": False, "error": f"backup list failed: {e}",
+                "snapshots": [], "factory_exists": False}
+
+
+def _backup_factory() -> dict:
+    """POST /api/backup/factory — capture the one-shot tier-1 snapshot."""
+    try:
+        from backups import snapshot as _snapshot, factory_exists, _read_manifest
+        if factory_exists():
+            existing = _read_manifest("factory")
+            return {
+                "ok": False,
+                "error": "factory snapshot already exists",
+                "existing": _snapshot_to_dict(existing) if existing else None,
+            }
+        snap = _snapshot("factory", description="pre-install factory snapshot")
+        if snap is None:
+            return {"ok": False, "error": "factory snapshot failed (see server log)"}
+        return {"ok": True, "snapshot": _snapshot_to_dict(snap)}
+    except Exception as e:
+        return {"ok": False, "error": f"factory snapshot failed: {e}"}
+
+
+def _backup_snapshot(data: dict) -> dict:
+    """POST /api/backup/snapshot — capture a tier-2 working snapshot."""
+    try:
+        from backups import snapshot as _snapshot
+        description = str(data.get("description") or "manual snapshot")
+        snap = _snapshot("working", description=description)
+        if snap is None:
+            return {"ok": False, "error": "snapshot failed (see server log)"}
+        return {"ok": True, "snapshot": _snapshot_to_dict(snap)}
+    except Exception as e:
+        return {"ok": False, "error": f"snapshot failed: {e}"}
+
+
+def _backup_restore(data: dict) -> dict:
+    """POST /api/backup/restore — preview by default; ``apply: true`` writes.
+
+    Always reports the auto-snapshot id that was taken (or would be
+    taken, in dry mode) so the caller can show "we just made a safety
+    snapshot at X" in the UI.
+    """
+    try:
+        from backups import (
+            list_snapshots, restore as _restore, _read_manifest,
+        )
+        snap_id = (data.get("id") or "").strip()
+        do_apply = bool(data.get("apply"))
+        if not snap_id:
+            return {"ok": False, "error": "missing snapshot id"}
+
+        snap = _read_manifest(snap_id)
+        if snap is None:
+            return {"ok": False, "error": f"no such snapshot: {snap_id}"}
+
+        # Snapshot ids before/after restore so caller can identify the
+        # auto-created safety snapshot. We need to compare lists, since
+        # restore() takes the auto-snap internally and doesn't return it.
+        existing_ids = {s.id for s in list_snapshots()}
+        restored, skipped = _restore(snap_id, dry=not do_apply)
+        auto_snap_id: str | None = None
+        if do_apply:
+            new_ids = [s.id for s in list_snapshots()]
+            for nid in new_ids:
+                if nid not in existing_ids:
+                    auto_snap_id = nid
+                    break
+
+        return {
+            "ok": True,
+            "dry_run": not do_apply,
+            "snapshot": _snapshot_to_dict(snap),
+            "restored": list(restored),
+            "skipped": [{"path": p, "reason": r} for p, r in skipped],
+            "auto_snapshot_id": auto_snap_id,
+        }
+    except Exception as e:
+        return {"ok": False, "error": f"restore failed: {e}"}
+
+
 # ------------------------------ HTTP layer ------------------------------
 
 class Handler(http.server.SimpleHTTPRequestHandler):
@@ -1125,6 +1244,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             q = self._query()
             apply_flag = (q.get("apply", ["false"])[0] or "").strip().lower() in ("1", "true", "yes")
             return self._json(_bezel_cutoffs(apply=apply_flag))
+        if u.path == "/api/backup/list":
+            return self._json(_backup_list())
         if u.path in ("", "/"):
             self.path = "/index.html"
         return super().do_GET()
@@ -1152,6 +1273,12 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._json(result)
         if u.path == "/api/retrobat-root":
             return self._json(_set_retrobat_root(data))
+        if u.path == "/api/backup/factory":
+            return self._json(_backup_factory())
+        if u.path == "/api/backup/snapshot":
+            return self._json(_backup_snapshot(data))
+        if u.path == "/api/backup/restore":
+            return self._json(_backup_restore(data))
         return self._json({"ok": False, "error": "unknown endpoint"}, status=404)
 
 
