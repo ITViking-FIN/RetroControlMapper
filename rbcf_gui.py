@@ -53,6 +53,8 @@ import urllib.parse
 import webbrowser
 import xml.etree.ElementTree as ET
 from datetime import date
+from email.parser import BytesParser
+from email.policy import default as email_default_policy
 from pathlib import Path
 
 import yaml
@@ -72,6 +74,17 @@ SYNC_PY = ROOT / "controller_sync.py"
 CATALOG_YAML = ROOT / "controller_catalog.yaml"
 SYNC_MANIFEST = ROOT / "sync_manifest.json"
 KNOWN_IMG_DIR = GUI_DIR / "img" / "known"
+CONTRIB_IMG_DIR = GUI_DIR / "img" / "contrib"
+
+# Order of preferred extensions when looking up an existing image for a
+# VID:PID. Mirrored on the write path (with .jpeg canonicalised to .jpg).
+IMG_EXT_PREF = (".png", ".jpg", ".jpeg", ".webp", ".svg")
+# Allowed canonical save extensions for user-uploaded images.
+ALLOWED_UPLOAD_EXTS = (".png", ".jpg", ".webp", ".svg")
+# Hard cap on uploaded contrib images.
+MAX_CONTRIB_IMG_BYTES = 2_000_000
+# VID/PID format guard.
+HEX4_RE = re.compile(r"^[0-9A-Fa-f]{4}$")
 
 # Curated metadata for the systems we have full target-side support for.
 # These get rich `target_controller` SVGs and `fixed_mapping_note` blurbs.
@@ -333,11 +346,35 @@ CORE_MAPPER_PREFIX = {
 PAD_BUTTONS = ["a", "b", "x", "y", "l", "r", "l2", "r2", "l3", "r3",
                "select", "start", "up", "down", "left", "right"]
 
+def _find_image_for(vid: str, pid: str) -> str:
+    """Look up the best image URL for a VID:PID.
+
+    Preference order:
+      1. gui/img/contrib/<VID>_<PID>.<ext>  (user-supplied via the cog UI)
+      2. gui/img/known/<VID>_<PID>.<ext>    (synced from controller_sync)
+      3. ""                                  (no local image)
+
+    Within each directory, extensions are tried in IMG_EXT_PREF order.
+    Returns a relative URL like "/img/contrib/2DC8_310B.png" or "".
+    """
+    for base_dir, url_prefix in (
+        (CONTRIB_IMG_DIR, "/img/contrib/"),
+        (KNOWN_IMG_DIR, "/img/known/"),
+    ):
+        if not base_dir.exists():
+            continue
+        for ext in IMG_EXT_PREF:
+            p = base_dir / f"{vid}_{pid}{ext}"
+            if p.exists():
+                return url_prefix + p.name
+    return ""
+
+
 def load_catalog() -> dict:
     """Read controller_catalog.yaml and produce a VID:PID → metadata map.
 
-    Image URLs prefer the local cache (gui/img/known/<vid>_<pid>.<ext>) when
-    a synced copy exists; otherwise fall back to a Wikimedia thumbnail URL.
+    Image URLs prefer user-uploaded contrib (gui/img/contrib/) over the
+    sync cache (gui/img/known/); empty string when neither exists.
     """
     out = {}
     if not CATALOG_YAML.exists():
@@ -352,17 +389,9 @@ def load_catalog() -> dict:
         if not vid or not pid:
             continue
         key = f"{vid}:{pid}"
-        # Prefer locally-synced image
-        local = None
-        if KNOWN_IMG_DIR.exists():
-            for ext in (".jpg", ".png", ".webp", ".svg"):
-                p = KNOWN_IMG_DIR / f"{vid}_{pid}{ext}"
-                if p.exists():
-                    local = f"/img/known/{p.name}"
-                    break
         out[key] = {
             "name": entry.get("name") or key,
-            "image": local or "",
+            "image": _find_image_for(vid, pid),
             "wiki_file": entry.get("wiki_file") or "",
         }
     return out
@@ -538,6 +567,12 @@ def probe_devices() -> list[dict]:
             entry["name"] = known["name"]
             entry["image"] = known["image"]
             entry["wiki_file"] = known.get("wiki_file", "")
+        else:
+            # Even for catalog-misses, surface a contrib/known image if the
+            # user has uploaded one for this VID:PID via the settings cog.
+            img = _find_image_for(entry["vid"], entry["pid"])
+            if img:
+                entry["image"] = img
         out_list.append(entry)
     out_list.sort(key=lambda e: (not e["xinput"], not e.get("name"), e["key"]))
     return out_list
@@ -1471,6 +1506,156 @@ def _system_lookup_clear(data: dict) -> dict:
     return {"ok": True, "removed": n}
 
 
+# ------------------------------ Controller-image upload ------------------
+
+def _sniff_image_ext(payload: bytes) -> str | None:
+    """Sniff magic bytes; return canonical extension or None.
+
+    Returns one of ALLOWED_UPLOAD_EXTS (.png/.jpg/.webp/.svg) or None when
+    the bytes don't match any allowed format.
+    """
+    if not payload:
+        return None
+    if payload.startswith(b"\x89PNG\r\n\x1a\n"):
+        return ".png"
+    if payload.startswith(b"\xFF\xD8\xFF"):
+        return ".jpg"
+    # WebP: "RIFF....WEBP"
+    if len(payload) >= 12 and payload[0:4] == b"RIFF" and payload[8:12] == b"WEBP":
+        return ".webp"
+    # SVG: text — optional XML prologue, then "<svg" somewhere near the start.
+    head = payload[:1024].lstrip()
+    if head.startswith(b"<?xml"):
+        # skip to first '>' then continue stripping whitespace
+        try:
+            head = head.split(b"?>", 1)[1].lstrip()
+        except IndexError:
+            head = b""
+    # Allow comments / DOCTYPE before <svg.
+    while head.startswith(b"<!"):
+        end = head.find(b">")
+        if end < 0:
+            break
+        head = head[end + 1:].lstrip()
+    if head.startswith(b"<svg"):
+        return ".svg"
+    return None
+
+
+def _parse_multipart(headers, body: bytes) -> dict:
+    """Parse multipart/form-data using stdlib email parser.
+
+    Returns a dict where each entry is either a string (text field) or a
+    {"filename": str, "payload": bytes} dict (file field). Raises ValueError
+    on unparseable / non-multipart content.
+    """
+    ctype = headers.get("Content-Type") or ""
+    if "multipart/form-data" not in ctype.lower():
+        raise ValueError("expected multipart/form-data")
+    parser = BytesParser(policy=email_default_policy)
+    msg = parser.parsebytes(
+        b"Content-Type: " + ctype.encode("latin-1") + b"\r\n\r\n" + body
+    )
+    if not msg.is_multipart():
+        raise ValueError("body is not multipart")
+    out: dict = {}
+    for part in msg.iter_parts():
+        name = part.get_param("name", header="content-disposition")
+        if not name:
+            continue
+        filename = part.get_filename()
+        payload = part.get_payload(decode=True)
+        if filename:
+            out[name] = {"filename": filename, "payload": payload or b""}
+        else:
+            # Text field — get_payload(decode=True) returns bytes; decode utf-8.
+            text = payload.decode("utf-8", errors="replace") if payload else ""
+            out[name] = text
+    return out
+
+
+def _save_controller_image(fields: dict) -> dict:
+    """POST /api/controller-image handler.
+
+    Validates VID/PID, magic bytes, size; writes to gui/img/contrib/
+    after deleting any previous contrib image for the same VID:PID under a
+    different extension.
+    """
+    vid_raw = (fields.get("vid") or "").strip()
+    pid_raw = (fields.get("pid") or "").strip()
+    if not HEX4_RE.match(vid_raw):
+        return {"ok": False, "error": "invalid vid (need 4 hex chars)"}
+    if not HEX4_RE.match(pid_raw):
+        return {"ok": False, "error": "invalid pid (need 4 hex chars)"}
+    vid = vid_raw.upper()
+    pid = pid_raw.upper()
+
+    file_field = fields.get("file")
+    if not isinstance(file_field, dict) or not file_field.get("payload"):
+        return {"ok": False, "error": "missing file"}
+    payload: bytes = file_field["payload"]
+    if len(payload) > MAX_CONTRIB_IMG_BYTES:
+        return {"ok": False, "error": f"too large (max {MAX_CONTRIB_IMG_BYTES} bytes)"}
+
+    ext = _sniff_image_ext(payload)
+    if not ext:
+        return {"ok": False, "error": "unsupported image type (PNG/JPG/WebP/SVG only)"}
+
+    try:
+        CONTRIB_IMG_DIR.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        return {"ok": False, "error": f"cannot create contrib dir: {e}"}
+
+    target = CONTRIB_IMG_DIR / f"{vid}_{pid}{ext}"
+    # Path-traversal guard: target must resolve under CONTRIB_IMG_DIR.
+    try:
+        resolved = target.resolve()
+        contrib_root = CONTRIB_IMG_DIR.resolve()
+        resolved.relative_to(contrib_root)
+    except (OSError, ValueError):
+        return {"ok": False, "error": "path traversal refused"}
+
+    # Remove any other extension we might already have for this VID:PID.
+    for other_ext in ALLOWED_UPLOAD_EXTS:
+        if other_ext == ext:
+            continue
+        old = CONTRIB_IMG_DIR / f"{vid}_{pid}{other_ext}"
+        if old.exists():
+            try:
+                old.unlink()
+            except OSError:
+                pass
+
+    try:
+        target.write_bytes(payload)
+    except OSError as e:
+        return {"ok": False, "error": f"write failed: {e}"}
+
+    refresh_catalog()
+    return {"ok": True, "path": f"/img/contrib/{target.name}"}
+
+
+def _delete_controller_image(vid_raw: str, pid_raw: str) -> dict:
+    """DELETE /api/controller-image — drop any contrib image for this pair."""
+    if not HEX4_RE.match(vid_raw or ""):
+        return {"ok": False, "error": "invalid vid"}
+    if not HEX4_RE.match(pid_raw or ""):
+        return {"ok": False, "error": "invalid pid"}
+    vid = vid_raw.upper()
+    pid = pid_raw.upper()
+    removed = False
+    for ext in ALLOWED_UPLOAD_EXTS:
+        p = CONTRIB_IMG_DIR / f"{vid}_{pid}{ext}"
+        if p.exists():
+            try:
+                p.unlink()
+                removed = True
+            except OSError as e:
+                return {"ok": False, "error": f"unlink failed: {e}", "removed": removed}
+    refresh_catalog()
+    return {"ok": True, "removed": removed}
+
+
 # ------------------------------ HTTP layer ------------------------------
 
 class Handler(http.server.SimpleHTTPRequestHandler):
@@ -1568,6 +1753,25 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
     def do_POST(self):
         u = urllib.parse.urlparse(self.path)
+
+        # The controller-image endpoint speaks multipart/form-data; handle
+        # it before the JSON-decoding block below.
+        if u.path == "/api/controller-image":
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+            except ValueError:
+                return self._json({"ok": False, "error": "bad content-length"}, status=400)
+            # Hard cap on raw upload size — refuse before reading anything.
+            # 64 KiB headroom over MAX_CONTRIB_IMG_BYTES for multipart envelope.
+            if length > MAX_CONTRIB_IMG_BYTES + 65_536:
+                return self._json({"ok": False, "error": "too large"}, status=413)
+            body = self.rfile.read(length) if length else b""
+            try:
+                fields = _parse_multipart(self.headers, body)
+            except Exception as e:  # noqa: BLE001 - email parser raises a variety
+                return self._json({"ok": False, "error": f"bad multipart: {e}"}, status=400)
+            return self._json(_save_controller_image(fields))
+
         try:
             length = int(self.headers.get("Content-Length", "0"))
             body = self.rfile.read(length).decode("utf-8") if length else ""
@@ -1599,6 +1803,15 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._json(_system_lookup_endpoint(data))
         if u.path == "/api/system-lookup/clear":
             return self._json(_system_lookup_clear(data))
+        return self._json({"ok": False, "error": "unknown endpoint"}, status=404)
+
+    def do_DELETE(self):
+        u = urllib.parse.urlparse(self.path)
+        if u.path == "/api/controller-image":
+            q = self._query()
+            vid = (q.get("vid", [""])[0] or "").strip()
+            pid = (q.get("pid", [""])[0] or "").strip()
+            return self._json(_delete_controller_image(vid, pid))
         return self._json({"ok": False, "error": "unknown endpoint"}, status=404)
 
 

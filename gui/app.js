@@ -1454,6 +1454,14 @@ function showSettingsPopover() {
           <span class="rbcf-apply-settings-label-help">Skip the preview modal and apply immediately on Save.</span>
         </span>
       </label>
+      <div class="rbcf-apply-settings-row rbcf-cimg-settings-row">
+        <span class="rbcf-apply-settings-label">
+          <span class="rbcf-apply-settings-label-main">Controller images</span>
+          <span class="rbcf-apply-settings-label-help">Upload images for controllers we don't have art for.</span>
+        </span>
+        <button type="button" class="rbcf-apply-btn rbcf-apply-btn-secondary rbcf-cimg-manage-btn"
+                id="rbcf-cimg-manage-btn">Manage…</button>
+      </div>
     </div>
   `;
   document.body.appendChild(pop);
@@ -1493,6 +1501,18 @@ function showSettingsPopover() {
       'info', 2000);
   });
   pop.querySelector('[data-act="close"]').addEventListener('click', dismissSettingsPopover);
+
+  const manageBtn = pop.querySelector('#rbcf-cimg-manage-btn');
+  if (manageBtn) {
+    manageBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      // Close the popover first, then open the sub-modal — the modal traps
+      // focus/Escape on its own and the small popover would otherwise sit
+      // half-hidden behind it.
+      dismissSettingsPopover();
+      showControllerImagesModal();
+    });
+  }
 
   _rbcfSettingsOutsideHandler = (e) => {
     if (pop.contains(e.target) || cog.contains(e.target)) return;
@@ -1542,6 +1562,296 @@ function injectSettingsCog() {
     if ($('rbcf-apply-settings-popover')) dismissSettingsPopover();
     else showSettingsPopover();
   });
+}
+
+// ============================================================
+// Controller-images sub-modal (opened from the settings cog)
+// ------------------------------------------------------------
+// Lets the user upload a custom image for any detected controller
+// (one that's missing art, or to override the synced "known" image).
+// Backend: POST/DELETE /api/controller-image. UX is intentionally
+// scoped to the cog only — no per-controller upload affordance lives
+// on the pad-pill detail popover.
+// ============================================================
+
+let _rbcfCimgPrevFocus = null;
+let _rbcfCimgTrapHandler = null;
+let _rbcfCimgDragTarget = -1;       // padIndex currently highlighted by drag
+
+function _rbcfCimgFocusables(root) {
+  return Array.from(root.querySelectorAll(
+    'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+  )).filter(el => !el.disabled && el.offsetParent !== null);
+}
+
+function dismissControllerImagesModal() {
+  const overlay = $('rbcf-cimg-modal');
+  if (!overlay) return;
+  if (_rbcfCimgTrapHandler) {
+    document.removeEventListener('keydown', _rbcfCimgTrapHandler, true);
+    _rbcfCimgTrapHandler = null;
+  }
+  overlay.remove();
+  // Restore focus to whatever launched the modal — typically the cog.
+  if (_rbcfCimgPrevFocus && document.contains(_rbcfCimgPrevFocus)) {
+    try { _rbcfCimgPrevFocus.focus(); } catch (e) { /* ignore */ }
+  } else {
+    const cog = $('rbcf-apply-settings-cog');
+    if (cog) { try { cog.focus(); } catch (e) { /* ignore */ } }
+  }
+  _rbcfCimgPrevFocus = null;
+  _rbcfCimgDragTarget = -1;
+}
+
+// Tag any device URL with where the image came from. Indexed off the
+// /api/devices `image` field (which load_catalog populates per the
+// contrib-then-known preference order).
+function _rbcfCimgSourceFor(dev) {
+  const img = (dev && dev.image) || '';
+  if (img.startsWith('/img/contrib/')) return 'contrib';
+  if (img.startsWith('/img/known/'))   return 'known';
+  return 'none';
+}
+
+function _rbcfCimgRowHTML(dev, idx) {
+  const friendly = rbcfEsc(deviceFriendlyName(dev));
+  const vid = rbcfEsc(dev.vid || '');
+  const pid = rbcfEsc(dev.pid || '');
+  const xinput = dev.xinput ? 'XInput' : 'HID';
+  const src = _rbcfCimgSourceFor(dev);
+  const srcLabel = src === 'contrib' ? 'contrib image'
+                : src === 'known'   ? 'known image'
+                : 'no image';
+  const img = dev.image
+    ? `<img src="${rbcfEsc(dev.image)}" alt="" loading="lazy">`
+    : '<span class="rbcf-cimg-placeholder">·</span>';
+  const removeBtn = (src === 'contrib')
+    ? '<button type="button" class="rbcf-apply-btn rbcf-apply-btn-secondary rbcf-cimg-remove-btn" data-act="remove">Remove</button>'
+    : '';
+  return `
+    <li class="rbcf-cimg-row" data-pad-index="${idx}" data-vid="${vid}" data-pid="${pid}">
+      <span class="rbcf-cimg-thumb">${img}</span>
+      <span class="rbcf-cimg-info">
+        <span class="rbcf-cimg-name">${friendly}</span>
+        <span class="rbcf-cimg-meta">
+          <code>${vid}:${pid}</code> · ${xinput} ·
+          <span class="rbcf-cimg-src rbcf-cimg-src-${src}">${srcLabel}</span>
+        </span>
+      </span>
+      <span class="rbcf-cimg-actions">
+        <button type="button" class="rbcf-apply-btn rbcf-apply-btn-secondary rbcf-cimg-upload-btn" data-act="upload">Upload…</button>
+        ${removeBtn}
+      </span>
+    </li>
+  `;
+}
+
+function _rbcfCimgRenderList() {
+  const body = document.querySelector('#rbcf-cimg-modal .rbcf-cimg-list-host');
+  if (!body) return;
+  if (!LAST_DEVICES || !LAST_DEVICES.length) {
+    body.innerHTML = `
+      <div class="rbcf-cimg-empty">
+        <p><strong>No controllers detected.</strong></p>
+        <p class="rbcf-cimg-empty-hint">Connect a controller and click <strong>Rescan</strong>.</p>
+      </div>
+    `;
+    return;
+  }
+  const rows = LAST_DEVICES.map((d, i) => _rbcfCimgRowHTML(d, i)).join('');
+  body.innerHTML = `<ul class="rbcf-cimg-list" role="list">${rows}</ul>`;
+}
+
+async function _rbcfCimgPostUpload(vid, pid, file) {
+  if (!file) return;
+  if (file.size > 2_000_000) {
+    showToast('Image is too large (max 2 MB).', 'error');
+    return;
+  }
+  const fd = new FormData();
+  fd.append('vid', vid);
+  fd.append('pid', pid);
+  fd.append('file', file);
+  try {
+    const r = await fetch('/api/controller-image', { method: 'POST', body: fd });
+    const data = await r.json();
+    if (!data.ok) {
+      showToast('Upload failed: ' + (data.error || 'unknown error'), 'error');
+      return;
+    }
+    showToast('Image saved.', 'success', 2200);
+    await loadDevices();        // refresh LAST_DEVICES with new image URL
+    _rbcfCimgRenderList();
+  } catch (e) {
+    showToast('Upload error: ' + e.message, 'error');
+  }
+}
+
+async function _rbcfCimgDelete(vid, pid) {
+  try {
+    const r = await fetch(
+      `/api/controller-image?vid=${encodeURIComponent(vid)}&pid=${encodeURIComponent(pid)}`,
+      { method: 'DELETE' }
+    );
+    const data = await r.json();
+    if (!data.ok) {
+      showToast('Remove failed: ' + (data.error || 'unknown error'), 'error');
+      return;
+    }
+    showToast(data.removed ? 'Image removed.' : 'No contrib image on file.', 'info', 2000);
+    await loadDevices();
+    _rbcfCimgRenderList();
+  } catch (e) {
+    showToast('Remove error: ' + e.message, 'error');
+  }
+}
+
+function _rbcfCimgPickFile(vid, pid) {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/png,image/jpeg,image/webp,image/svg+xml,.png,.jpg,.jpeg,.webp,.svg';
+  input.style.display = 'none';
+  input.addEventListener('change', () => {
+    const f = input.files && input.files[0];
+    if (f) _rbcfCimgPostUpload(vid, pid, f);
+    input.remove();
+  });
+  document.body.appendChild(input);
+  input.click();
+}
+
+function showControllerImagesModal() {
+  // Tear down any existing instance defensively.
+  dismissControllerImagesModal();
+  _rbcfCimgPrevFocus = document.activeElement;
+
+  const overlay = document.createElement('div');
+  overlay.id = 'rbcf-cimg-modal';
+  overlay.className = 'rbcf-apply-modal-overlay';
+  overlay.setAttribute('role', 'dialog');
+  overlay.setAttribute('aria-modal', 'true');
+  overlay.setAttribute('aria-labelledby', 'rbcf-cimg-modal-title');
+
+  overlay.innerHTML = `
+    <div class="rbcf-apply-modal-card rbcf-cimg-card" role="document">
+      <div class="rbcf-apply-modal-head">
+        <h2 class="rbcf-apply-modal-title" id="rbcf-cimg-modal-title">Controller images</h2>
+        <button type="button" class="rbcf-apply-modal-x" aria-label="Close" data-act="close">×</button>
+      </div>
+      <div class="rbcf-apply-modal-banner">
+        Upload an image for any detected controller. PNG, JPG, WebP, or SVG · 2 MB max. Drag a file onto a row, or use the row's <strong>Upload…</strong> button.
+      </div>
+      <div class="rbcf-apply-modal-body rbcf-cimg-drop">
+        <div class="rbcf-cimg-list-host"></div>
+      </div>
+      <div class="rbcf-apply-modal-foot">
+        <button type="button" class="rbcf-apply-btn rbcf-apply-btn-secondary" data-act="rescan">Rescan</button>
+        <span class="rbcf-apply-spacer"></span>
+        <button type="button" class="rbcf-apply-btn rbcf-apply-btn-primary" data-act="close-primary">Close</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  const card = overlay.querySelector('.rbcf-apply-modal-card');
+  const closeBtn = overlay.querySelector('[data-act="close"]');
+  const closePrimary = overlay.querySelector('[data-act="close-primary"]');
+  const rescanBtn = overlay.querySelector('[data-act="rescan"]');
+  const dropZone = overlay.querySelector('.rbcf-cimg-drop');
+
+  // Initial render uses whatever is in LAST_DEVICES; kick a refresh in the
+  // background so the list reflects newly-connected pads.
+  _rbcfCimgRenderList();
+  loadDevices().then(_rbcfCimgRenderList);
+
+  // Backdrop click = close (only when clicking the overlay itself).
+  overlay.addEventListener('mousedown', (e) => {
+    if (e.target === overlay) dismissControllerImagesModal();
+  });
+  closeBtn.addEventListener('click', dismissControllerImagesModal);
+  closePrimary.addEventListener('click', dismissControllerImagesModal);
+  rescanBtn.addEventListener('click', async () => {
+    rescanBtn.disabled = true;
+    try {
+      await loadDevices();
+      _rbcfCimgRenderList();
+    } finally {
+      rescanBtn.disabled = false;
+    }
+  });
+
+  // Per-row Upload/Remove via event delegation on the body.
+  dropZone.addEventListener('click', (e) => {
+    const btn = e.target.closest('button');
+    if (!btn) return;
+    const row = btn.closest('.rbcf-cimg-row');
+    if (!row) return;
+    const vid = row.dataset.vid || '';
+    const pid = row.dataset.pid || '';
+    if (!vid || !pid) return;
+    if (btn.dataset.act === 'upload') _rbcfCimgPickFile(vid, pid);
+    else if (btn.dataset.act === 'remove') _rbcfCimgDelete(vid, pid);
+  });
+
+  // Drag-and-drop. Highlight the row under the cursor; drop on a specific
+  // row to upload to that controller. Drop in empty space = hint.
+  const rowAt = (el) => el && el.closest('.rbcf-cimg-row');
+  dropZone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    const r = rowAt(e.target);
+    dropZone.querySelectorAll('.rbcf-cimg-row.rbcf-cimg-row-drop').forEach(n => {
+      if (n !== r) n.classList.remove('rbcf-cimg-row-drop');
+    });
+    if (r) {
+      r.classList.add('rbcf-cimg-row-drop');
+      _rbcfCimgDragTarget = parseInt(r.dataset.padIndex || '-1', 10);
+    } else {
+      _rbcfCimgDragTarget = -1;
+    }
+  });
+  dropZone.addEventListener('dragleave', (e) => {
+    if (e.target === dropZone) {
+      dropZone.querySelectorAll('.rbcf-cimg-row-drop').forEach(n => n.classList.remove('rbcf-cimg-row-drop'));
+      _rbcfCimgDragTarget = -1;
+    }
+  });
+  dropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropZone.querySelectorAll('.rbcf-cimg-row-drop').forEach(n => n.classList.remove('rbcf-cimg-row-drop'));
+    const r = rowAt(e.target);
+    const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+    if (!file) return;
+    if (!r) {
+      showToast('Drop the file directly on a controller row.', 'info', 2400);
+      return;
+    }
+    const vid = r.dataset.vid || '';
+    const pid = r.dataset.pid || '';
+    if (vid && pid) _rbcfCimgPostUpload(vid, pid, file);
+  });
+
+  // Focus-trap + Escape.
+  _rbcfCimgTrapHandler = (e) => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      dismissControllerImagesModal();
+      return;
+    }
+    if (e.key !== 'Tab') return;
+    const items = _rbcfCimgFocusables(card);
+    if (!items.length) return;
+    const first = items[0], last = items[items.length - 1];
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault(); last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault(); first.focus();
+    }
+  };
+  document.addEventListener('keydown', _rbcfCimgTrapHandler, true);
+
+  // Auto-focus the primary action (Close — destructive ops are per-row,
+  // so the safest landing spot is the modal's exit).
+  setTimeout(() => { try { closePrimary.focus(); } catch (e) { /* ignore */ } }, 0);
 }
 
 // ============================================================

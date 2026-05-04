@@ -3550,3 +3550,178 @@ button.secondary:hover,
   .rbcf-overlay-tip-fade { transition: none; }
 }
 
+/* ==========================================================================
+   === Controller-images sub-modal (Stream IM2) ===
+   Opened from the settings cog → "Controller images" row. Reuses the
+   .rbcf-apply-modal-overlay/-card chrome; adds row + list + drop styles.
+   ========================================================================== */
+
+/* The new "Controller images" row inside the settings popover puts the
+   description and the Manage… button on a single horizontal axis (the
+   theme/one-click rows above use a checkbox-and-stack layout — overriding
+   the column flow here keeps things tight). */
+.rbcf-cimg-settings-row {
+  align-items: center;
+  justify-content: space-between;
+  cursor: default;
+}
+.rbcf-cimg-manage-btn {
+  font-size: 12px;
+  padding: 7px 14px;
+  flex-shrink: 0;
+}
+
+/* Sub-modal card sizing — narrower than the apply-preview modal because
+   the content is a short list, not a full diff. */
+.rbcf-cimg-card {
+  width: min(560px, 100%);
+}
+
+.rbcf-cimg-drop {
+  /* Body-as-drop-zone — give it a faint dashed inset highlight while a
+     drag is over a child (handled via .rbcf-cimg-row-drop on the row). */
+  position: relative;
+  min-height: 80px;
+}
+
+.rbcf-cimg-empty {
+  padding: 24px 8px;
+  text-align: center;
+  color: var(--tx-muted);
+  font-size: 13px;
+}
+.rbcf-cimg-empty p { margin: 0 0 6px; }
+.rbcf-cimg-empty-hint { color: var(--tx-hint); font-size: 12px; }
+
+.rbcf-cimg-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rbcf-cimg-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-plate);
+  background: var(--content-fill);
+  border: 1px solid var(--edge-bottom);
+  border-top-color: var(--edge-top);
+  box-shadow: var(--shadow-soft);
+  transition: border-color var(--dur-base) var(--ease),
+              box-shadow var(--dur-base) var(--ease),
+              background var(--dur-base) var(--ease);
+}
+.rbcf-cimg-row.rbcf-cimg-row-drop {
+  border-color: var(--acc-blue);
+  box-shadow: 0 0 0 4px rgba(88, 166, 255, 0.18), var(--shadow-soft);
+  background: var(--acc-bg-soft, var(--content-fill));
+}
+
+.rbcf-cimg-thumb {
+  flex-shrink: 0;
+  width: 48px;
+  height: 48px;
+  border-radius: 8px;
+  background: var(--plate-fill);
+  border: 1px solid var(--edge-bottom);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.rbcf-cimg-thumb img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+.rbcf-cimg-placeholder {
+  color: var(--tx-hint);
+  font-size: 22px;
+  line-height: 1;
+}
+
+.rbcf-cimg-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.rbcf-cimg-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--tx-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rbcf-cimg-meta {
+  font-size: 11px;
+  color: var(--tx-muted);
+  font-family: var(--mono);
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.rbcf-cimg-meta code {
+  background: var(--plate-fill);
+  padding: 1px 5px;
+  border-radius: 4px;
+  border: 1px solid var(--edge-bottom);
+  font-size: 10px;
+}
+
+/* Source-of-image indicator: cyan = user-supplied (contrib),
+   neutral muted = synced (known), warning hue = none. */
+.rbcf-cimg-src {
+  font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 1px 6px;
+  border-radius: var(--radius-pill);
+  border: 1px solid transparent;
+}
+.rbcf-cimg-src-contrib {
+  color: #0e7c8a;
+  background: rgba(64, 200, 224, 0.18);
+  border-color: rgba(64, 200, 224, 0.45);
+}
+[data-theme="dark"] .rbcf-cimg-src-contrib { color: #7ee0ee; }
+@media (prefers-color-scheme: dark) {
+  [data-theme="auto"] .rbcf-cimg-src-contrib { color: #7ee0ee; }
+}
+.rbcf-cimg-src-known {
+  color: var(--tx-muted);
+  background: var(--plate-fill);
+  border-color: var(--edge-bottom);
+}
+.rbcf-cimg-src-none {
+  color: var(--tx-hint);
+  background: transparent;
+  border-color: var(--edge-bottom);
+}
+
+.rbcf-cimg-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.rbcf-cimg-upload-btn,
+.rbcf-cimg-remove-btn {
+  font-size: 11px;
+  padding: 6px 12px;
+}
+
+@media (max-width: 540px) {
+  .rbcf-cimg-row { flex-wrap: wrap; }
+  .rbcf-cimg-info { flex-basis: 100%; order: 3; }
+  .rbcf-cimg-actions { margin-left: auto; }
+}
