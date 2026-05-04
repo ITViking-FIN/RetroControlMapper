@@ -955,30 +955,124 @@ class ReuseTCPServer(socketserver.ThreadingTCPServer):
     allow_reuse_address = True
 
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--port", type=int, default=8765)
-    ap.add_argument("--no-open", action="store_true")
-    args = ap.parse_args()
+def serve_http(host: str = "127.0.0.1",
+               port: int = 8765,
+               no_open: bool = False,
+               ready_event: threading.Event | None = None,
+               shutdown_event: threading.Event | None = None) -> None:
+    """Run the local HTTP server.
 
+    Used by both the tray-resident main loop (server-in-daemon-thread) and
+    the legacy --no-tray foreground entry point.
+
+    Args:
+        host: bind address. Default 127.0.0.1.
+        port: bind port. Default 8765.
+        no_open: skip auto-opening the browser. Tray mode passes True
+            because it opens the browser itself once ready_event fires.
+        ready_event: if provided, set() once the server is listening so a
+            caller (e.g. tray) can open the browser without racing the
+            socket bind.
+        shutdown_event: if provided, server_forever()'s shutdown is gated
+            on this event; a watcher thread polls it and calls
+            srv.shutdown() when set. This is how the tray's Quit handler
+            terminates the server cleanly.
+    """
     if not GUI_DIR.exists():
         print(f"[fatal] gui directory missing: {GUI_DIR}", file=sys.stderr)
         sys.exit(1)
 
-    url = f"http://localhost:{args.port}/"
+    url = f"http://localhost:{port}/"
     print(f"RB-Controller_fix GUI -> {url}")
     print(f"  ROMs root:    {ROMS_ROOT}")
     print(f"  Profiles dir: {PROFILES_DIR}")
-    print("Ctrl-C to stop.\n")
+    print("Ctrl-C to stop (or use the tray menu's Quit item).\n")
 
-    if not args.no_open:
+    if not no_open:
         threading.Timer(0.5, lambda: webbrowser.open(url)).start()
 
-    with ReuseTCPServer(("127.0.0.1", args.port), Handler) as srv:
+    with ReuseTCPServer((host, port), Handler) as srv:
+        if ready_event is not None:
+            ready_event.set()
+
+        # If a shutdown_event was supplied, run a tiny watcher thread that
+        # converts it into srv.shutdown(). serve_forever() doesn't take an
+        # external cancellation token, so this is the standard pattern.
+        watcher: threading.Thread | None = None
+        if shutdown_event is not None:
+            def _watch_shutdown() -> None:
+                shutdown_event.wait()
+                # shutdown() is safe to call from any thread except the one
+                # currently inside serve_forever(); it blocks until the
+                # serve loop exits.
+                try:
+                    srv.shutdown()
+                except OSError:
+                    pass
+            watcher = threading.Thread(
+                target=_watch_shutdown,
+                name="rbcf-http-shutdown-watcher",
+                daemon=True,
+            )
+            watcher.start()
+
         try:
             srv.serve_forever()
         except KeyboardInterrupt:
             print("\nstopped.")
+            if shutdown_event is not None:
+                shutdown_event.set()
+        finally:
+            # Make sure the watcher thread can exit if it's still parked.
+            if shutdown_event is not None and not shutdown_event.is_set():
+                shutdown_event.set()
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--port", type=int, default=8765)
+    ap.add_argument("--no-open", action="store_true",
+                    help="don't auto-open the default browser on start.")
+    ap.add_argument("--no-tray", action="store_true",
+                    help="run the server in the foreground (legacy "
+                         "behaviour). Useful for headless / CI / dev. "
+                         "Without this flag, rbcf_gui runs as a "
+                         "tray-resident app.")
+    args = ap.parse_args()
+
+    if args.no_tray:
+        # Legacy foreground mode — exactly the pre-refactor behaviour.
+        serve_http(
+            host="127.0.0.1",
+            port=args.port,
+            no_open=args.no_open,
+            ready_event=None,
+            shutdown_event=None,
+        )
+        return
+
+    # Default: tray-resident app. tray.start_tray_app() handles its own
+    # graceful fallback to foreground mode if pystray isn't installed.
+    try:
+        from tray import start_tray_app
+    except ImportError as e:
+        print(
+            f"[rbcf_gui] could not import tray module ({e}); "
+            f"falling back to foreground server.",
+            file=sys.stderr,
+        )
+        serve_http(
+            host="127.0.0.1",
+            port=args.port,
+            no_open=args.no_open,
+            ready_event=None,
+            shutdown_event=None,
+        )
+        return
+
+    start_tray_app(open_browser_on_start=not args.no_open,
+                   host="127.0.0.1",
+                   port=args.port)
 
 
 if __name__ == "__main__":
