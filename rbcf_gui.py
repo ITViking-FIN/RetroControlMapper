@@ -38,6 +38,16 @@ Endpoints:
                                         metadata; gated behind explicit user
                                         consent. Body: {system, allow_online,
                                         force_refresh}. See system_lookup.py.
+    GET  /api/update-check              cached-only check; never hits the net.
+                                        Returns {ok, has_cache, ...UpdateInfo}.
+                                        Used by the frontend on page load to
+                                        decide whether to render the header
+                                        update badge.
+    POST /api/update-check              compare local __version__ against the
+                                        latest GitHub release of the project
+                                        repo (ITViking-FIN/RetroControlMapper).
+                                        Body: {allow_online, force}. Cache TTL
+                                        24h (errors 1h). See update_check.py.
 """
 from __future__ import annotations
 
@@ -62,9 +72,11 @@ import yaml
 from config import (
     RETROBAT_ROOT, ROMS_ROOT, ES_SYSTEMS_CFG, BEZELS_DIR, RBCFRC_PATH,
     write_rbcfrc, clear_rbcfrc, _probed_locations_summary,
+    __version__ as RBCF_VERSION,
 )
 from rbcf import load_profiles
 import system_lookup
+import update_check
 
 ROOT = Path(__file__).resolve().parent
 GUI_DIR = ROOT / "gui"
@@ -1506,6 +1518,54 @@ def _system_lookup_clear(data: dict) -> dict:
     return {"ok": True, "removed": n}
 
 
+def _update_check_endpoint(data: dict) -> dict:
+    """POST /api/update-check — surface update_check.check_for_updates() over HTTP.
+
+    Body: ``{allow_online?, force?}``.
+
+    Mirrors the shape of /api/system-lookup: returns the dataclass fields
+    flat under the response, plus an ``ok`` flag. The frontend reads
+    ``source`` to decide what to render (cache / live / unreleased / error).
+    """
+    allow_online = bool(data.get("allow_online"))
+    force = bool(data.get("force"))
+    try:
+        info = update_check.check_for_updates(allow_online=allow_online, force=force)
+    except Exception as e:
+        return {"ok": False, "error": f"update check failed: {e}"}
+    payload = info.to_dict()
+    payload["ok"] = True
+    return payload
+
+
+def _update_check_cached() -> dict:
+    """GET /api/update-check — cached-only, never hits the network.
+
+    Used by the frontend at page load to decide whether to render the header
+    update badge without forcing a network request (and re-prompting for
+    consent). Returns {ok, has_cache, ...UpdateInfo-or-empty}.
+    """
+    cached = update_check.load_cached()
+    if cached is None:
+        return {
+            "ok": True,
+            "has_cache": False,
+            "current": RBCF_VERSION,
+            "latest": None,
+            "update_available": False,
+            "release_url": None,
+            "release_notes_excerpt": None,
+            "published_at": None,
+            "checked_at": "",
+            "source": "cache",
+            "error": None,
+        }
+    payload = cached.to_dict()
+    payload["ok"] = True
+    payload["has_cache"] = True
+    return payload
+
+
 # ------------------------------ Controller-image upload ------------------
 
 def _sniff_image_ext(payload: bytes) -> str | None:
@@ -1747,6 +1807,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._json(_bezel_cutoffs(apply=apply_flag))
         if u.path == "/api/backup/list":
             return self._json(_backup_list())
+        if u.path == "/api/update-check":
+            return self._json(_update_check_cached())
         if u.path in ("", "/"):
             self.path = "/index.html"
         return super().do_GET()
@@ -1803,6 +1865,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._json(_system_lookup_endpoint(data))
         if u.path == "/api/system-lookup/clear":
             return self._json(_system_lookup_clear(data))
+        if u.path == "/api/update-check":
+            return self._json(_update_check_endpoint(data))
         return self._json({"ok": False, "error": "unknown endpoint"}, status=404)
 
     def do_DELETE(self):

@@ -3725,3 +3725,182 @@ button.secondary:hover,
   .rbcf-cimg-info { flex-basis: 100%; order: 3; }
   .rbcf-cimg-actions { margin-left: auto; }
 }
+
+/* ============================================================
+   Updates row (settings popover) + header badge.
+   Added by Stream UD — passive update-check feature.
+   ============================================================ */
+
+/* Row layout — same shape as .rbcf-cimg-settings-row: header above,
+   "Check now" button to the right of the label column. */
+.rbcf-update-row {
+  align-items: flex-start;
+}
+.rbcf-update-row .rbcf-apply-settings-label {
+  gap: 6px;
+}
+
+/* Version pill next to the "Updates" label. Muted plate styling. */
+.rbcf-update-version {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 8px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--tx-muted);
+  background: var(--plate-fill);
+  border: 1px solid var(--edge-bottom);
+  border-radius: var(--radius-pill);
+  vertical-align: middle;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+/* Auto-check checkbox row inside the label column. Tighter than the main
+   .rbcf-apply-settings-row toggle so it doesn't shout. */
+.rbcf-update-autocheck {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--tx-hint);
+  cursor: pointer;
+  user-select: none;
+}
+/* Override the row's big toggle-pill styling for this small inner checkbox.
+   Restore native appearance so it renders as a normal compact checkbox. */
+.rbcf-update-autocheck input[type="checkbox"],
+.rbcf-update-row .rbcf-update-autocheck input[type="checkbox"] {
+  appearance: auto;
+  -webkit-appearance: auto;
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  cursor: pointer;
+  accent-color: var(--acc-blue);
+  flex-shrink: 0;
+}
+.rbcf-update-autocheck input[type="checkbox"]::after {
+  content: none;
+}
+
+/* Status line — colour driven by additional state class. */
+.rbcf-update-status {
+  display: block;
+  font-size: 11px;
+  line-height: 1.4;
+  margin-top: 2px;
+}
+.rbcf-update-status-ok    { color: var(--acc-green, #2ea043); }
+.rbcf-update-status-muted { color: var(--tx-hint); }
+.rbcf-update-status-error { color: var(--acc-red, #cf6679); }
+.rbcf-update-status-update {
+  color: var(--acc-violet, #a76cff);
+  font-weight: 500;
+}
+.rbcf-update-link {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.rbcf-update-link:hover { opacity: 0.85; }
+.rbcf-update-link-btn {
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0 0 0 4px;
+  font: inherit;
+  color: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* Inline consent prompt (shown the very first time user clicks Check now). */
+.rbcf-update-consent {
+  display: block;
+  margin-top: 6px;
+  padding: 8px 10px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--tx-primary);
+  background: var(--plate-fill);
+  border: 1px solid var(--edge-bottom);
+  border-radius: 8px;
+}
+.rbcf-update-consent[hidden] { display: none; }
+.rbcf-update-consent-text {
+  display: block;
+  margin-bottom: 6px;
+}
+.rbcf-update-consent-host {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 10.5px;
+  color: var(--tx-muted);
+}
+.rbcf-update-consent-actions {
+  display: inline-flex;
+  gap: 6px;
+}
+.rbcf-update-consent-actions .rbcf-apply-btn {
+  font-size: 11px;
+  padding: 4px 10px;
+}
+
+/* Header badge — candy-gradient pill that sits between the pad-pills and
+   the cog. Click opens release notes; small × dismisses for that version. */
+.rbcf-update-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0 4px;
+  padding: 2px 6px 2px 10px;
+  border-radius: var(--radius-pill);
+  background: linear-gradient(
+    135deg,
+    var(--acc-violet, #a76cff) 0%,
+    var(--acc-pink, #ff6cd2) 50%,
+    var(--acc-cyan, #6cdfff) 100%
+  );
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  box-shadow: 0 1px 6px rgba(167, 108, 255, 0.35);
+  white-space: nowrap;
+}
+.rbcf-update-badge-link {
+  color: #fff;
+  text-decoration: none;
+  cursor: pointer;
+}
+.rbcf-update-badge-link:hover { text-decoration: underline; }
+.rbcf-update-badge-x {
+  background: rgba(255, 255, 255, 0.2);
+  border: 0;
+  border-radius: 50%;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  font-size: 12px;
+  line-height: 14px;
+  color: #fff;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.rbcf-update-badge-x:hover { background: rgba(255, 255, 255, 0.35); }
+.rbcf-update-badge-x:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 1px;
+}
+
+/* Dark-theme tweak: gradient stays on, but soften the shadow halo. */
+[data-theme="dark"] .rbcf-update-badge {
+  box-shadow: 0 1px 8px rgba(167, 108, 255, 0.5);
+}

@@ -1462,6 +1462,22 @@ function showSettingsPopover() {
         <button type="button" class="rbcf-apply-btn rbcf-apply-btn-secondary rbcf-cimg-manage-btn"
                 id="rbcf-cimg-manage-btn">Manage…</button>
       </div>
+      <div class="rbcf-apply-settings-row rbcf-update-row" id="rbcf-update-row">
+        <span class="rbcf-apply-settings-label">
+          <span class="rbcf-apply-settings-label-main">
+            Updates
+            <span class="rbcf-update-version" id="rbcf-update-version-pill">v${escapeHtml(rbcfUpdateLocalVersion())}</span>
+          </span>
+          <label class="rbcf-update-autocheck">
+            <input type="checkbox" id="rbcf-update-autocheck-toggle" ${rbcfUpdateAutoCheckEnabled() ? 'checked' : ''}>
+            <span>Auto-check on startup</span>
+          </label>
+          <span class="rbcf-update-status" id="rbcf-update-status">Loading…</span>
+          <span class="rbcf-update-consent" id="rbcf-update-consent" hidden></span>
+        </span>
+        <button type="button" class="rbcf-apply-btn rbcf-apply-btn-secondary rbcf-update-check-btn"
+                id="rbcf-update-check-btn">Check now</button>
+      </div>
     </div>
   `;
   document.body.appendChild(pop);
@@ -1514,6 +1530,30 @@ function showSettingsPopover() {
     });
   }
 
+  // Updates row wiring.
+  const updateAutoCb = pop.querySelector('#rbcf-update-autocheck-toggle');
+  if (updateAutoCb) {
+    updateAutoCb.addEventListener('change', () => {
+      rbcfUpdateSetAutoCheck(updateAutoCb.checked);
+      showToast(
+        updateAutoCb.checked ? 'Update auto-check enabled.' : 'Update auto-check disabled.',
+        'info', 1800);
+    });
+  }
+  const updateBtn = pop.querySelector('#rbcf-update-check-btn');
+  if (updateBtn) {
+    updateBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      rbcfUpdateOnCheckNowClicked(pop);
+    });
+  }
+  // Render whatever cached state we already have, then ask the server for a
+  // fresh cached read (cheap, no network).
+  rbcfUpdateRenderStatusFromCache(pop);
+  rbcfUpdateFetchCached().then((info) => {
+    if (info) rbcfUpdateRenderStatus(pop, info);
+  });
+
   _rbcfSettingsOutsideHandler = (e) => {
     if (pop.contains(e.target) || cog.contains(e.target)) return;
     dismissSettingsPopover();
@@ -1525,6 +1565,293 @@ function showSettingsPopover() {
   document.addEventListener('keydown', _rbcfSettingsKeyHandler, true);
 
   setTimeout(() => { try { cb.focus(); } catch (e) { /* ignore */ } }, 0);
+}
+
+// ============================================================
+// Updates — settings row, header badge, consent flow.
+// ------------------------------------------------------------
+// Backend: /api/update-check (GET cached / POST live). Default
+// behaviour: passive — cache rendered on page load, network only
+// hit after explicit user consent (Check now button or auto-check
+// after first consent). Cache TTL: 24h normal, 1h errors.
+// localStorage keys:
+//   rbcf-update-autocheck       '1'/'0'  default '1'
+//   rbcf-update-consent         '1'/'0'  set when user OKs the consent prompt
+//   rbcf-update-dismissed-{ver} '1'      header-badge dismiss memory
+// ============================================================
+
+const RBCF_UPDATE_AUTOCHECK_KEY = 'rbcf-update-autocheck';
+const RBCF_UPDATE_CONSENT_KEY   = 'rbcf-update-consent';
+const RBCF_UPDATE_DISMISS_PREFIX = 'rbcf-update-dismissed-';
+
+let _rbcfUpdateLastInfo = null;        // most recent UpdateInfo seen
+let _rbcfUpdateConsentSession = false; // consent for THIS browser session
+let _rbcfUpdateLocalVersionCache = null;
+
+function rbcfEscape(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+// Public alias used inside the popover template.
+function escapeHtml(s) { return rbcfEscape(s); }
+
+function rbcfUpdateLocalVersion() {
+  if (_rbcfUpdateLocalVersionCache) return _rbcfUpdateLocalVersionCache;
+  // Best-effort: derive from the cached info (which carries `current`).
+  // Falls back to '?' until the first /api/update-check round-trip lands.
+  if (_rbcfUpdateLastInfo && _rbcfUpdateLastInfo.current) {
+    _rbcfUpdateLocalVersionCache = _rbcfUpdateLastInfo.current;
+    return _rbcfUpdateLocalVersionCache;
+  }
+  return '?';
+}
+
+function rbcfUpdateAutoCheckEnabled() {
+  try {
+    const v = localStorage.getItem(RBCF_UPDATE_AUTOCHECK_KEY);
+    return v !== '0';
+  } catch (e) { return true; }
+}
+
+function rbcfUpdateSetAutoCheck(on) {
+  try { localStorage.setItem(RBCF_UPDATE_AUTOCHECK_KEY, on ? '1' : '0'); }
+  catch (e) { /* ignore */ }
+}
+
+function rbcfUpdateConsentEverGiven() {
+  try { return localStorage.getItem(RBCF_UPDATE_CONSENT_KEY) === '1'; }
+  catch (e) { return false; }
+}
+
+function rbcfUpdateRecordConsent() {
+  try { localStorage.setItem(RBCF_UPDATE_CONSENT_KEY, '1'); }
+  catch (e) { /* ignore */ }
+  _rbcfUpdateConsentSession = true;
+}
+
+function rbcfUpdateBadgeDismissed(version) {
+  if (!version) return false;
+  try { return localStorage.getItem(RBCF_UPDATE_DISMISS_PREFIX + version) === '1'; }
+  catch (e) { return false; }
+}
+
+function rbcfUpdateMarkBadgeDismissed(version) {
+  if (!version) return;
+  try { localStorage.setItem(RBCF_UPDATE_DISMISS_PREFIX + version, '1'); }
+  catch (e) { /* ignore */ }
+}
+
+async function rbcfUpdateFetchCached() {
+  try {
+    const res = await fetch('/api/update-check', { method: 'GET' });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data && data.ok) {
+      _rbcfUpdateLastInfo = data;
+      _rbcfUpdateLocalVersionCache = data.current || _rbcfUpdateLocalVersionCache;
+      rbcfUpdateRenderHeaderBadge(data);
+      return data;
+    }
+  } catch (e) { /* ignore — offline-friendly */ }
+  return null;
+}
+
+async function rbcfUpdatePostCheck(allowOnline, force) {
+  try {
+    const res = await fetch('/api/update-check', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ allow_online: !!allowOnline, force: !!force }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data && data.ok) {
+      _rbcfUpdateLastInfo = data;
+      _rbcfUpdateLocalVersionCache = data.current || _rbcfUpdateLocalVersionCache;
+      rbcfUpdateRenderHeaderBadge(data);
+      return data;
+    }
+  } catch (e) { /* ignore */ }
+  return null;
+}
+
+function rbcfUpdateRenderStatusFromCache(pop) {
+  if (_rbcfUpdateLastInfo) rbcfUpdateRenderStatus(pop, _rbcfUpdateLastInfo);
+  else {
+    const el = pop.querySelector('#rbcf-update-status');
+    if (el) {
+      el.className = 'rbcf-update-status rbcf-update-status-muted';
+      el.textContent = 'Not yet checked.';
+    }
+  }
+}
+
+function rbcfUpdateRenderStatus(pop, info) {
+  const statusEl = pop.querySelector('#rbcf-update-status');
+  const verPill  = pop.querySelector('#rbcf-update-version-pill');
+  if (verPill && info && info.current) {
+    verPill.textContent = 'v' + info.current;
+  }
+  if (!statusEl || !info) return;
+
+  // Determine which state to render.
+  const src = info.source;
+  const upd = !!info.update_available;
+  const latest = info.latest;
+
+  let html = '';
+  let cls = 'rbcf-update-status';
+
+  if (src === 'error') {
+    cls += ' rbcf-update-status-error';
+    html = `Last check failed: ${rbcfEscape(info.error || 'unknown')}. ` +
+      `<button type="button" class="rbcf-update-link-btn" data-act="retry">Retry</button>`;
+  } else if (src === 'unreleased') {
+    cls += ' rbcf-update-status-muted';
+    html = `No releases yet — dev build.`;
+  } else if (upd && latest) {
+    cls += ' rbcf-update-status-update';
+    const url = info.release_url || '#';
+    html = `<strong>v${rbcfEscape(latest)}</strong> available · ` +
+      `<a class="rbcf-update-link" href="${rbcfEscape(url)}" target="_blank" rel="noopener">Release notes ↗</a>`;
+  } else if (src === 'cache' && (!info.checked_at || !info.has_cache)) {
+    cls += ' rbcf-update-status-muted';
+    html = `Not yet checked.`;
+  } else {
+    cls += ' rbcf-update-status-ok';
+    html = `Up to date.`;
+  }
+
+  statusEl.className = cls;
+  statusEl.innerHTML = html;
+
+  // Wire any inline buttons we just rendered.
+  const retry = statusEl.querySelector('[data-act="retry"]');
+  if (retry) {
+    retry.addEventListener('click', (e) => {
+      e.preventDefault();
+      // Already consented at least once if we have any cached state at all,
+      // but be safe: route through the same path Check-now uses.
+      rbcfUpdateOnCheckNowClicked(pop);
+    });
+  }
+}
+
+function rbcfUpdateRenderHeaderBadge(info) {
+  // Remove any existing badge first.
+  const existing = document.getElementById('rbcf-update-badge');
+  if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
+
+  if (!info || !info.update_available || !info.latest) return;
+  if (rbcfUpdateBadgeDismissed(info.latest)) return;
+
+  // Place inside .page-actions, just before the cog so order is
+  // [pad-pills…] [update-badge] [cog].
+  const actions = document.querySelector('.page-actions');
+  if (!actions) return;
+  const cog = document.getElementById('rbcf-apply-settings-cog');
+
+  const badge = document.createElement('div');
+  badge.id = 'rbcf-update-badge';
+  badge.className = 'rbcf-update-badge';
+  const url = info.release_url || '#';
+  const ver = info.latest;
+  badge.title = `Update available: v${ver}. Click for release notes.`;
+  badge.innerHTML = `
+    <a class="rbcf-update-badge-link" href="${rbcfEscape(url)}" target="_blank" rel="noopener"
+       aria-label="Update available: v${rbcfEscape(ver)}">v${rbcfEscape(ver)}</a>
+    <button type="button" class="rbcf-update-badge-x" aria-label="Dismiss update notice">×</button>
+  `;
+  if (cog) actions.insertBefore(badge, cog);
+  else actions.appendChild(badge);
+
+  badge.querySelector('.rbcf-update-badge-x').addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    rbcfUpdateMarkBadgeDismissed(ver);
+    if (badge.parentNode) badge.parentNode.removeChild(badge);
+  });
+}
+
+function rbcfUpdateOnCheckNowClicked(pop) {
+  // Decide whether we need consent: first time AND no cache means we must
+  // ask before hitting the network. If consent was previously given OR
+  // we already have any cached entry (even an "online check not authorised"
+  // stub means the user has at least seen this row before), we proceed.
+  const haveCache = !!(_rbcfUpdateLastInfo && _rbcfUpdateLastInfo.has_cache);
+  const consented = _rbcfUpdateConsentSession || rbcfUpdateConsentEverGiven();
+
+  if (!consented && !haveCache) {
+    rbcfUpdateShowConsentPrompt(pop);
+    return;
+  }
+  rbcfUpdateRunCheck(pop);
+}
+
+function rbcfUpdateShowConsentPrompt(pop) {
+  const consentEl = pop.querySelector('#rbcf-update-consent');
+  if (!consentEl) return;
+  consentEl.hidden = false;
+  consentEl.innerHTML = `
+    <span class="rbcf-update-consent-text">
+      We'll fetch the latest release from
+      <span class="rbcf-update-consent-host">github.com/ITViking-FIN/RetroControlMapper</span>.
+      OK to proceed?
+    </span>
+    <span class="rbcf-update-consent-actions">
+      <button type="button" class="rbcf-apply-btn rbcf-apply-btn-secondary" data-act="ok">Yes, check</button>
+      <button type="button" class="rbcf-apply-btn rbcf-apply-btn-secondary" data-act="cancel">Cancel</button>
+    </span>
+  `;
+  consentEl.querySelector('[data-act="ok"]').addEventListener('click', (e) => {
+    e.preventDefault();
+    rbcfUpdateRecordConsent();
+    consentEl.hidden = true;
+    consentEl.innerHTML = '';
+    rbcfUpdateRunCheck(pop);
+  });
+  consentEl.querySelector('[data-act="cancel"]').addEventListener('click', (e) => {
+    e.preventDefault();
+    consentEl.hidden = true;
+    consentEl.innerHTML = '';
+  });
+}
+
+async function rbcfUpdateRunCheck(pop) {
+  const btn = pop.querySelector('#rbcf-update-check-btn');
+  const statusEl = pop.querySelector('#rbcf-update-status');
+  if (btn) { btn.disabled = true; btn.textContent = 'Checking…'; }
+  if (statusEl) {
+    statusEl.className = 'rbcf-update-status rbcf-update-status-muted';
+    statusEl.textContent = 'Checking…';
+  }
+  const info = await rbcfUpdatePostCheck(true, true);
+  if (btn) { btn.disabled = false; btn.textContent = 'Check now'; }
+  if (info) {
+    rbcfUpdateRenderStatus(pop, info);
+  } else if (statusEl) {
+    statusEl.className = 'rbcf-update-status rbcf-update-status-error';
+    statusEl.textContent = 'Check failed (network error).';
+  }
+}
+
+// Page-load hook: read cached state, then optionally do a quiet refresh
+// IF (a) auto-check is enabled, (b) consent has been given previously,
+// and (c) cache is missing or stale (>24h). Without prior consent we just
+// render whatever is cached and wait for the user to click Check now.
+async function rbcfUpdateInit() {
+  const cached = await rbcfUpdateFetchCached();
+  if (!rbcfUpdateAutoCheckEnabled()) return;
+  if (!rbcfUpdateConsentEverGiven()) return;
+  // If we have a fresh-ish cache (any cache that was just served), the
+  // backend already handles staleness via TTL — POST with force=false
+  // will just return the cached entry if still fresh, or hit the net if not.
+  // Either way it's a single round-trip and a non-issue.
+  await rbcfUpdatePostCheck(true, false);
 }
 
 function injectSettingsCog() {
@@ -2377,5 +2704,6 @@ function setupCollapsibles() {
   // Render the placeholder pad-list before the probe lands.
   renderPadList();
   loadDevices();  // fire & forget — drives the pad-list + popover body
+  rbcfUpdateInit();  // fire & forget — reads cache, optionally refreshes
   loop();
 })();
