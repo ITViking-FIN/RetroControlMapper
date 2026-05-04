@@ -527,6 +527,181 @@ const TGT_JOYSTICK_1BTN = `
 </svg>
 `;
 
+const TGT_COLECOVISION_PAD = `
+<svg viewBox="0 0 620 320" xmlns="http://www.w3.org/2000/svg" class="ctrl-svg" aria-label="ColecoVision Standard Controller">
+  <defs>
+    <!-- Black plastic body, lit from upper-left.
+         Slightly lighter at top, deeper black at bottom. -->
+    <linearGradient id="cvBody" x1="0.3" y1="0" x2="0.7" y2="1">
+      <stop offset="0%"   stop-color="#3a3f48"/>
+      <stop offset="55%"  stop-color="#1c2026"/>
+      <stop offset="100%" stop-color="#0a0d11"/>
+    </linearGradient>
+    <linearGradient id="cvBodyHi" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%"  stop-color="rgba(255,255,255,0.32)"/>
+      <stop offset="55%" stop-color="rgba(255,255,255,0)"/>
+    </linearGradient>
+    <linearGradient id="cvBodyLo" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0%"  stop-color="rgba(0,0,0,0.55)"/>
+      <stop offset="60%" stop-color="rgba(0,0,0,0)"/>
+    </linearGradient>
+
+    <!-- Subtle inset under the d-pad cluster -->
+    <radialGradient id="cvDpadDish" cx="0.5" cy="0.45" r="0.7">
+      <stop offset="0%"  stop-color="#13161b"/>
+      <stop offset="100%" stop-color="#262a31"/>
+    </radialGradient>
+
+    <!-- Red action-button dome (chunky, glossy). Fill is decorative —
+         the actual press-state circle inside .tgt-btn.face.red is
+         repainted by CSS. We layer a halo + highlight on top. -->
+    <radialGradient id="cvFireDome" cx="0.35" cy="0.32" r="0.85">
+      <stop offset="0%"   stop-color="#ff7a6a"/>
+      <stop offset="50%"  stop-color="#d43a2e"/>
+      <stop offset="100%" stop-color="#7a1810"/>
+    </radialGradient>
+
+    <filter id="cvBodyShadow" x="-10%" y="-10%" width="120%" height="135%">
+      <feGaussianBlur stdDeviation="5" in="SourceAlpha"/>
+      <feOffset dy="7" result="off"/>
+      <feComponentTransfer><feFuncA type="linear" slope="0.32"/></feComponentTransfer>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="cvBtnShadow" x="-30%" y="-30%" width="160%" height="170%">
+      <feGaussianBlur stdDeviation="1.75" in="SourceAlpha"/>
+      <feOffset dy="2.5" result="off"/>
+      <feComponentTransfer><feFuncA type="linear" slope="0.42"/></feComponentTransfer>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- Body — rectangular black slab, gently rounded corners. No cable. -->
+  <g filter="url(#cvBodyShadow)">
+    <rect x="56" y="60" width="508" height="200" rx="14" ry="14"
+          fill="url(#cvBody)" stroke="rgba(0,0,0,0.6)" stroke-width="1.5"/>
+    <!-- Top sheen -->
+    <rect x="60" y="64" width="500" height="60" rx="12" ry="12"
+          fill="url(#cvBodyHi)" opacity="0.85"/>
+    <!-- Bottom shading -->
+    <rect x="60" y="200" width="500" height="56" rx="12" ry="12"
+          fill="url(#cvBodyLo)" opacity="0.7"/>
+    <!-- Top bezel (small recessed strip near the very top) -->
+    <rect x="80" y="78" width="460" height="14" rx="3" ry="3"
+          fill="rgba(0,0,0,0.55)" stroke="rgba(255,255,255,0.04)" stroke-width="0.75"/>
+  </g>
+
+  <!-- Rainbow stripes — sit just below the bezel, left side of body,
+       leaving room for the wordmark on the right. -->
+  <g opacity="0.95">
+    <rect x="92"  y="100" width="200" height="3" fill="#9b5cff"/>
+    <rect x="92"  y="104" width="200" height="3" fill="#5c8eff"/>
+    <rect x="92"  y="108" width="200" height="3" fill="#5cd6ff"/>
+    <rect x="92"  y="112" width="200" height="3" fill="#5cff8e"/>
+    <rect x="92"  y="116" width="200" height="3" fill="#ffeb3b"/>
+    <rect x="92"  y="120" width="200" height="3" fill="#ff9c3b"/>
+    <rect x="92"  y="124" width="200" height="3" fill="#ff5c5c"/>
+  </g>
+
+  <!-- Two-line ColecoVision wordmark, rainbow letters.
+       Lower-right area of the body. -->
+  <g font-family="-apple-system, 'Segoe UI', system-ui, sans-serif"
+     font-weight="900" letter-spacing="0.06em" font-size="14">
+    <!-- COLECO -->
+    <text x="404" y="226" fill="#9b5cff">C</text>
+    <text x="418" y="226" fill="#5c8eff">O</text>
+    <text x="434" y="226" fill="#5cd6ff">L</text>
+    <text x="446" y="226" fill="#5cff8e">E</text>
+    <text x="460" y="226" fill="#ffeb3b">C</text>
+    <text x="474" y="226" fill="#ff9c3b">O</text>
+    <!-- VISION -->
+    <text x="404" y="244" fill="#5c8eff">V</text>
+    <text x="418" y="244" fill="#5cd6ff">I</text>
+    <text x="426" y="244" fill="#5cff8e">S</text>
+    <text x="440" y="244" fill="#ffeb3b">I</text>
+    <text x="448" y="244" fill="#ff9c3b">O</text>
+    <text x="464" y="244" fill="#ff5c5c">N</text>
+  </g>
+
+  <!-- D-pad cluster: black plus-shape, faint inset dish behind it.
+       Center pivot dot. Photo's dashed reference circle intentionally omitted. -->
+  <circle cx="138" cy="180" r="50" fill="url(#cvDpadDish)"
+          stroke="rgba(0,0,0,0.6)" stroke-width="1"/>
+  <g class="dpad" filter="url(#cvBtnShadow)">
+    <g id="tgt-btn-up" class="tgt-btn dpad">
+      <rect x="126" y="142" width="24" height="28" rx="3"/>
+    </g>
+    <g id="tgt-btn-down" class="tgt-btn dpad">
+      <rect x="126" y="190" width="24" height="28" rx="3"/>
+    </g>
+    <g id="tgt-btn-left" class="tgt-btn dpad">
+      <rect x="100" y="168" width="28" height="24" rx="3"/>
+    </g>
+    <g id="tgt-btn-right" class="tgt-btn dpad">
+      <rect x="148" y="168" width="28" height="24" rx="3"/>
+    </g>
+    <!-- Centre pivot -->
+    <circle cx="138" cy="180" r="5.5" fill="rgba(255,255,255,0.22)"
+            stroke="rgba(0,0,0,0.55)" stroke-width="0.75"/>
+  </g>
+
+  <!-- Two slim keypad-style toggle buttons in the middle.
+       Small labels above each (small "tiny" text). -->
+  <text x="282" y="158" text-anchor="middle" class="tiny"
+        fill="rgba(255,255,255,0.65)">*</text>
+  <text x="346" y="158" text-anchor="middle" class="tiny"
+        fill="rgba(255,255,255,0.65)">#</text>
+  <g filter="url(#cvBtnShadow)">
+    <g id="tgt-btn-star" class="tgt-btn">
+      <rect x="258" y="164" width="48" height="14" rx="5"/>
+    </g>
+    <g id="tgt-btn-pound" class="tgt-btn">
+      <rect x="322" y="164" width="48" height="14" rx="5"/>
+    </g>
+  </g>
+
+  <!-- Two round red action buttons on the right.
+       Each has a small white inset rectangle with the digit (1, 2)
+       above the dome, photo-accurate. The dome itself uses the
+       .tgt-btn.face.red CSS hook so it lights up on press. -->
+  <!-- Button "1" — primary fire (left red, photo-accurate placement) -->
+  <g filter="url(#cvBtnShadow)">
+    <rect x="416" y="146" width="22" height="14" rx="2"
+          fill="#f3eee0" stroke="rgba(0,0,0,0.55)" stroke-width="0.75"/>
+    <text x="427" y="157" text-anchor="middle"
+          font-family="-apple-system, 'Segoe UI', system-ui, sans-serif"
+          font-size="10" font-weight="800" fill="#1a1d24">1</text>
+  </g>
+  <g id="tgt-btn-fire" class="tgt-btn face red">
+    <circle cx="427" cy="186" r="20"/>
+  </g>
+  <!-- Decorative halo + dome highlight (outside .tgt-btn so they don't repaint) -->
+  <circle cx="427" cy="186" r="26" fill="#0d1117"
+          stroke="rgba(0,0,0,0.6)" stroke-width="1" opacity="0.85"
+          pointer-events="none"/>
+  <ellipse cx="421" cy="178" rx="9" ry="5"
+           fill="rgba(255,255,255,0.45)" pointer-events="none"/>
+
+  <!-- Button "2" — secondary fire (right red) -->
+  <g filter="url(#cvBtnShadow)">
+    <rect x="486" y="146" width="22" height="14" rx="2"
+          fill="#f3eee0" stroke="rgba(0,0,0,0.55)" stroke-width="0.75"/>
+    <text x="497" y="157" text-anchor="middle"
+          font-family="-apple-system, 'Segoe UI', system-ui, sans-serif"
+          font-size="10" font-weight="800" fill="#1a1d24">2</text>
+  </g>
+  <g id="tgt-btn-fire2" class="tgt-btn face red">
+    <circle cx="497" cy="186" r="20"/>
+  </g>
+  <circle cx="497" cy="186" r="26" fill="#0d1117"
+          stroke="rgba(0,0,0,0.6)" stroke-width="1" opacity="0.85"
+          pointer-events="none"/>
+  <ellipse cx="491" cy="178" rx="9" ry="5"
+           fill="rgba(255,255,255,0.45)" pointer-events="none"/>
+
+  <text x="310" y="300" text-anchor="middle" class="ctrl-caption">ColecoVision Standard Controller</text>
+</svg>
+`;
+
 // Map the source pad's RetroPad button name → target SVG button id, per system.
 // `null` means there's no target equivalent (the physical button doesn't drive
 // anything on the target controller — usable for keystroke remap instead).
@@ -556,11 +731,25 @@ const TARGET_MAPPINGS = {
     l: null, r: null, l2: null, r2: null, l3: null, r3: null,
     x: null, y: null, select: null, start: null,
   },
+  colecovision: {
+    // RetroPad → ColecoVision per blueMSX libretro core defaults
+    // (CrocoDS / FBNeo Coleco share the same convention).
+    // ColecoVision pad has 2 fire buttons + a 12-key keypad. We expose
+    // fire 1, fire 2, and the two most-used keypad keys (* and #).
+    b: 'fire',     // RetroPad B = Fire 1 (left red button) — primary
+    a: 'fire2',    // RetroPad A = Fire 2 (right red button) — secondary
+    y: 'star',     // RetroPad Y = keypad *
+    x: 'pound',    // RetroPad X = keypad #
+    up: 'up', down: 'down', left: 'left', right: 'right',
+    l: null, r: null, l2: null, r2: null, l3: null, r3: null,
+    select: null, start: null,
+  },
 };
 
 const TARGET_SVGS = {
-  cd32_pad:      TGT_CD32_PAD,
-  joystick_1btn: TGT_JOYSTICK_1BTN,
+  cd32_pad:        TGT_CD32_PAD,
+  joystick_1btn:   TGT_JOYSTICK_1BTN,
+  colecovision_pad: TGT_COLECOVISION_PAD,
 };
 
 // Standard gamepad button index → our naming

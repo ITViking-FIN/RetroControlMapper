@@ -172,6 +172,8 @@ HARDCODED_SYSTEMS = [
      "fixed_mapping_note": "blueMSX / fMSX: D-pad/stick → joy · B → trigger A · A → trigger B · keyboard pass-through for SPACE/ESC/F-keys"},
     {"id": "amstradcpc",   "name": "Amstrad CPC", "target_controller": "joystick_1btn",
      "fixed_mapping_note": "Caprice32 (cap32): D-pad/stick → joy · B → fire 1 · A → fire 2 · X → SPACE · keyboard pass-through configurable via cap32_combokey"},
+    {"id": "colecovision", "name": "ColecoVision", "target_controller": "colecovision_pad",
+     "fixed_mapping_note": "blueMSX (libretro): D-pad → joy · B = Fire 1 (red button 1) · A = Fire 2 (red button 2) · Y = keypad * · X = keypad # · Select / Start unmapped (12-key keypad accessed via core overlay for less-common keys)"},
 
     # --- Tier 5: arcade hardware (per user request — usually straightforward) ---
     # Sega Naomi family: Atomiswave shares Naomi ROM board, mapping is identical.
