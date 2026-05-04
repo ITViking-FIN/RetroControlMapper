@@ -16,8 +16,8 @@ import xml.etree.ElementTree as ET
 from collections import defaultdict
 from pathlib import Path
 
-ROMS_ROOT = Path(r"E:/RetroBat/roms")
-ES_SYSTEMS = Path(r"E:/RetroBat/emulationstation/.emulationstation/es_systems.cfg")
+from config import ROMS_ROOT, ES_SYSTEMS_CFG as ES_SYSTEMS
+
 REPORT = Path(r"D:/RB-Controller_fix/scrape_audit_report.md")
 
 RESERVED_DIRS = {"images", "videos", "manuals", "marquees", "maps",

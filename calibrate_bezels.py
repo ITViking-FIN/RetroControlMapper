@@ -28,7 +28,7 @@ import sys
 from pathlib import Path
 from PIL import Image
 
-BEZEL_DIR = Path(r"E:/RetroBat/decorations/thebezelproject/systems")
+from config import BEZELS_DIR as BEZEL_DIR
 
 
 def find_play_area(img: Image.Image, alpha_threshold: int):

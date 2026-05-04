@@ -12,7 +12,7 @@ import xml.etree.ElementTree as ET
 from collections import defaultdict
 from pathlib import Path
 
-ROMS_ROOT = Path(r"E:/RetroBat/roms")
+from config import ROMS_ROOT
 CONTROL_TAGS = ("controls", "control", "controles", "controle",
                 "buttons", "controlscheme", "input", "inputs",
                 "controller", "scheme", "controlsdat")
