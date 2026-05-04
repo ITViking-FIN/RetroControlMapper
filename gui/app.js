@@ -105,13 +105,21 @@ let activePadIndex = parseInt(localStorage.getItem('rbcf-active-pad-index') || '
 
 function pickGamepad() {
   const pads = navigator.getGamepads ? navigator.getGamepads() : [];
-  // Honour the user's selection if that index is currently connected
+  // Honour the user's selection if that index is currently connected.
   const sel = pads[activePadIndex];
   if (sel && sel.connected) return sel;
-  // Otherwise fall back to first connected, and remember its index
+  // The user explicitly picked an index. Don't silently flip to a different
+  // pad — on Windows the XInput slot for an active pad can briefly read
+  // null during driver / Bluetooth churn, and the old fallback used to
+  // overwrite activePadIndex on those frames, so "switch back to controller
+  // #1" never stuck. Return null and let the caller render a "no pad" state.
+  // The user will see it and pick again, or wait for the slot to come back.
+  if (activePadIndex !== 0 || localStorage.getItem('rbcf-active-pad-index') !== null) {
+    return null;
+  }
+  // First-run case — no explicit user pick yet — fall back to first connected.
   for (let i = 0; i < pads.length; i++) {
     if (pads[i] && pads[i].connected) {
-      activePadIndex = i;
       return pads[i];
     }
   }
