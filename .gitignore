@@ -39,3 +39,6 @@ dist/
 
 # Research scratchpads — agents stage downloaded source for inspection here
 .tmp_research/
+
+# Stray pip --target output that lands in the project dir
+Lib/
