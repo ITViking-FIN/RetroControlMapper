@@ -38,10 +38,10 @@ from typing import Iterable
 
 import yaml
 
+from config import ES_SETTINGS, RA_CORE_OPTS
+
 ROOT = Path(__file__).resolve().parent
 PROFILES_DIR = ROOT / "profiles"
-ES_SETTINGS = Path(r"E:/RetroBat/emulationstation/.emulationstation/es_settings.cfg")
-RA_CORE_OPTS = Path(r"E:/RetroBat/emulators/retroarch/retroarch-core-options.cfg")
 BACKUP_TAG = f".bak.rbcf.{datetime.now():%Y%m%d}"
 
 

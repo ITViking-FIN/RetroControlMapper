@@ -30,6 +30,8 @@ from pathlib import Path
 
 import yaml
 
+from config import RETROBAT_ROOT, ROMS_ROOT, ES_SYSTEMS_CFG
+
 ROOT = Path(__file__).resolve().parent
 GUI_DIR = ROOT / "gui"
 PROFILES_DIR = ROOT / "profiles"
@@ -38,10 +40,6 @@ SYNC_PY = ROOT / "controller_sync.py"
 CATALOG_YAML = ROOT / "controller_catalog.yaml"
 SYNC_MANIFEST = ROOT / "sync_manifest.json"
 KNOWN_IMG_DIR = GUI_DIR / "img" / "known"
-
-RETROBAT_ROOT = Path(r"E:/RetroBat")
-ROMS_ROOT = RETROBAT_ROOT / "roms"
-ES_SYSTEMS_CFG = RETROBAT_ROOT / "emulationstation" / ".emulationstation" / "es_systems.cfg"
 
 # Each system declares which "target controller" we render on the right side.
 # Adding a new system here is the main extension point.
