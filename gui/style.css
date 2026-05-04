@@ -644,81 +644,10 @@ main {
   margin: 0 auto;
 }
 
-.toolbar {
-  margin: 16px auto 0;
-  max-width: 1400px;
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  /* Shell treatment — translucent, layered, soft scattered shadow. */
-  background: var(--shell-fill);
-  backdrop-filter: var(--blur-med);
-  -webkit-backdrop-filter: var(--blur-med);
-  border: 1px solid var(--edge-bottom);
-  border-top-color: var(--edge-top);
-  border-radius: var(--radius-shell);
-  padding: 14px 18px;
-  box-shadow: var(--shadow-deep);
-  position: sticky;
-  top: 8px;
-  z-index: 50;
-  transition: box-shadow var(--dur-base) var(--ease),
-              background var(--dur-base) var(--ease);
-}
-.toolbar .field {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 180px;
-}
-.toolbar .field label {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--tx-muted);
-  font-weight: 600;
-}
-.toolbar select {
-  font-size: 13px;
-  padding: 9px 32px 9px 14px;
-  background: var(--content-fill);
-  color: var(--tx-primary);
-  border: 1px solid var(--edge-bottom);
-  border-top-color: var(--edge-top);
-  border-radius: var(--radius-input);
-  min-width: 200px;
-  font-family: inherit;
-  appearance: none;
-  -webkit-appearance: none;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%234a5160' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
-  background-repeat: no-repeat;
-  background-position: right 12px center;
-  cursor: pointer;
-  box-shadow: var(--shadow-soft),
-              inset 0 1px 2px rgba(20, 24, 38, 0.06);
-  transition: border-color var(--dur-base) var(--ease),
-              box-shadow var(--dur-base) var(--ease),
-              background var(--dur-base) var(--ease),
-              transform var(--dur-fast) var(--ease);
-}
-[data-theme="dark"] .toolbar select {
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23c9d1d9' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
-}
-@media (prefers-color-scheme: dark) {
-  [data-theme="auto"] .toolbar select {
-    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23c9d1d9' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
-  }
-}
-.toolbar select:hover { transform: translateY(-1px); box-shadow: var(--shadow-soft), inset 0 1px 2px rgba(20,24,38,0.06); border-color: var(--edge-inner); }
-.toolbar select:focus {
-  outline: none;
-  border-color: var(--acc-violet);
-  box-shadow: var(--shadow-soft),
-              inset 0 1px 2px rgba(20, 24, 38, 0.06),
-              0 0 0 4px var(--acc-bg);
-}
-.toolbar .grow { flex: 1; }
-.toolbar .actions { display: flex; align-items: center; gap: 10px; }
+/* (Old `.toolbar` block — sticky filter bar at the top of the page —
+   was retired when Stream Y moved system/game/apply/save into the
+   target pane. No `.toolbar` element exists in index.html anymore.
+   The block was kept around for re-use; CL sweep removed it.) */
 
 /* Inline status next to action buttons */
 #status-line {
@@ -753,8 +682,7 @@ button:hover { transform: translateY(-1px); }
 button:active { transform: translateY(1px); box-shadow: var(--shadow-pressed); }
 button .btn-icon { width: 14px; height: 14px; flex-shrink: 0; }
 
-/* Toolbar action buttons: frosted chips. */
-.toolbar .actions button,
+/* Frosted-chip secondary buttons. */
 button.secondary {
   background: var(--content-fill);
   color: var(--tx-primary);
@@ -762,7 +690,6 @@ button.secondary {
   -webkit-backdrop-filter: var(--blur-low);
   box-shadow: var(--shadow-soft);
 }
-.toolbar .actions button:hover,
 button.secondary:hover {
   background: var(--content-fill);
   border-color: var(--edge-inner);
@@ -850,166 +777,12 @@ code {
   color: var(--tx-primary);
 }
 
-/* ---------- Device bar (collapsible) ---------- */
-
-.device-bar {
-  margin: 16px auto 0;
-  max-width: 1400px;
-  background: var(--shell-fill);
-  backdrop-filter: var(--blur-med);
-  -webkit-backdrop-filter: var(--blur-med);
-  border: 1px solid var(--edge-bottom);
-  border-top-color: var(--edge-top);
-  border-radius: var(--radius-shell);
-  box-shadow: var(--shadow-soft);
-  overflow: hidden;
-  transition: box-shadow var(--dur-base) var(--ease);
-}
-.device-bar:hover { box-shadow: var(--shadow-deep); }
-.device-bar-head {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 16px;
-  cursor: pointer;
-  user-select: none;
-  font-size: 12px;
-  color: var(--tx-muted);
-  transition: background var(--dur-fast) var(--ease);
-}
-.device-bar-head:hover { background: rgba(255, 255, 255, 0.18); }
-[data-theme="dark"] .device-bar-head:hover { background: rgba(255, 255, 255, 0.04); }
-@media (prefers-color-scheme: dark) {
-  [data-theme="auto"] .device-bar-head:hover { background: rgba(255, 255, 255, 0.04); }
-}
-.device-bar-head .chev {
-  display: inline-block;
-  font-size: 10px;
-  color: var(--tx-hint);
-  width: 10px;
-  text-align: center;
-  transition: transform var(--dur-base) var(--ease);
-}
-.device-bar.expanded .device-bar-head .chev { transform: rotate(90deg); }
-.device-bar-summary {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.device-bar-summary .count {
-  font-family: var(--mono);
-  color: var(--tx-primary);
-  font-weight: 500;
-}
-.device-bar-summary .count.has-pad { color: var(--state-ok-2); }
-.device-bar-body {
-  display: none;
-  padding: 0 16px 14px;
-  border-top: 1px solid var(--edge-bottom);
-}
-.device-bar.expanded .device-bar-body { display: block; }
-.device-bar-actions {
-  display: flex;
-  justify-content: flex-end;
-  padding-top: 12px;
-  margin-bottom: 8px;
-}
-.device-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  align-items: center;
-}
-.device-card {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  background: var(--plate-fill);
-  backdrop-filter: var(--blur-low);
-  -webkit-backdrop-filter: var(--blur-low);
-  border: 1px solid var(--edge-bottom);
-  border-top-color: var(--edge-top);
-  border-radius: var(--radius-plate);
-  padding: 6px 14px 6px 6px;
-  font-size: 12px;
-  font-family: var(--mono);
-  color: var(--tx-primary);
-  box-shadow: var(--shadow-soft);
-  cursor: pointer;
-  transition: transform var(--dur-base) var(--ease),
-              box-shadow var(--dur-base) var(--ease),
-              border-color var(--dur-base) var(--ease),
-              background var(--dur-base) var(--ease);
-}
-.device-card:hover {
-  transform: translateY(-1px);
-  border-color: var(--acc-blue);
-  box-shadow: var(--shadow-deep);
-}
-.device-card.xinput {
-  border-color: rgba(63, 185, 80, 0.45);
-  background: rgba(63, 185, 80, 0.10);
-}
-.device-card.active {
-  border-color: var(--acc-violet);
-  /* Sharp double-border treatment for "selected/active" affordance. */
-  box-shadow: 0 0 0 1px var(--edge-inner),
-              0 0 0 4px var(--edge-outer),
-              var(--shadow-deep);
-  background: var(--acc-bg-soft);
-}
-.device-card.active .meta::after {
-  content: "ACTIVE";
-  display: inline-block;
-  margin-left: 6px;
-  padding: 2px 8px;
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  color: #fff;
-  background: var(--acc-gradient);
-  border-radius: var(--radius-pill);
-  vertical-align: middle;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45);
-}
-.device-card .thumb {
-  width: 38px;
-  height: 38px;
-  background: var(--content-fill);
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-  flex-shrink: 0;
-  box-shadow: inset 0 1px 2px rgba(20, 24, 38, 0.08);
-}
-.device-card .thumb img {
-  max-width: 100%;
-  max-height: 100%;
-  object-fit: contain;
-}
-.device-card .thumb.no-img {
-  font-size: 10px;
-  color: var(--tx-hint);
-  font-weight: 600;
-}
-.device-card .meta {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  line-height: 1.2;
-}
-.device-card .name {
-  font-weight: 500;
-  color: var(--tx-primary);
-  font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
-}
-.device-card .vid-pid {
-  color: var(--tx-hint);
-  font-size: 10px;
-}
+/* (Old `.device-bar` collapsible + `.device-card` chip styles —
+   the standalone device list under the page header — were retired
+   by Stream Z2's pad-pill-popover refactor. No `.device-bar*` /
+   `.device-card*` element exists in index.html or app.js anymore;
+   the popover uses `.pad-pill-popover` / `.pad-detail-*` instead.
+   CL sweep removed the orphan rules.) */
 
 /* ---------- Side-by-side controllers ---------- */
 
@@ -1701,8 +1474,6 @@ section.collapsible.collapsed > *:not(h2) { display: none; }
 @media (max-width: 900px) {
   .side-by-side { grid-template-columns: 1fr; }
   .flow-arrow { transform: rotate(90deg); margin: 0 auto; }
-  .toolbar { flex-wrap: wrap; }
-  .toolbar .field { flex: 1 1 200px; }
   .map-region { grid-template-columns: 1fr; gap: 6px; }
   .map-region-label { padding: 0; }
 }
@@ -2802,10 +2573,10 @@ body::after {
    ~7px of shell visible around its edges. Reference image clearly shows
    the gap; without it, panels read as flat translucent cards. --- */
 
-/* Sticky toolbar must keep position:sticky from the earlier rule.
-   isolation:isolate is enough to give ::before its own stacking context. */
-.toolbar,
-.device-bar,
+/* `.toolbar` / `.device-bar` removed from these selector lists by the
+   CL sweep — those elements no longer exist (see notes earlier in
+   this file). The inner-plate + sheen treatment remains for the
+   surfaces that do still exist. */
 .rbcf-onb-card,
 .rbcf-apply-modal-card,
 .rbcf-apply-settings-popover {
@@ -2815,9 +2586,7 @@ section {
   position: relative;
   isolation: isolate;
 }
-.toolbar > *,
 section > *,
-.device-bar > *,
 .rbcf-onb-card > *,
 .rbcf-apply-modal-card > *,
 .rbcf-apply-settings-popover > * {
@@ -2826,9 +2595,7 @@ section > *,
 }
 
 /* The inner plate. Inset 7px so a thin band of the shell shows through. */
-.toolbar::before,
 section.collapsible::before,
-.device-bar::before,
 .rbcf-onb-card::before,
 .rbcf-apply-modal-card::before,
 .rbcf-apply-settings-popover::before {
@@ -2846,9 +2613,7 @@ section.collapsible::before,
   transition: background var(--dur-base) var(--ease),
               box-shadow var(--dur-base) var(--ease);
 }
-[data-theme="dark"] .toolbar::before,
 [data-theme="dark"] section.collapsible::before,
-[data-theme="dark"] .device-bar::before,
 [data-theme="dark"] .rbcf-onb-card::before,
 [data-theme="dark"] .rbcf-apply-modal-card::before,
 [data-theme="dark"] .rbcf-apply-settings-popover::before {
@@ -2856,9 +2621,7 @@ section.collapsible::before,
               inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 @media (prefers-color-scheme: dark) {
-  [data-theme="auto"] .toolbar::before,
   [data-theme="auto"] section.collapsible::before,
-  [data-theme="auto"] .device-bar::before,
   [data-theme="auto"] .rbcf-onb-card::before,
   [data-theme="auto"] .rbcf-apply-modal-card::before,
   [data-theme="auto"] .rbcf-apply-settings-popover::before {
@@ -2875,7 +2638,6 @@ section.full.footer { isolation: auto; }
 
 /* Refractive specular highlight: a thin diagonal sheen across the top
    of major shells. Single-light-source rule — top-left bright. */
-.toolbar::after,
 section.collapsible::after,
 .rbcf-onb-card::after,
 .rbcf-apply-modal-card::after {
@@ -2895,7 +2657,6 @@ section.collapsible::after,
   opacity: 0.85;
   transition: opacity var(--dur-base) var(--ease);
 }
-[data-theme="dark"] .toolbar::after,
 [data-theme="dark"] section.collapsible::after,
 [data-theme="dark"] .rbcf-onb-card::after,
 [data-theme="dark"] .rbcf-apply-modal-card::after {
@@ -2906,7 +2667,6 @@ section.collapsible::after,
   opacity: 0.9;
 }
 @media (prefers-color-scheme: dark) {
-  [data-theme="auto"] .toolbar::after,
   [data-theme="auto"] section.collapsible::after,
   [data-theme="auto"] .rbcf-onb-card::after,
   [data-theme="auto"] .rbcf-apply-modal-card::after {
@@ -2935,18 +2695,6 @@ section.collapsible:hover {
 @media (prefers-color-scheme: dark) {
   [data-theme="auto"] section.collapsible:hover {
     box-shadow: var(--shadow-deep), 0 24px 60px rgba(0, 0, 0, 0.55);
-  }
-}
-
-.toolbar:hover {
-  box-shadow: var(--shadow-deep), 0 26px 70px rgba(20, 24, 38, 0.12);
-}
-[data-theme="dark"] .toolbar:hover {
-  box-shadow: var(--shadow-deep), 0 26px 70px rgba(0, 0, 0, 0.60);
-}
-@media (prefers-color-scheme: dark) {
-  [data-theme="auto"] .toolbar:hover {
-    box-shadow: var(--shadow-deep), 0 26px 70px rgba(0, 0, 0, 0.60);
   }
 }
 
@@ -3046,7 +2794,6 @@ section h2,
 /* --- Focus ring expansion: every focusable surface gets a 4px violet
        glow that grows in from 0 on focus. Already in place but unify
        the easing curve and ring colour. --- */
-.toolbar select:focus,
 .map-row input:focus,
 .opt-row select:focus,
 .opt-row input[type="text"]:focus,
@@ -3058,7 +2805,6 @@ textarea#notes:focus,
               0 0 0 4px rgba(124, 92, 255, 0.18),
               0 0 22px rgba(124, 92, 255, 0.18);
 }
-[data-theme="dark"] .toolbar select:focus,
 [data-theme="dark"] .map-row input:focus,
 [data-theme="dark"] .opt-row select:focus,
 [data-theme="dark"] .opt-row input[type="text"]:focus,
@@ -3070,7 +2816,6 @@ textarea#notes:focus,
               0 0 22px rgba(149, 128, 255, 0.18);
 }
 @media (prefers-color-scheme: dark) {
-  [data-theme="auto"] .toolbar select:focus,
   [data-theme="auto"] .map-row input:focus,
   [data-theme="auto"] .opt-row select:focus,
   [data-theme="auto"] .opt-row input[type="text"]:focus,
@@ -3120,7 +2865,6 @@ button.primary:hover,
 
 /* --- Secondary chips — soften hover, tighten spring --- */
 button.secondary:hover,
-.toolbar .actions button:hover,
 .rbcf-onb-btn-secondary:hover:not(:disabled),
 .rbcf-apply-btn-secondary:hover:not(:disabled) {
   transform: translateY(-1px);
@@ -3249,20 +2993,8 @@ button.secondary:hover,
   transform: translateY(-1px);
 }
 
-/* --- Device cards: deepen lift on hover (already had transform but no
-       second-shadow), tighten the pulse on .xinput --- */
-.device-card:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-deep), 0 16px 40px rgba(20, 24, 38, 0.10);
-}
-[data-theme="dark"] .device-card:hover {
-  box-shadow: var(--shadow-deep), 0 16px 40px rgba(0, 0, 0, 0.55);
-}
-@media (prefers-color-scheme: dark) {
-  [data-theme="auto"] .device-card:hover {
-    box-shadow: var(--shadow-deep), 0 16px 40px rgba(0, 0, 0, 0.55);
-  }
-}
+/* (Old `.device-card:hover` polish — deepen lift on hover — was
+   removed; `.device-card` no longer exists in the DOM.) */
 
 /* --- Toggle / checkbox: when on, brighten the glow ring (a 4px ring
        is already there; add a soft outer halo for the candy feel). --- */

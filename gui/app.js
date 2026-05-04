@@ -101,8 +101,9 @@ function setTargetSVG(targetCtrl) {
 // Live highlights
 // ============================================================
 
-// User-selected pad index — clicking a device card switches which gamepad
-// drives the live highlights. Persisted across reloads.
+// User-selected pad index — clicking a pad-pill (or "Use as active source"
+// inside the pad-pill popover) switches which gamepad drives the live
+// highlights. Persisted across reloads.
 let activePadIndex = parseInt(localStorage.getItem('rbcf-active-pad-index') || '0', 10);
 
 function pickGamepad() {
@@ -131,10 +132,9 @@ function pickGamepad() {
 function setActivePad(index) {
   activePadIndex = index;
   localStorage.setItem('rbcf-active-pad-index', String(index));
-  $$('.device-card').forEach(c => {
-    c.classList.toggle('active', parseInt(c.dataset.padIndex) === index);
-  });
   // Repaint the header pad-list so the green dot moves to the new active pill.
+  // (The old loop that toggled `.active` on `.device-card` chips was removed
+  // when Stream Z2 retired the device-bar; the pad-list now owns active state.)
   renderPadList();
 }
 
