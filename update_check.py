@@ -144,6 +144,41 @@ def clear_cache() -> bool:
     return False
 
 
+# Update-check consent file. Lives next to the cache. The frontend
+# normally manages consent via localStorage['rbcf-update-consent'], but
+# the Inno installer needs a server-side way to set the same flag at
+# install time without launching a browser. This file is the shared
+# source of truth — both the API endpoint and the frontend honour it.
+CONSENT_PATH = UPDATE_CACHE_PATH.parent / "update-check-consent.json"
+
+
+def set_consent(enabled: bool) -> None:
+    """Write a persistent update-check consent decision. Used by the
+    installer's --set-update-check-consent flag to record the user's
+    choice from the wizard without requiring them to open the GUI.
+    """
+    try:
+        CONSENT_PATH.parent.mkdir(parents=True, exist_ok=True)
+        CONSENT_PATH.write_text(
+            json.dumps({"enabled": bool(enabled)}, indent=2),
+            encoding="utf-8",
+        )
+    except OSError as e:
+        print(f"[update_check] WARN: could not write consent: {e}",
+              file=sys.stderr)
+
+
+def get_consent() -> bool | None:
+    """Read the persisted consent decision, or None if not set."""
+    try:
+        if CONSENT_PATH.is_file():
+            data = json.loads(CONSENT_PATH.read_text(encoding="utf-8"))
+            return bool(data.get("enabled"))
+    except (OSError, json.JSONDecodeError):
+        pass
+    return None
+
+
 def is_update_pending() -> bool:
     """Cheap check used by the frontend to decide whether to render the badge.
 
@@ -402,6 +437,8 @@ def check_for_updates(allow_online: bool = False, force: bool = False) -> Update
 
 
 __all__ = [
+    "set_consent",
+    "get_consent",
     "UPDATE_CACHE_PATH",
     "USER_AGENT",
     "UpdateInfo",

@@ -66,6 +66,7 @@ from __future__ import annotations
 import argparse
 import http.server
 import json
+import os
 import re
 import socketserver
 import subprocess
@@ -2061,6 +2062,89 @@ def serve_http(host: str = "127.0.0.1",
                 shutdown_event.set()
 
 
+def _handle_installer_cli(args) -> bool:
+    """Handle installer-time CLI flags. Returns True if anything was
+    handled (caller should exit instead of starting the GUI)."""
+    handled = False
+
+    if args.capture_factory_snapshot:
+        try:
+            import backups
+            snap = backups.snapshot('factory',
+                                    description='Captured during install')
+            if snap is None:
+                # Already exists — refused. Inno's repair branch hits this
+                # on every re-run; not an error.
+                print("[install] factory snapshot already exists; skipped.")
+            else:
+                print(f"[install] factory snapshot captured: {snap.id}")
+        except Exception as e:
+            print(f"[install] WARN: factory snapshot failed: {e}",
+                  file=sys.stderr)
+        handled = True
+
+    if args.set_autostart in ("on", "off"):
+        try:
+            from tray import _set_autostart
+            _set_autostart(args.set_autostart == "on")
+            print(f"[install] autostart: {args.set_autostart}")
+        except Exception as e:
+            print(f"[install] WARN: set-autostart failed: {e}",
+                  file=sys.stderr)
+        handled = True
+
+    if args.set_watcher_mode in ("off", "detect", "auto-fold"):
+        try:
+            import guid_watcher
+            guid_watcher.set_mode(args.set_watcher_mode)
+            print(f"[install] watcher mode: {args.set_watcher_mode}")
+        except Exception as e:
+            print(f"[install] WARN: set-watcher-mode failed: {e}",
+                  file=sys.stderr)
+        handled = True
+
+    if args.set_update_check_consent in ("on", "off"):
+        try:
+            import update_check
+            update_check.set_consent(args.set_update_check_consent == "on")
+            print(f"[install] update-check consent: "
+                  f"{args.set_update_check_consent}")
+        except Exception as e:
+            print(f"[install] WARN: set-update-check-consent failed: {e}",
+                  file=sys.stderr)
+        handled = True
+
+    return handled
+
+
+def _seed_profiles_on_first_run() -> None:
+    """If running from a frozen PyInstaller bundle and the user's
+    %APPDATA% profiles dir doesn't exist, copy the bundled defaults.
+
+    The bundle ships profiles/ as read-only inside sys._MEIPASS; the
+    user's editable copy lives at %APPDATA%/RB-Controller_fix/profiles/.
+    Loader switches to the APPDATA copy after the seed.
+    """
+    if not getattr(sys, 'frozen', False):
+        return  # dev mode — profiles/ next to the script is editable
+    appdata = os.environ.get("APPDATA")
+    if not appdata:
+        return  # nothing we can do
+    user_profiles = Path(appdata) / "RB-Controller_fix" / "profiles"
+    if user_profiles.exists():
+        return  # already seeded
+    bundle_profiles = Path(sys._MEIPASS) / "profiles"  # type: ignore[attr-defined]
+    if not bundle_profiles.is_dir():
+        return  # nothing to seed
+    try:
+        import shutil
+        shutil.copytree(bundle_profiles, user_profiles)
+        print(f"[first-run] seeded {user_profiles} from bundle")
+    except OSError as e:
+        print(f"[first-run] WARN: could not seed profiles: {e}",
+              file=sys.stderr)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=8765)
@@ -2071,7 +2155,26 @@ def main():
                          "behaviour). Useful for headless / CI / dev. "
                          "Without this flag, rbcf_gui runs as a "
                          "tray-resident app.")
+    # Installer-time flags. Each runs its action and exits without
+    # starting the GUI/server. Idempotent so the Inno Repair branch
+    # can re-fire them safely.
+    ap.add_argument("--capture-factory-snapshot", action="store_true",
+                    help=argparse.SUPPRESS)
+    ap.add_argument("--set-autostart", choices=("on", "off"),
+                    default=None, help=argparse.SUPPRESS)
+    ap.add_argument("--set-watcher-mode",
+                    choices=("off", "detect", "auto-fold"),
+                    default=None, help=argparse.SUPPRESS)
+    ap.add_argument("--set-update-check-consent", choices=("on", "off"),
+                    default=None, help=argparse.SUPPRESS)
     args = ap.parse_args()
+
+    # Installer-time flags short-circuit before any GUI startup.
+    if _handle_installer_cli(args):
+        return
+
+    # First-run profile seed (no-op in dev mode and after first run).
+    _seed_profiles_on_first_run()
 
     if args.no_tray:
         # Legacy foreground mode — exactly the pre-refactor behaviour.
