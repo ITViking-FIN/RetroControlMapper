@@ -1,0 +1,10 @@
+# Build output (the compiled installer .exe lands here)
+output/
+
+# Any stray .exe in this directory
+*.exe
+
+# The .ico is generated from gui/img/icon/RetroControlMapper_256.png at
+# build time (see README.md step 2). Regenerated per build; not a source
+# of truth in this repo.
+*.ico
