@@ -1934,7 +1934,20 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 fields = _parse_multipart(self.headers, body)
             except Exception as e:  # noqa: BLE001 - email parser raises a variety
                 return self._json({"ok": False, "error": f"bad multipart: {e}"}, status=400)
-            return self._json(_save_controller_image(fields))
+            result = _save_controller_image(fields)
+            # Map well-known errors to specific HTTP status so downstream
+            # tooling sees the same code on both the outer envelope-size
+            # branch (line ~1930) and the inner payload-size branch.
+            status = 200
+            if not result.get("ok"):
+                err = (result.get("error") or "").lower()
+                if "too large" in err:
+                    status = 413
+                elif "missing file" in err or "invalid" in err or "unsupported" in err:
+                    status = 400
+                else:
+                    status = 400
+            return self._json(result, status=status)
 
         try:
             length = int(self.headers.get("Content-Length", "0"))

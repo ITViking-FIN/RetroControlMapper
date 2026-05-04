@@ -93,7 +93,11 @@ Name: "{group}\Instructions";            Filename: "{app}\INSTRUCTIONS.md"
 Name: "{group}\README";                  Filename: "{app}\README.md"
 Name: "{group}\Visit GitHub";            Filename: "{#AppURL}"
 Name: "{group}\Uninstall {#AppName}";    Filename: "{uninstallexe}"
-Name: "{commondesktop}\{#AppName}";      Filename: "{app}\{#AppExeName}";  Tasks: desktopicon
+; {autodesktop} routes to the *user* Desktop when PrivilegesRequired=lowest
+; (no admin needed). Using {commondesktop} here would crash with
+; "IPersistFile::Save failed; 0x80070005 Access is denied" on a non-elevated
+; install since the public Desktop folder requires admin to write.
+Name: "{autodesktop}\{#AppName}";        Filename: "{app}\{#AppExeName}";  Tasks: desktopicon
 
 [Tasks]
 Name: "desktopicon";        Description: "Create a desktop shortcut";                                    GroupDescription: "Additional shortcuts:"
