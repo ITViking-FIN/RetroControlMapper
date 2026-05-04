@@ -711,22 +711,50 @@ def save_profile(data: dict) -> dict:
 
 
 def run_apply() -> dict:
-    if not RBCF_PY.exists():
-        return {"ok": False, "error": "rbcf.py not found"}
-    py = sys.executable
+    """Run `rbcf apply` in-process by importing and calling cmd_apply().
+
+    Was previously a subprocess against rbcf.py, but PyInstaller bundles
+    the .py source into the PYZ archive — there's no rbcf.py file on
+    disk in the .exe distribution. Calling cmd_apply directly works in
+    both dev and frozen modes, has zero spawn cost, and captures the
+    result more cleanly.
+    """
+    import contextlib
+    import io
     try:
-        result = subprocess.run(
-            [py, str(RBCF_PY), "apply"],
-            capture_output=True, text=True, timeout=30, cwd=str(ROOT),
-        )
+        from rbcf import load_profiles as _load_profiles, cmd_apply as _cmd_apply
+    except ImportError as e:
+        return {"ok": False, "error": f"rbcf module unavailable: {e}"}
+
+    profiles = _load_profiles()
+    if not profiles:
+        return {"ok": True, "stdout": "[info] no profiles found",
+                "stderr": "", "returncode": 0}
+
+    out_buf = io.StringIO()
+    err_buf = io.StringIO()
+    rc = 0
+    try:
+        with contextlib.redirect_stdout(out_buf), contextlib.redirect_stderr(err_buf):
+            _cmd_apply(profiles, target_id=None)
+    except SystemExit as e:
+        # cmd_apply uses sys.exit on fatal errors (e.g. unknown target_id);
+        # we pass target_id=None so this shouldn't fire, but guard anyway.
+        rc = int(e.code) if isinstance(e.code, int) else 1
+    except Exception as e:  # noqa: BLE001 — surface any apply failure to the UI
         return {
-            "ok": result.returncode == 0,
-            "stdout": result.stdout,
-            "stderr": result.stderr,
-            "returncode": result.returncode,
+            "ok": False,
+            "stdout": out_buf.getvalue(),
+            "stderr": err_buf.getvalue() + f"\n[apply] uncaught: {e}",
+            "returncode": 1,
+            "error": str(e),
         }
-    except subprocess.TimeoutExpired:
-        return {"ok": False, "error": "apply timed out"}
+    return {
+        "ok": rc == 0,
+        "stdout": out_buf.getvalue(),
+        "stderr": err_buf.getvalue(),
+        "returncode": rc,
+    }
 
 
 # ------------------------------ onboarding helpers ------------------------------
