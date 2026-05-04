@@ -242,15 +242,16 @@ Each step should be reviewable as its own commit. Browser-tested before
 landing — the backdrop-blur fallbacks and contrast ratios both need
 human eyes.
 
-## Open questions for the user before the migration starts
+## Migration prerequisites — answered 2026-05-04
 
-- **❓ Dark-mode parity?** The reference shows a light-mode kit. Do we
-  want to preserve a dark variant for users who prefer it (auto-switch
-  via `prefers-color-scheme: dark`), or is light the only scheme?
-- **❓ Accent intensity per surface?** The pills are very saturated;
-  the shell is muted. Should we have a `--accent-intensity` variable
-  per page, or always use the kit defaults?
-- **❓ Animation budget.** Frosted-glass UIs feel "premium" partly
-  because of subtle motion (hover lift, focus glow expand, pill press
-  depth). What's the max animation budget per interaction (16ms? 200ms?
-  none?) — affects perceived performance vs polish.
+- **Light/Dark switch in settings** ✅ — Ship both modes. Toggle lives in
+  the existing T3 settings popover (cog icon in the toolbar). Three states:
+  Light · Dark · Auto (follows `prefers-color-scheme`). Persisted in
+  `localStorage['rbcf-theme']`. Default: Auto.
+- **Accent intensity** ✅ — Global. Single set of accent tokens in `:root`,
+  no per-surface tuning for now.
+- **Animation budget** ✅ — Generous. Hover lift on cards (translateY ~2px,
+  shadow deepens), focus glow expand (rgba ring grows 4px→6px), pill press
+  depth (translateY +1px + reduced shadow on `:active`). Use `cubic-bezier
+  (0.2, 0.8, 0.2, 1)` for a slightly springy feel. Cap individual transitions
+  at 220ms; modal entry/exit may be 300ms.
