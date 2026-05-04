@@ -70,6 +70,7 @@ KNOWN_IMG_DIR = GUI_DIR / "img" / "known"
 # already handles those gracefully ("no target controller diagram for this
 # system yet"). See `_merge_systems()` below.
 HARDCODED_SYSTEMS = [
+    # --- Existing curated 4 (Commodore family — byte-identical, do not edit) ---
     {"id": "c64",       "name": "Commodore 64",   "target_controller": "joystick_1btn",
      "fixed_mapping_note": "VICE: D-pad/stick → joy direction · B → fire · A → fire2 · X → SPACE"},
     {"id": "amiga500",  "name": "Amiga 500",      "target_controller": "joystick_1btn",
@@ -78,6 +79,89 @@ HARDCODED_SYSTEMS = [
      "fixed_mapping_note": "puae default RetroPad mode: D-pad/stick → joy · B → fire"},
     {"id": "amigacd32", "name": "Amiga CD32",     "target_controller": "cd32_pad",
      "fixed_mapping_note": "CD32 Pad (device 517): B=Red · A=Blue · Y=Yellow · X=Green · L=Forward · R=Rewind · Start=Play · Select=Reverse"},
+
+    # --- Tier 1: major consoles ---
+    # `target_controller` left as None for everything below — only cd32_pad
+    # and joystick_1btn target SVGs exist today (see TARGET_MAPPINGS in
+    # gui/controllers.js). New per-system SVG art is a separate stream's
+    # job; the frontend handles None as a graceful empty state.
+    # Bindings sourced from libretro core defaults + RetroBat wiki +
+    # community-confirmed conventions. RetroPad is the canonical "PS3 with
+    # SNES face buttons" layout (B=south, A=east, Y=west, X=north).
+    {"id": "nes",          "name": "Nintendo Entertainment System", "target_controller": None,
+     "fixed_mapping_note": "RetroPad → NES: B=B · A=A (south=B, east=A — matches NES face order) · Select=Select · Start=Start · D-pad=D-pad"},
+    {"id": "snes",         "name": "Super Nintendo Entertainment System", "target_controller": None,
+     "fixed_mapping_note": "RetroPad → SNES: B=B · A=A · Y=Y · X=X · L=L · R=R · Select=Select · Start=Start (RetroPad layout matches SNES diamond — no swap)"},
+    {"id": "megadrive",    "name": "Sega Mega Drive / Genesis", "target_controller": None,
+     "fixed_mapping_note": "RetroPad → Genesis 3-button: B=A · A=B · Y=C · Start=Start · Select=Mode. 6-button adds: X=Y · L=X · R=Z (genesis_plus_gx default)"},
+    {"id": "genesis",      "name": "Sega Genesis", "target_controller": None,
+     "fixed_mapping_note": "RetroPad → Genesis 3-button: B=A · A=B · Y=C · Start=Start · Select=Mode. 6-button adds: X=Y · L=X · R=Z"},
+    {"id": "mastersystem", "name": "Sega Master System", "target_controller": None,
+     "fixed_mapping_note": "RetroPad → SMS: B=Button 1 · A=Button 2 · Start=Pause/Start · D-pad=D-pad (genesis_plus_gx)"},
+    {"id": "gamegear",     "name": "Sega Game Gear", "target_controller": None,
+     "fixed_mapping_note": "RetroPad → Game Gear: B=Button 1 · A=Button 2 · Start=Start · D-pad=D-pad (genesis_plus_gx)"},
+    {"id": "gb",           "name": "Nintendo Game Boy", "target_controller": None,
+     "fixed_mapping_note": "RetroPad → GB: B=B · A=A · Select=Select · Start=Start · D-pad=D-pad (gambatte/sameboy)"},
+    {"id": "gbc",          "name": "Nintendo Game Boy Color", "target_controller": None,
+     "fixed_mapping_note": "RetroPad → GBC: B=B · A=A · Select=Select · Start=Start · D-pad=D-pad (gambatte/sameboy)"},
+    {"id": "gba",          "name": "Nintendo Game Boy Advance", "target_controller": None,
+     "fixed_mapping_note": "RetroPad → GBA: B=B · A=A · L=L · R=R · Select=Select · Start=Start · D-pad=D-pad (mGBA)"},
+    {"id": "nds",          "name": "Nintendo DS", "target_controller": None,
+     "fixed_mapping_note": "RetroPad → NDS: B=B · A=A · Y=Y · X=X · L=L · R=R · Select=Select · Start=Start · R-stick=touch pointer (desmume default; melonDS similar)"},
+    {"id": "n64",          "name": "Nintendo 64", "target_controller": None,
+     "fixed_mapping_note": "RetroPad → N64: B=A (south=N64-A) · Y=B · R2=Z · L=L · R=R · Start=Start · R-stick=C-buttons (mupen64plus_next default; HOLD R2 to access C via face buttons)"},
+    {"id": "psx",          "name": "Sony PlayStation", "target_controller": None,
+     "fixed_mapping_note": "RetroPad → PSX: B=Cross · A=Circle · Y=Square · X=Triangle · L/R/L2/R2 same · Select=Select · Start=Start (Beetle PSX / DuckStation / SwanStation — matches PS3 layout natively)"},
+    {"id": "dreamcast",    "name": "Sega Dreamcast", "target_controller": None,
+     "fixed_mapping_note": "RetroPad → DC: B=A · A=B · Y=X · X=Y (note swap — DC face uses opposite cardinal positions to RetroPad) · L2=L-trigger · R2=R-trigger · Start=Start (Flycast default)"},
+    {"id": "saturn",       "name": "Sega Saturn", "target_controller": None,
+     "fixed_mapping_note": "RetroPad → Saturn: B=A · A=B · Y=X · X=Y · L=L · R=R · L2=Z · R2=C · Start=Start (Beetle Saturn / Kronos / YabaSanshiro — RetroPad mapped onto Saturn's 6-button face)"},
+    {"id": "pcengine",     "name": "PC Engine / TurboGrafx-16", "target_controller": None,
+     "fixed_mapping_note": "RetroPad → PCE: B=II · Y=I (BY-style — Beetle PCE default, NOT BA) · Start=Run · Select=Select. 6-button adds: A=III · X=IV · L=V · R=VI"},
+
+    # --- Tier 2: popular arcade / specialty ---
+    {"id": "mame",         "name": "MAME", "target_controller": None,
+     "fixed_mapping_note": "RetroPad → MAME: B=Button 1 · A=Button 2 · Y=Button 3 · X=Button 4 · L=Button 5 · R=Button 6 · L2=Button 7 · R2=Button 8 · Select=Coin · Start=Start (per-game ROMs may override; mame2003-plus / mame_libretro default)"},
+    {"id": "fbneo",        "name": "FinalBurn Neo", "target_controller": None,
+     "fixed_mapping_note": "RetroPad → FBNeo: B=Button 1 · A=Button 2 · Y=Button 3 · X=Button 4 · L=Button 5 · R=Button 6 · Select=Coin · Start=Start (per-driver overrides apply for fighting games)"},
+    {"id": "neogeo",       "name": "SNK Neo Geo", "target_controller": None,
+     "fixed_mapping_note": "RetroPad → Neo Geo: B=A · A=B · Y=C · X=D · Select=Coin · Start=Start (FBNeo / NeoGeo standard 4-button)"},
+    {"id": "neogeocd",     "name": "SNK Neo Geo CD", "target_controller": None,
+     "fixed_mapping_note": "RetroPad → Neo Geo CD: B=A · A=B · Y=C · X=D · Select=Select · Start=Start (NeoCD / FBNeo)"},
+    {"id": "cps1",         "name": "Capcom CPS-1", "target_controller": None,
+     "fixed_mapping_note": "RetroPad → CPS-1: B=Light Punch · A=Med Punch · R=Heavy Punch · Y=Light Kick · X=Med Kick · L=Heavy Kick · Select=Coin · Start=Start (FBNeo SF2 layout)"},
+    {"id": "cps2",         "name": "Capcom CPS-2", "target_controller": None,
+     "fixed_mapping_note": "RetroPad → CPS-2: B=Light Punch · A=Med Punch · R=Heavy Punch · Y=Light Kick · X=Med Kick · L=Heavy Kick · Select=Coin · Start=Start (FBNeo SSF2/MvC layout)"},
+    {"id": "cps3",         "name": "Capcom CPS-3", "target_controller": None,
+     "fixed_mapping_note": "RetroPad → CPS-3: B=Light Punch · A=Med Punch · R=Heavy Punch · Y=Light Kick · X=Med Kick · L=Heavy Kick · Select=Coin · Start=Start (FBNeo SF3/JoJo layout)"},
+
+    # --- Tier 3: handhelds / niche-but-popular ---
+    {"id": "lynx",         "name": "Atari Lynx", "target_controller": None,
+     "fixed_mapping_note": "RetroPad → Lynx: B=B · A=A · Y=Option 1 · X=Option 2 · Start=Pause · D-pad=D-pad (Handy / Beetle Lynx)"},
+    {"id": "wonderswan",   "name": "Bandai WonderSwan", "target_controller": None,
+     "fixed_mapping_note": "RetroPad → WonderSwan: B=B · A=A · Y=Y1 · X=Y2 · Start=Start · L=X1 · R=X2 (Beetle Cygne / Mednafen Wswan; vertical mode rotates Y/X cluster to D-pad)"},
+    {"id": "wswan",        "name": "Bandai WonderSwan", "target_controller": None,
+     "fixed_mapping_note": "RetroPad → WonderSwan: B=B · A=A · Y=Y1 · X=Y2 · Start=Start · L=X1 · R=X2 (some es_systems.cfg variants use 'wswan' as the id)"},
+    {"id": "ngp",          "name": "SNK Neo Geo Pocket", "target_controller": None,
+     "fixed_mapping_note": "RetroPad → NGP: B=B · A=A · Start=Option · D-pad=D-pad (Beetle NeoPop — only 2 buttons + Option)"},
+    {"id": "ngpc",         "name": "SNK Neo Geo Pocket Color", "target_controller": None,
+     "fixed_mapping_note": "RetroPad → NGPC: B=B · A=A · Start=Option · D-pad=D-pad (Beetle NeoPop)"},
+    {"id": "atari2600",    "name": "Atari 2600", "target_controller": None,
+     "fixed_mapping_note": "RetroPad → Atari 2600: B=Fire · Select=Select · Start=Reset · D-pad=joystick (Stella default — the 2600 only has one fire button)"},
+    {"id": "atari7800",    "name": "Atari 7800", "target_controller": None,
+     "fixed_mapping_note": "RetroPad → Atari 7800: B=Button 1 · A=Button 2 · Select=Select · Start=Pause · D-pad=joystick (ProSystem default)"},
+
+    # --- Tier 4: retro home computers (heavier keyboard takeover) ---
+    {"id": "atarist",      "name": "Atari ST", "target_controller": "joystick_1btn",
+     "fixed_mapping_note": "Hatari: D-pad/stick → joy direction · B → fire · keyboard pass-through for Help/Undo/F-keys (Atari ST is single-button-joystick natively, hence joystick_1btn target)"},
+    {"id": "zxspectrum",   "name": "Sinclair ZX Spectrum", "target_controller": "joystick_1btn",
+     "fixed_mapping_note": "Fuse: D-pad/stick → Kempston joy · B → fire · keyboard pass-through for game-specific keys (default Kempston interface; Sinclair-1/Sinclair-2/Cursor configurable per-game)"},
+    {"id": "msx",          "name": "MSX", "target_controller": "joystick_1btn",
+     "fixed_mapping_note": "blueMSX / fMSX: D-pad/stick → joy · B → trigger A · A → trigger B · keyboard pass-through for SPACE/ESC/F-keys"},
+    {"id": "msx1",         "name": "MSX", "target_controller": "joystick_1btn",
+     "fixed_mapping_note": "blueMSX / fMSX: D-pad/stick → joy · B → trigger A · A → trigger B · keyboard pass-through for SPACE/ESC/F-keys"},
+    {"id": "amstradcpc",   "name": "Amstrad CPC", "target_controller": "joystick_1btn",
+     "fixed_mapping_note": "Caprice32 (cap32): D-pad/stick → joy · B → fire 1 · A → fire 2 · X → SPACE · keyboard pass-through configurable via cap32_combokey"},
 ]
 
 
