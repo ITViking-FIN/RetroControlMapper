@@ -18,7 +18,11 @@
 //
 // Endpoint contract (shared with the backend stream):
 //   GET  /api/retrobat-root              → { root, found, probed }
-//   PUT  /api/retrobat-root?root=<path>  → { root, found, probed }   (echo)
+//   POST /api/retrobat-root              → { ok, root, found, message,
+//                                            restart_required, path_to_rbcfrc,
+//                                            error? }
+//      body: {"root": "<path>"}  persists to .rbcfrc and validates marker
+//      body: {"root": null}      clears .rbcfrc
 //   GET  /api/scan                       → { systems, totals }
 //   GET  /api/scaffold-all               → { preview, applied:false, count }
 //   GET  /api/scaffold-all?apply=true    → { preview, applied:true, count, written }
@@ -378,26 +382,237 @@
     if (state.primaryEl) state.primaryEl.disabled = false;
   }
 
+  // POST /api/retrobat-root with JSON body. Returns the parsed JSON for both
+  // 2xx (ok:true|false) and 4xx-with-JSON (ok:false). Throws with err.kind set
+  // to 'not-implemented' / 'http' / 'network' / 'json' for callers that want
+  // to render a generic "backend not running" message.
+  async function postRetrobatRoot(rootPath) {
+    let resp;
+    try {
+      resp = await fetch('/api/retrobat-root', {
+        method: 'POST',
+        headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ root: rootPath }),
+      });
+    } catch (e) {
+      const err = new Error('network: ' + e.message);
+      err.kind = 'network';
+      throw err;
+    }
+    if (resp.status === 404) {
+      const err = new Error('Backend endpoint not yet available — try again after server restart.');
+      err.kind = 'not-implemented';
+      err.status = 404;
+      throw err;
+    }
+    let body = null;
+    try {
+      body = await resp.json();
+    } catch (e) {
+      // No / bad JSON.
+      if (!resp.ok) {
+        const err = new Error(`POST /api/retrobat-root → ${resp.status}`);
+        err.kind = 'http';
+        err.status = resp.status;
+        throw err;
+      }
+      const err = new Error('Bad JSON from /api/retrobat-root');
+      err.kind = 'json';
+      throw err;
+    }
+    // 4xx-with-JSON: surface as a normal failure body so the caller can show
+    // the `error` field. Only treat as a hard HTTP error if the body has no
+    // `ok` field at all (i.e. it's not a structured rejection).
+    if (!resp.ok && (body == null || typeof body.ok === 'undefined')) {
+      const err = new Error(`POST /api/retrobat-root → ${resp.status}`);
+      err.kind = 'http';
+      err.status = resp.status;
+      throw err;
+    }
+    return body;
+  }
+
   async function submitRootOverride() {
     const input = document.getElementById('rbcf-onb-root-input');
     if (!input) return;
     const path = (input.value || '').trim();
     if (!path) return;
+    // Local-only fallback: lets the user see their last-typed path on reopen.
+    // No longer load-bearing for behaviour — .rbcfrc on the server side is.
     try { localStorage.setItem(ROOT_KEY, path); } catch (e) { /* ignore */ }
     const wrap = document.getElementById('rbcf-onb-root-status');
     if (wrap) {
       wrap.innerHTML = '';
       wrap.classList.remove('rbcf-onb-status-error', 'rbcf-onb-status-ok');
       wrap.appendChild(el('span', { class: 'rbcf-onb-spinner' }));
-      wrap.appendChild(el('span', { text: 'Re-checking…' }));
+      wrap.appendChild(el('span', { text: 'Saving…' }));
     }
+    let data;
     try {
-      const data = await fetchJson('PUT', '/api/retrobat-root?root=' + encodeURIComponent(path));
-      state.rootInfo = data;
-      paintRootStatus(data);
+      data = await postRetrobatRoot(path);
     } catch (e) {
-      paintRootError(e);
+      paintRootSaveGenericError(e);
+      return;
     }
+    if (data && data.ok) {
+      paintRootSaveSuccess(data);
+    } else {
+      paintRootSaveBadPath(data);
+    }
+  }
+
+  // Success + restart_required: green block, two buttons.
+  // (success without restart_required would be unusual — the backend always
+  // says restart_required when a write succeeds — but we treat it as plain
+  // success and let Continue advance.)
+  function paintRootSaveSuccess(data) {
+    const wrap = document.getElementById('rbcf-onb-root-status');
+    if (!wrap) return;
+    wrap.innerHTML = '';
+    wrap.classList.remove('rbcf-onb-status-error');
+    wrap.classList.add('rbcf-onb-status-ok');
+    wrap.appendChild(el('span', { class: 'rbcf-onb-check', 'aria-hidden': 'true', text: '✓' }));
+
+    const block = el('div', { class: 'rbcf-onb-status-msg' });
+    block.appendChild(el('strong', { text: 'Saved.' }));
+    const savedLine = el('div', {}, [
+      'Saved RetroBat root to ',
+      el('code', { text: data.path_to_rbcfrc || '.rbcfrc' }),
+      '.',
+    ]);
+    block.appendChild(savedLine);
+
+    if (data.restart_required) {
+      block.appendChild(el('p', {
+        class: 'rbcf-onb-muted',
+        text: 'Restart the server for this to take effect.',
+      }));
+
+      const btnRow = el('div', { class: 'rbcf-onb-rootform' });
+      const dismissBtn = el('button', {
+        type: 'button',
+        class: 'rbcf-onb-btn rbcf-onb-btn-secondary',
+        text: "I'll restart it manually",
+        onclick: () => {
+          // Just dismiss the inline status — leave the form visible so the
+          // user can re-enter / re-submit if needed.
+          const input = document.getElementById('rbcf-onb-root-input');
+          paintRootStatus(state.rootInfo || { found: false, probed: [] });
+          if (input) {
+            const fresh = document.getElementById('rbcf-onb-root-input');
+            if (fresh) fresh.value = input.value;
+          }
+        },
+      });
+      const tryAnywayBtn = el('button', {
+        type: 'button',
+        class: 'rbcf-onb-btn rbcf-onb-btn-tertiary',
+        text: 'Try anyway without restart',
+        onclick: () => {
+          // Advance to step 2 — the cached RETROBAT_ROOT is still wrong, so
+          // step 2 will surface the right error if it does, but the path is
+          // saved for next run.
+          goToStep2();
+        },
+      });
+      btnRow.appendChild(dismissBtn);
+      btnRow.appendChild(tryAnywayBtn);
+      block.appendChild(btnRow);
+    } else if (data.message) {
+      block.appendChild(el('p', { class: 'rbcf-onb-muted', text: data.message }));
+    }
+
+    wrap.appendChild(block);
+
+    // If the backend confirms found:true (i.e. it loaded immediately without
+    // restart), allow Continue.
+    if (data.found && state.primaryEl) {
+      state.rootInfo = { root: data.root, found: true, probed: [] };
+      state.primaryEl.disabled = false;
+    }
+  }
+
+  // failure — bad path: red block with the `error` field text.
+  function paintRootSaveBadPath(data) {
+    const wrap = document.getElementById('rbcf-onb-root-status');
+    if (!wrap) return;
+    wrap.innerHTML = '';
+    wrap.classList.remove('rbcf-onb-status-ok');
+    wrap.classList.add('rbcf-onb-status-error');
+    wrap.appendChild(el('span', { class: 'rbcf-onb-cross', 'aria-hidden': 'true', text: '!' }));
+
+    const errText = (data && data.error)
+      ? String(data.error)
+      : (data && data.message)
+        ? String(data.message)
+        : "That doesn't look like a RetroBat install.";
+
+    const block = el('div', { class: 'rbcf-onb-status-msg' }, [
+      el('strong', { text: "Couldn't save that path." }),
+      el('p', { class: 'rbcf-onb-muted', text: errText }),
+    ]);
+    wrap.appendChild(block);
+
+    // Re-render the form so the user can fix and retry.
+    rebuildRootOverrideForm(block);
+
+    if (state.primaryEl) state.primaryEl.disabled = true;
+  }
+
+  // failure — generic / network / 404: same gracefulness as the rest of the
+  // onboarding flow's "backend may not be running" path.
+  function paintRootSaveGenericError(e) {
+    const wrap = document.getElementById('rbcf-onb-root-status');
+    if (!wrap) return;
+    wrap.innerHTML = '';
+    wrap.classList.remove('rbcf-onb-status-ok');
+    wrap.classList.add('rbcf-onb-status-error');
+    wrap.appendChild(el('span', { class: 'rbcf-onb-cross', 'aria-hidden': 'true', text: '!' }));
+
+    const headline = (e && e.kind === 'not-implemented')
+      ? 'Backend not ready'
+      : "Couldn't save the path";
+    const sub = (e && e.kind === 'not-implemented')
+      ? 'Try again after the server restarts.'
+      : 'Backend may not be running.';
+
+    const block = el('div', { class: 'rbcf-onb-status-msg' }, [
+      el('strong', { text: headline }),
+      el('p', { class: 'rbcf-onb-muted', text: sub }),
+    ]);
+    wrap.appendChild(block);
+
+    rebuildRootOverrideForm(block);
+
+    if (state.primaryEl) state.primaryEl.disabled = true;
+  }
+
+  // Re-attach the path-input form to a status block so the user can retry
+  // after a failure. Pre-fills with the last-typed value from localStorage.
+  function rebuildRootOverrideForm(block) {
+    const override = (function () {
+      try { return localStorage.getItem(ROOT_KEY) || ''; } catch (e) { return ''; }
+    })();
+    const form = el('form', {
+      class: 'rbcf-onb-rootform',
+      onsubmit: (e) => { e.preventDefault(); submitRootOverride(); },
+    });
+    const input = el('input', {
+      type: 'text',
+      id: 'rbcf-onb-root-input',
+      class: 'rbcf-onb-input',
+      placeholder: 'E:\\RetroBat\\',
+      value: override,
+      'aria-label': 'RetroBat install root',
+    });
+    const submitBtn = el('button', {
+      type: 'submit',
+      class: 'rbcf-onb-btn rbcf-onb-btn-secondary',
+      text: 'Use this path',
+    });
+    form.appendChild(input);
+    form.appendChild(submitBtn);
+    block.appendChild(form);
   }
 
   // ----------------------------------------------------------------
