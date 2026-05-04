@@ -38,7 +38,12 @@ from typing import Iterable
 
 import yaml
 
-from config import ES_SETTINGS, RA_CORE_OPTS
+from config import ES_INPUT, ES_SETTINGS, RA_CORE_OPTS
+from guid_aliases import (
+    expand_inputconfig,
+    group_aliases,
+    parse_es_input,
+)
 
 ROOT = Path(__file__).resolve().parent
 PROFILES_DIR = ROOT / "profiles"
@@ -362,6 +367,120 @@ def cmd_revert(profiles: list[Profile], target_id: str):
         print(f"  - {r}")
 
 
+# ------------------------------ guid alias commands ------------------------------
+
+def _format_vidpid(vid: str, pid: str) -> str:
+    return f"{vid.lower()}:{pid.lower()}"
+
+
+def cmd_guid_status(es_input_path: Path = ES_INPUT):
+    """Read es_input.cfg, group aliases, print a table of alias groups."""
+    if not es_input_path.exists():
+        print(f"[info] {es_input_path} not found.")
+        print("       (no controllers configured yet, or RetroBat not installed)")
+        return
+    aliases = parse_es_input(es_input_path)
+    groups = group_aliases(aliases)
+    if not aliases:
+        print("[info] no <inputConfig type=\"joystick\"> blocks found.")
+        return
+
+    multi = {k: v for k, v in groups.items() if len(v) > 1}
+    singles = {k: v for k, v in groups.items() if len(v) == 1}
+
+    print(f"\nFound {len(aliases)} <inputConfig> joystick block(s) in {es_input_path}\n")
+    print(f"{'[vid:pid]':<14} pads in alias group")
+    # Order: alias groups first (most actionable), then singletons.
+    for key in sorted(multi):
+        entries = multi[key]
+        label = _format_vidpid(*key)
+        for i, a in enumerate(entries):
+            tag = "  (canonical)" if i == 0 else ""
+            prefix = label if i == 0 else " " * len(label)
+            name = a.device_name or "(no name)"
+            print(f"{prefix:<14} {name:<32}  GUID={a.guid}{tag}")
+        print()
+    for key in sorted(singles):
+        a = singles[key][0]
+        label = _format_vidpid(*key)
+        name = a.device_name or "(no name)"
+        print(f"{label:<14} {name:<32}  GUID={a.guid}  (singleton)")
+    print()
+    print(f"Summary: {len(multi)} alias group(s), {len(singles)} singleton(s), "
+          f"{len(aliases)} total device(s).")
+
+
+def cmd_guid_fold(target_id: str | None, dry: bool, es_input_path: Path = ES_INPUT):
+    """Fold every multi-alias group (or one matching --id <vid:pid>) into es_input.cfg."""
+    if not es_input_path.exists():
+        print(f"[fatal] {es_input_path} not found.")
+        sys.exit(1)
+    aliases = parse_es_input(es_input_path)
+    groups = group_aliases(aliases)
+    multi = {k: v for k, v in groups.items() if len(v) > 1}
+    if target_id:
+        try:
+            v, p = target_id.lower().split(":")
+        except ValueError:
+            print(f"[fatal] --id must be of form 'vid:pid' (got '{target_id}')")
+            sys.exit(1)
+        key = (v, p)
+        if key not in multi:
+            print(f"[info] no multi-alias group for {target_id} "
+                  f"(have {len(multi)} group(s); use 'rbcf guid status' to list).")
+            return
+        multi = {key: multi[key]}
+    if not multi:
+        print("[info] no alias groups need folding "
+              "(all VID:PIDs are singletons).")
+        return
+
+    mode = "DRY-RUN" if dry else "APPLY"
+    print(f"\nguid fold ({mode}) — {len(multi)} group(s) to process\n")
+    total_added = 0
+    total_kept = 0
+    for key in sorted(multi):
+        group = multi[key]
+        label = _format_vidpid(*key)
+        added, kept = expand_inputconfig(es_input_path, group, dry=dry)
+        total_added += added
+        total_kept += kept
+        print(f"  [{label}] canonical='{group[0].device_name or '(no name)'}' "
+              f"-> +{added} added, ={kept} kept")
+    print()
+    if dry:
+        print(f"Would add {total_added} <inputConfig> block(s), "
+              f"keep {total_kept} existing.")
+        print("Re-run with --apply to actually write.")
+    else:
+        print(f"Wrote {total_added} new <inputConfig> block(s) "
+              f"({total_kept} existing kept).")
+        if total_added:
+            print(f"Backup tag: .bak.rbcf.{datetime.now():%Y%m%d}")
+
+
+def cmd_guid_help():
+    print("""
+rbcf guid — SDL controller GUID alias management
+
+Subcommands:
+  status                Read es_input.cfg, list alias groups + singletons.
+  fold [opts]           Duplicate <inputConfig> blocks across all GUIDs in
+                        an alias group, mirroring the canonical block's
+                        button mapping. Defaults to --dry-run.
+    --id <vid:pid>      Fold only the named group (e.g. '2dc8:3106').
+    --dry-run           Preview only (default).
+    --apply             Actually rewrite es_input.cfg.
+  help                  This message.
+
+Background: a single physical pad can present under multiple SDL GUIDs
+(USB vs Bluetooth, driver swap, etc.) — RetroBat treats each as a fresh
+device and 'forgets' the mapping. 'fold' writes the same mapping under
+every known alias GUID so any reconnect path resolves cleanly.
+See docs/GUID_DRIFT_DESIGN.md for the full design.
+""".strip())
+
+
 def cmd_validate(profiles: list[Profile]):
     issues = 0
     for p in profiles:
@@ -394,7 +513,32 @@ def main():
     r = sub.add_parser("revert",   help="Remove one profile's es_settings entries")
     r.add_argument("--id", required=True)
     sub.add_parser("validate", help="Lint profiles for issues")
+
+    g = sub.add_parser("guid", help="Manage SDL controller GUID aliases (es_input.cfg)")
+    g_sub = g.add_subparsers(dest="guid_cmd", required=True)
+    g_sub.add_parser("status", help="List alias groups in es_input.cfg")
+    g_sub.add_parser("help",   help="Show guid subcommand help")
+    gf = g_sub.add_parser("fold", help="Fold alias groups into es_input.cfg")
+    gf.add_argument("--id", help="Fold only this VID:PID group (e.g. '2dc8:3106')")
+    mode = gf.add_mutually_exclusive_group()
+    mode.add_argument("--dry-run", action="store_true",
+                      help="Preview only (default).")
+    mode.add_argument("--apply", action="store_true",
+                      help="Actually rewrite es_input.cfg.")
+
     args = ap.parse_args()
+
+    # `guid` commands don't need profiles loaded — handle early.
+    if args.cmd == "guid":
+        if args.guid_cmd == "status":
+            cmd_guid_status()
+        elif args.guid_cmd == "fold":
+            # default: dry-run unless --apply
+            dry = not args.apply
+            cmd_guid_fold(args.id, dry=dry)
+        else:  # help
+            cmd_guid_help()
+        return
 
     profiles = load_profiles()
     if not profiles:

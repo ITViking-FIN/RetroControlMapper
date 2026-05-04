@@ -251,6 +251,7 @@ else:
 
 ES_SETTINGS: Path = _ROOT_OR_SENTINEL / "emulationstation" / ".emulationstation" / "es_settings.cfg"
 ES_SYSTEMS_CFG: Path = _ROOT_OR_SENTINEL / "emulationstation" / ".emulationstation" / "es_systems.cfg"
+ES_INPUT: Path = _ROOT_OR_SENTINEL / "emulationstation" / ".emulationstation" / "es_input.cfg"
 RA_CORE_OPTS: Path = _ROOT_OR_SENTINEL / "emulators" / "retroarch" / "retroarch-core-options.cfg"
 BEZELS_DIR: Path = _ROOT_OR_SENTINEL / "decorations" / "thebezelproject" / "systems"
 ROMS_ROOT: Path = _ROOT_OR_SENTINEL / "roms"
@@ -265,6 +266,7 @@ __all__ = [
     "RETROBAT_ROOT",
     "ES_SETTINGS",
     "ES_SYSTEMS_CFG",
+    "ES_INPUT",
     "RA_CORE_OPTS",
     "BEZELS_DIR",
     "ROMS_ROOT",
