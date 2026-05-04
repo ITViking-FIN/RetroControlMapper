@@ -23,9 +23,12 @@
 //                                            error? }
 //      body: {"root": "<path>"}  persists to .rbcfrc and validates marker
 //      body: {"root": null}      clears .rbcfrc
-//   GET  /api/scan                       → { systems, totals }
+//   GET  /api/scan                       → { systems, totals, bezels_with_cutoffs }
 //   GET  /api/scaffold-all               → { preview, applied:false, count }
 //   GET  /api/scaffold-all?apply=true    → { preview, applied:true, count, written }
+//   GET  /api/bezel-cutoffs              → { cutoffs, applied:false, count }
+//   GET  /api/bezel-cutoffs?apply=true   → { cutoffs, applied:true, count, written,
+//                                            skipped_existing? }
 //
 // 404 from any endpoint → backend not yet available, show inline notice
 // + still let the user "Skip onboarding for now".
@@ -774,7 +777,182 @@
 
       updatePrimaryForMode();
     }
+
+    // Bezel-cutoff callout: non-blocking, sits below scaffolds. Renders only
+    // when the scan reported >0 bezels needing fix-ups. Scaffolding and
+    // bezel-fixing are independent — user can do either, both, or neither.
+    const bezelCount = Number(data && data.bezels_with_cutoffs) || 0;
+    if (bezelCount > 0) {
+      wrap.appendChild(buildBezelCallout(bezelCount));
+    }
+
     focusPrimary();
+  }
+
+  // ----------------------------------------------------------------
+  // Bezel-cutoff callout (renders inside step 2, below the systems table)
+  // ----------------------------------------------------------------
+
+  // Reuses the .rbcf-onb-status / .rbcf-onb-status-msg / .rbcf-onb-banner
+  // / .rbcf-onb-preview-* / .rbcf-onb-pill / .rbcf-onb-mode-btn class
+  // families already defined in style.css — no new CSS required.
+  function buildBezelCallout(initialCount) {
+    const callout = el('div', {
+      class: 'rbcf-onb-status rbcf-onb-bezel-callout',
+      id: 'rbcf-onb-bezel-callout',
+      role: 'group',
+      'aria-labelledby': 'rbcf-onb-bezel-headline',
+    });
+
+    const block = el('div', { class: 'rbcf-onb-status-msg' });
+    block.appendChild(el('strong', {
+      id: 'rbcf-onb-bezel-headline',
+      text: `${initialCount} bezel${initialCount === 1 ? '' : 's'} in your install ` +
+            `${initialCount === 1 ? 'has' : 'have'} auto-detect cutoffs`,
+    }));
+    block.appendChild(el('p', {
+      class: 'rbcf-onb-muted',
+      text: 'The default RetroBat alpha threshold (235) crops some game viewports. ' +
+            'Tighter detection (alpha 32) recovers the full play area.',
+    }));
+
+    const btnRow = el('div', { class: 'rbcf-onb-rootform' });
+
+    const showBtn = el('button', {
+      type: 'button',
+      class: 'rbcf-onb-btn rbcf-onb-btn-secondary',
+      'aria-expanded': 'false',
+      'aria-controls': 'rbcf-onb-bezel-details',
+      text: 'Show details ⌄',
+    });
+    const skipBtn = el('button', {
+      type: 'button',
+      class: 'rbcf-onb-btn rbcf-onb-btn-tertiary',
+      text: 'Skip — leave bezels alone',
+      onclick: () => {
+        // No localStorage flag — re-prompts on next onboarding (per spec).
+        if (callout.parentNode) callout.parentNode.removeChild(callout);
+        lightToast('Bezels left unchanged.', 'info');
+      },
+    });
+    btnRow.appendChild(showBtn);
+    btnRow.appendChild(skipBtn);
+    block.appendChild(btnRow);
+
+    // Lazy-loaded details panel — populated when user clicks "Show details".
+    const details = el('div', {
+      class: 'rbcf-onb-bezel-details',
+      id: 'rbcf-onb-bezel-details',
+      hidden: '',
+    });
+    block.appendChild(details);
+
+    showBtn.addEventListener('click', () => {
+      const expanded = showBtn.getAttribute('aria-expanded') === 'true';
+      if (expanded) {
+        showBtn.setAttribute('aria-expanded', 'false');
+        showBtn.textContent = 'Show details ⌄';
+        details.hidden = true;
+      } else {
+        showBtn.setAttribute('aria-expanded', 'true');
+        showBtn.textContent = 'Hide details ⌃';
+        details.hidden = false;
+        if (!details.dataset.loaded) {
+          loadBezelDetails(details, callout);
+        }
+      }
+    });
+
+    callout.appendChild(block);
+    return callout;
+  }
+
+  async function loadBezelDetails(details, callout) {
+    details.innerHTML = '';
+    details.appendChild(el('div', { class: 'rbcf-onb-loading' }, [
+      el('span', { class: 'rbcf-onb-spinner' }),
+      el('span', { text: 'Inspecting bezels…' }),
+    ]));
+    let data;
+    try {
+      data = await fetchJson('GET', '/api/bezel-cutoffs');
+    } catch (e) {
+      details.innerHTML = '';
+      details.appendChild(el('div', { class: 'rbcf-onb-status rbcf-onb-status-error' }, [
+        el('span', { class: 'rbcf-onb-cross', 'aria-hidden': 'true', text: '!' }),
+        el('div', { class: 'rbcf-onb-status-msg' }, [
+          el('strong', { text: e.kind === 'not-implemented' ? 'Backend endpoint not yet available' : 'Bezel scan failed' }),
+          el('p', { class: 'rbcf-onb-muted', text: e.kind === 'not-implemented' ? 'Try again after the server restarts.' : e.message }),
+        ]),
+      ]));
+      return;
+    }
+    details.dataset.loaded = '1';
+    details.innerHTML = '';
+
+    const cutoffs = (data && Array.isArray(data.cutoffs)) ? data.cutoffs : [];
+    const count = data && typeof data.count === 'number' ? data.count : cutoffs.length;
+    if (count === 0) {
+      details.appendChild(el('p', {
+        class: 'rbcf-onb-muted',
+        text: 'No bezels need fixing — the on-disk scan came up empty on the second pass. You can dismiss this callout.',
+      }));
+      return;
+    }
+
+    const ul = el('ul', { class: 'rbcf-onb-preview-files' });
+    for (const c of cutoffs) {
+      const sys = c.system || '?';
+      const sz = c.image_size || {};
+      const vp = c.viewport || {};
+      const pct = c.cutoff_pct || {};
+      const playW = (typeof vp.r === 'number' && typeof vp.l === 'number') ? (vp.r - vp.l) : null;
+      const playH = (typeof vp.b === 'number' && typeof vp.t === 'number') ? (vp.b - vp.t) : null;
+      const sizeLine = (sz.w && sz.h && playW && playH)
+        ? `${sz.w}×${sz.h} → play area ${playW}×${playH}`
+        : '(size unknown)';
+      const pctLine = (typeof pct.x === 'number' || typeof pct.y === 'number')
+        ? `cutoff: ${pct.x ?? 0}% horizontal, ${pct.y ?? 0}% vertical`
+        : '';
+      const item = el('li', {}, [
+        el('span', { class: 'rbcf-onb-rom', text: sys }),
+        el('span', { class: 'rbcf-onb-arrow', 'aria-hidden': 'true', text: ' → ' }),
+        el('code', { text: sizeLine }),
+        pctLine ? el('span', { class: 'rbcf-onb-pill', text: pctLine }) : null,
+        c.current_info_exists
+          ? el('span', { class: 'rbcf-onb-pill', title: 'An .info already exists; this bezel will be skipped (delete to re-write).', text: '.info exists' })
+          : null,
+      ]);
+      ul.appendChild(item);
+    }
+    details.appendChild(ul);
+
+    const fixRow = el('div', { class: 'rbcf-onb-rootform' });
+    const fixBtn = el('button', {
+      type: 'button',
+      class: 'rbcf-onb-btn rbcf-onb-btn-primary',
+      text: `Fix ${count} bezel${count === 1 ? '' : 's'}`,
+    });
+    fixBtn.addEventListener('click', async () => {
+      fixBtn.disabled = true;
+      fixBtn.textContent = 'Applying…';
+      try {
+        const res = await fetchJson('GET', '/api/bezel-cutoffs?apply=true');
+        const wrote = (res && Array.isArray(res.written)) ? res.written.length : 0;
+        const skipped = (res && Array.isArray(res.skipped_existing)) ? res.skipped_existing.length : 0;
+        const msg = skipped
+          ? `Wrote ${wrote} .info file${wrote === 1 ? '' : 's'} (${skipped} skipped — already existed).`
+          : `Wrote ${wrote} .info file${wrote === 1 ? '' : 's'}.`;
+        lightToast(msg, 'success');
+        if (callout && callout.parentNode) callout.parentNode.removeChild(callout);
+      } catch (e) {
+        fixBtn.disabled = false;
+        fixBtn.textContent = `Retry fix ${count}`;
+        lightToast('Bezel fix failed: ' + e.message, 'error');
+      }
+    });
+    fixRow.appendChild(fixBtn);
+    details.appendChild(fixRow);
   }
 
   function paintScanError(e) {

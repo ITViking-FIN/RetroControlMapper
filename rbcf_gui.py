@@ -5,16 +5,23 @@ Usage:
     py rbcf_gui.py [--port 8765] [--no-open]
 
 Endpoints:
-    GET  /                          index.html
-    GET  /static-files (any)        served from gui/
-    GET  /api/systems               list of supported systems
-    GET  /api/games?system=X        list of ROMs in roms/<system>/
-    GET  /api/profile?system&rom    existing profile YAML (or {})
-    GET  /api/retrobat-root         RetroBat install probe result (onboarding)
-    GET  /api/scan                  per-system rom/profile counts (onboarding)
-    GET  /api/scaffold-all[?apply]  preview/write T-confidence scaffolds
-    POST /api/save                  write a profile YAML
-    POST /api/apply                 invoke rbcf.py apply as subprocess
+    GET  /                              index.html
+    GET  /static-files (any)            served from gui/
+    GET  /api/systems                   list of supported systems
+    GET  /api/games?system=X            list of ROMs in roms/<system>/
+    GET  /api/profile?system&rom        existing profile YAML (or {})
+    GET  /api/retrobat-root             RetroBat install probe result (onboarding)
+    GET  /api/scan                      per-system rom/profile counts (onboarding).
+                                        Includes top-level `bezels_with_cutoffs`
+                                        count (number of <system>.png bezels whose
+                                        alpha-235 auto-detect would cut off the
+                                        play area, vs the strict alpha-32 detect).
+    GET  /api/scaffold-all[?apply]      preview/write T-confidence scaffolds
+    GET  /api/scaffold-defaults[?apply] preview/write _default.yaml scaffolds
+    GET  /api/bezel-cutoffs[?apply]     preview/write bezel <system>.info sidecars
+                                        for bezels with alpha-235 cutoff.
+    POST /api/save                      write a profile YAML
+    POST /api/apply                     invoke rbcf.py apply as subprocess
 """
 from __future__ import annotations
 
@@ -35,7 +42,7 @@ from pathlib import Path
 import yaml
 
 from config import (
-    RETROBAT_ROOT, ROMS_ROOT, ES_SYSTEMS_CFG, RBCFRC_PATH,
+    RETROBAT_ROOT, ROMS_ROOT, ES_SYSTEMS_CFG, BEZELS_DIR, RBCFRC_PATH,
     write_rbcfrc, clear_rbcfrc, _probed_locations_summary,
 )
 from rbcf import load_profiles
@@ -794,6 +801,189 @@ def _scaffold_defaults(apply: bool) -> dict:
     return result
 
 
+# ----- bezel cutoff detection -----
+
+# Strict and lenient alpha thresholds — see calibrate_bezels.py docstring.
+# 32 = strict (excludes anti-aliased edges and glass effects from the play area).
+# 235 = RetroBat's own auto-detect default (too lenient — the cause of the cutoff bug).
+_BEZEL_STRICT_ALPHA = 32
+_BEZEL_LENIENT_ALPHA = 235
+# A bezel is reported as "cutoff" if the strict play-area is materially smaller
+# than the lenient one. 5% of either dimension is the threshold below which we
+# consider the difference negligible (anti-aliasing only, not real cutoff).
+_BEZEL_CUTOFF_PCT_THRESHOLD = 5.0
+
+
+def _scan_bezels() -> list[dict]:
+    """Walk BEZELS_DIR and detect bezels whose RetroBat auto-detect would
+    let the game image render past the bezel frame.
+
+    For each <system>.png:
+      - compute the bounding box of pixels with alpha <= 32 (strict / correct)
+      - compute the bounding box of pixels with alpha <= 235 (lenient ≈ RetroBat
+        default; close enough that anti-aliased + glass-effect pixels get
+        wrongly counted as play area, which is the bug we're detecting)
+      - if the strict box is materially smaller (> 5% of either dimension),
+        report it as a cutoff candidate
+
+    Returns a list of dicts:
+        [{system, bezel_path, current_info_exists, cutoff_pct: {x, y},
+          viewport: {l, t, r, b}, image_size: {w, h}}, ...]
+
+    Empty list if BEZELS_DIR doesn't exist or RetroBat isn't found.
+    Reuses calibrate_bezels.find_play_area — no reimplementation.
+    """
+    if RETROBAT_ROOT is None or not BEZELS_DIR.exists():
+        return []
+
+    try:
+        # Lazy import: keeps cold-start fast and avoids loading PIL until used.
+        from PIL import Image  # type: ignore
+        from calibrate_bezels import find_play_area
+    except ImportError as e:
+        print(f"[bezel-scan] missing dependency: {e}", file=sys.stderr)
+        return []
+
+    out: list[dict] = []
+    try:
+        pngs = sorted(BEZELS_DIR.glob("*.png"))
+    except OSError:
+        return []
+
+    for png in pngs:
+        try:
+            with Image.open(png) as im:
+                w, h = im.size
+                strict_bbox = find_play_area(im, _BEZEL_STRICT_ALPHA)
+                lenient_bbox = find_play_area(im, _BEZEL_LENIENT_ALPHA)
+        except (OSError, ValueError) as e:
+            print(f"[bezel-scan] {png.name}: {e}", file=sys.stderr)
+            continue
+
+        if strict_bbox is None or lenient_bbox is None:
+            # Either no transparency at all (skip — not a bezel-shaped image)
+            # or the strict pass found nothing while the lenient one did,
+            # which means the image has only soft edges — not a cutoff.
+            continue
+
+        s_l, s_t, s_r, s_b = strict_bbox
+        l_l, l_t, l_r, l_b = lenient_bbox
+        s_w, s_h = max(s_r - s_l, 0), max(s_b - s_t, 0)
+        l_w, l_h = max(l_r - l_l, 0), max(l_b - l_t, 0)
+        if s_w == 0 or s_h == 0 or l_w == 0 or l_h == 0:
+            continue
+
+        # Cutoff = how much MORE area the lenient bbox claims vs the strict one,
+        # as a percentage of the lenient size. If lenient is much bigger, the
+        # game image will render past the bezel frame using RetroBat's defaults.
+        x_pct = ((l_w - s_w) / l_w) * 100.0 if l_w > s_w else 0.0
+        y_pct = ((l_h - s_h) / l_h) * 100.0 if l_h > s_h else 0.0
+        if x_pct <= _BEZEL_CUTOFF_PCT_THRESHOLD and y_pct <= _BEZEL_CUTOFF_PCT_THRESHOLD:
+            continue
+
+        info_path = png.with_suffix(".info")
+        out.append({
+            "system": png.stem,
+            "bezel_path": str(png).replace("\\", "/"),
+            "current_info_exists": info_path.exists(),
+            "cutoff_pct": {
+                "x": round(x_pct, 2),
+                "y": round(y_pct, 2),
+            },
+            "viewport": {
+                "l": int(s_l),
+                "t": int(s_t),
+                "r": int(s_r),
+                "b": int(s_b),
+            },
+            "image_size": {"w": int(w), "h": int(h)},
+        })
+
+    return out
+
+
+def _bezel_cutoffs(apply: bool) -> dict:
+    """Build the response for GET /api/bezel-cutoffs (preview or apply).
+
+    Preview: returns {cutoffs: [...], applied: false, count: N}.
+    Apply: writes <system>.info sidecars for each cutoff bezel using
+    calibrate_bezels' margin/info schema. Returns the preview list, plus
+    `applied: true` and `written: [paths]`.
+
+    Existing .info files are NEVER overwritten — they're skipped (and
+    excluded from `written`). Path-traversal: every write target must
+    resolve under BEZELS_DIR; refuse otherwise.
+    """
+    cutoffs = _scan_bezels()
+    result: dict = {
+        "cutoffs": cutoffs,
+        "applied": False,
+        "count": len(cutoffs),
+    }
+    if not apply:
+        return result
+    if not cutoffs:
+        result["applied"] = True
+        result["written"] = []
+        return result
+
+    # Lazy import again; we only get here on apply.
+    try:
+        from PIL import Image  # type: ignore
+        from calibrate_bezels import (
+            find_play_area, margins_from_bbox, write_info,
+        )
+    except ImportError as e:
+        result["error"] = f"missing dependency: {e}"
+        return result
+
+    bezels_root: Path
+    try:
+        bezels_root = BEZELS_DIR.resolve()
+    except OSError as e:
+        result["error"] = f"could not resolve BEZELS_DIR: {e}"
+        return result
+
+    written: list[str] = []
+    skipped_existing: list[str] = []
+    for c in cutoffs:
+        png = Path(c["bezel_path"])
+        info_target = png.with_suffix(".info")
+        try:
+            resolved_target = info_target.resolve()
+        except OSError:
+            continue
+        # Path-traversal guard: target must live inside BEZELS_DIR.
+        try:
+            resolved_target.relative_to(bezels_root)
+        except ValueError:
+            print(f"[bezel-cutoffs] refusing path outside bezels dir: {info_target}",
+                  file=sys.stderr)
+            continue
+        if info_target.exists():
+            # Never overwrite existing .info — user can delete to force re-write.
+            skipped_existing.append(str(info_target).replace("\\", "/"))
+            continue
+        try:
+            with Image.open(png) as im:
+                w, h = im.size
+                bbox = find_play_area(im, _BEZEL_STRICT_ALPHA)
+                if bbox is None:
+                    continue
+                m = margins_from_bbox(bbox, w, h)
+                if write_info(png, w, h, m, dry_run=False):
+                    written.append(str(info_target).replace("\\", "/"))
+        except (OSError, ValueError) as e:
+            print(f"[bezel-cutoffs] failed to write {info_target}: {e}", file=sys.stderr)
+            continue
+
+    result["applied"] = True
+    result["written"] = written
+    if skipped_existing:
+        result["skipped_existing"] = skipped_existing
+    return result
+
+
 def _set_retrobat_root(data: dict) -> dict:
     """Persist a user-supplied RetroBat root path to .rbcfrc.
 
@@ -912,7 +1102,17 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if u.path == "/api/retrobat-root":
             return self._json(_retrobat_root_payload())
         if u.path == "/api/scan":
-            return self._json(_scan_systems())
+            payload = _scan_systems()
+            # Cheap-ish supplement so the UI can surface a "fix N bezels"
+            # callout in step 2 without a second round-trip. _scan_bezels is
+            # bounded by the number of system PNGs in BEZELS_DIR (~100s, not
+            # 100Ks like ROMs) so it's safe to inline here.
+            try:
+                payload["bezels_with_cutoffs"] = len(_scan_bezels())
+            except Exception as e:  # belt-and-braces: never block /api/scan
+                print(f"[scan] bezel sub-scan failed: {e}", file=sys.stderr)
+                payload["bezels_with_cutoffs"] = 0
+            return self._json(payload)
         if u.path == "/api/scaffold-all":
             q = self._query()
             apply_flag = (q.get("apply", ["false"])[0] or "").strip().lower() in ("1", "true", "yes")
@@ -921,6 +1121,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             q = self._query()
             apply_flag = (q.get("apply", ["false"])[0] or "").strip().lower() in ("1", "true", "yes")
             return self._json(_scaffold_defaults(apply=apply_flag))
+        if u.path == "/api/bezel-cutoffs":
+            q = self._query()
+            apply_flag = (q.get("apply", ["false"])[0] or "").strip().lower() in ("1", "true", "yes")
+            return self._json(_bezel_cutoffs(apply=apply_flag))
         if u.path in ("", "/"):
             self.path = "/index.html"
         return super().do_GET()
