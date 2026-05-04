@@ -1,0 +1,28 @@
+system: mame
+rom: "sf2.zip"
+title: "Street Fighter II: The World Warrior"
+year: 1991
+confidence: T
+notes: |
+  Capcom CPS-1. 6-button fighter — needs all six face/shoulder buttons mapped:
+  3 punches (LP/MP/HP) + 3 kicks (LK/MK/HK). The conventional pad layout is
+  Y/X/R = LP/MP/HP and B/A/RT = LK/MK/HK (or face row = punches, shoulder row
+  = kicks).
+
+  Verify the actual romset name — sf2.zip is one of many parents
+  (sf2ce, sf2hf, sf2t, sf2ua...). User may have a regional set.
+
+  This is a strong candidate for a custom MAME .cfg per-rom file rather than
+  pure libretro coreoption tweaks. mame_buttons_profiles=enabled gives a
+  sensible 6-button default; only override if the user reports it feels wrong.
+es_settings:
+  mame_buttons_profiles: "enabled"
+button_semantics:
+  Y: "Light Punch"
+  X: "Medium Punch"
+  R: "Heavy Punch"
+  B: "Light Kick"
+  A: "Medium Kick"
+  R2: "Heavy Kick"
+  Start: "1P Start"
+  Select: "Coin"

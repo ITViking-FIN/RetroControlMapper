@@ -1,0 +1,20 @@
+system: atarist
+rom: "Lemmings.st"
+title: "Lemmings"
+year: 1991
+confidence: T
+notes: |
+  DMA Design's puzzle classic. MOUSE-DRIVEN — the bottom toolbar is point-and-
+  click for assigning skills; joystick play is essentially impossible.
+
+  Same control template as Dungeon Master: analog stick → mouse, B/A → mouse
+  buttons. Speed-up / slow-down keys (F1-F3 area) reach via keyboard
+  pass-through.
+es_settings:
+  hatari_machinetype: "st"
+  hatari_ramsize: "1"
+button_semantics:
+  L3: "mouse XY"
+  B:  "left mouse — assign skill / select"
+  A:  "right mouse — toolbar cycle (some versions)"
+  Start: "P / pause"

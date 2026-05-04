@@ -1,0 +1,16 @@
+system: mame
+rom: "galaga.zip"
+title: "Galaga"
+year: 1981
+confidence: T
+notes: |
+  Namco. Vertical shooter — 8-way joystick (effectively left/right + fire).
+  Vertical aspect ratio: MAME / RetroArch handles rotation via the rotated
+  parent set; we don't override here.
+
+  Single fire button. Pac-Man-style minimal control surface; no MAME tweaks
+  needed beyond defaults.
+button_semantics:
+  Select: "Coin"
+  Start:  "1P Start"
+  B:      "Fire"

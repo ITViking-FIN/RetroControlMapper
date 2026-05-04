@@ -1,0 +1,18 @@
+system: zxspectrum
+rom: "Manic Miner.tap"
+title: "Manic Miner"
+year: 1983
+confidence: T
+notes: |
+  Matthew Smith / Bug-Byte. Single-screen platformer. Original keys:
+  Q/W or A/Z = left, P/I or X/M = right, Space = jump. There's no
+  fire button — jump-and-direction is the whole vocabulary.
+
+  Joystick play (Kempston) works on most reissues; for the original tape
+  the menu lets you pick keys at the start.
+es_settings:
+  zx_controller1: "513"
+button_semantics:
+  Left:  "walk left"
+  Right: "walk right"
+  B:     "jump (Space)"

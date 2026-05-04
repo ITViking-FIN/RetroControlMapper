@@ -1,0 +1,36 @@
+system: atarist
+title: Atari ST system defaults
+confidence: T
+notes: |
+  Cross-game defaults for Atari ST (Hatari libretro core, plus hatarib variant).
+
+  Most ST games are joystick-on-port-1 + occasional keyboard cues. The libretro
+  hatari core uses physical keyboard pass-through by default — most games "just
+  work" with a joypad in port 1 and the host keyboard as the ST keyboard.
+
+  RetroBat MANAGES the following hatari core options (do NOT put them in
+  core_options — use es_settings instead, where they get re-derived on launch):
+    hatari_tosimage, hatari_machinetype, hatari_ramsize,
+    hatari_video_crop_overscan, hatari_fastboot, hatari_twojoy,
+    hatari_led_status_display
+  Source: emulatorlauncher/Generators/LibRetro.CoreOptions.cs ConfigureHatari().
+
+  Standalone Hatari (Hatari.Generator.cs) writes the underlying .ini directly
+  from the same SystemConfig keys (hatari_machine, hatari_tos, hatari_frequency,
+  hatari_memory, hatari_fastboot, hatari_joypad, hatari_autofire, hatari_vsync,
+  hatari_autosave). Putting these in es_settings covers both emulator paths.
+
+  Keys below in core_options are NOT in either ConfigureHatari() or
+  Hatari.Generator.cs's WriteValue list, so they survive regeneration.
+es_settings:
+  hatari_machinetype: "st"
+  hatari_ramsize: "1"
+  hatari_fastboot: "true"
+core_options:
+  # verify against ConfigureHatari() before V-promoting
+  hatari_borders: "disabled"            # tighter viewport — most games don't use overscan
+  hatari_statusbar: "disabled"          # hide the LED bar — clean output
+  hatari_aspect_ratio: "auto"           # let core pick PAR
+button_semantics:
+  B: "joystick fire (default mapper)"
+  Start: "F1 / pause (game-dependent)"

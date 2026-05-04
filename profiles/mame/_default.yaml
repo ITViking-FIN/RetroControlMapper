@@ -1,0 +1,41 @@
+system: mame
+title: MAME system defaults
+confidence: T
+notes: |
+  Cross-game defaults for MAME (libretro core, current upstream).
+
+  MAME is a special case for this tool: most per-game behaviour lives in the
+  per-rom MAME .cfg XML (saves/mame/cfg/<rom>.cfg) and in mame.ini, both of
+  which RetroBat partially manages via UpdateOrCreateMameConfigFiles() and
+  ConfigureMameini(). Libretro core_options for the 'mame' core are mostly
+  bindings to the same SystemConfig features that drive those files.
+
+  RetroBat MANAGES these mame core_options on every launch (do NOT put them
+  in core_options here — they will be clobbered):
+    mame_softlists_enable, mame_softlists_auto_media, mame_write_config,
+    mame_mame_paths_enable, mame_saves, mame_mouse_enable, mame_auto_save,
+    mame_buttons_profiles, mame_read_config, mame_alternate_renderer,
+    mame_altres, mame_cheats_enable, mame_mame_4way_enable,
+    mame_lightgun_mode, mame_rotation_mode, mame_thread_mode,
+    mame_throttle, mame_boot_to_bios, mame_boot_to_osd
+  Source: emulatorlauncher/Generators/LibRetro.CoreOptions.cs ConfigureMame().
+
+  The es_settings keys below are the corresponding RetroBat features that the
+  launcher consumes and turns INTO those core_options. Setting them here per-
+  system (or per-rom) is the supported way to override.
+
+  We keep core_options empty for MAME defaults — see per-rom yamls if a
+  specific game needs an unmanaged knob. mame_buttons_profiles=enabled is the
+  RetroBat default and gives the broadest "just works" pad mapping for arcade.
+es_settings:
+  mame_buttons_profiles: "enabled"
+  mame_read_config: "enabled"
+button_semantics:
+  Start: "P1 Start (Start)"
+  Select: "P1 Coin (Select)"
+  B: "Button 1"
+  A: "Button 2"
+  Y: "Button 3"
+  X: "Button 4"
+  L: "Button 5"
+  R: "Button 6"

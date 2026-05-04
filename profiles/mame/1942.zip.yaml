@@ -1,0 +1,15 @@
+system: mame
+rom: "1942.zip"
+title: "1942"
+year: 1984
+confidence: T
+notes: |
+  Capcom. Vertical shooter. 8-way joystick + 2 buttons (fire + loop/dodge).
+  No 4-way restriction needed.
+
+  B = fire (primary), A = loop (the iconic Capcom barrel-roll dodge).
+button_semantics:
+  B:      "Fire"
+  A:      "Loop / dodge"
+  Select: "Coin"
+  Start:  "1P Start"

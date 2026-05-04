@@ -1,0 +1,18 @@
+system: atarist
+rom: "Speedball 2.st"
+title: "Speedball 2: Brutal Deluxe"
+year: 1990
+confidence: T
+notes: |
+  Bitmap Brothers classic. Pure 1-button joystick on port 1 — fire = throw/tackle,
+  hold-fire-and-direction is the whole control vocabulary. Auto-fire feels
+  appropriate here for sustained pressure.
+
+  Verify the actual rom filename on the user's machine — .st / .stx / .msa /
+  .zip all possible.
+es_settings:
+  hatari_machinetype: "st"
+  hatari_ramsize: "1"
+  hatari_autofire: "true"
+button_semantics:
+  B: "fire — throw / tackle / pickup"

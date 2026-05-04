@@ -1,0 +1,17 @@
+system: zxspectrum
+rom: "Jet Set Willy.tap"
+title: "Jet Set Willy"
+year: 1984
+confidence: T
+notes: |
+  Software Projects, the Manic Miner sequel. Same control vocabulary —
+  walk + jump. Original tape lets you select Kempston / Sinclair / cursor
+  / keyboard at boot.
+
+  Famous for the music-loops-forever bug. No control implications.
+es_settings:
+  zx_controller1: "513"
+button_semantics:
+  Left:  "walk left"
+  Right: "walk right"
+  B:     "jump (Space)"

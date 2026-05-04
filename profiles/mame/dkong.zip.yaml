@@ -1,0 +1,17 @@
+system: mame
+rom: "dkong.zip"
+title: "Donkey Kong"
+year: 1981
+confidence: T
+notes: |
+  Nintendo. 4-way joystick (cardinal-only — diagonals on the cabinet caused
+  Mario to misjump). mame_mame_4way_enable on for the authentic feel —
+  diagonals should be rejected as in the arcade.
+
+  Single fire button = jump.
+es_settings:
+  mame_mame_4way_enable: "enabled"
+button_semantics:
+  B:      "Jump"
+  Select: "Coin"
+  Start:  "1P Start"

@@ -1,0 +1,21 @@
+system: atarist
+rom: "Dungeon Master.st"
+title: "Dungeon Master"
+year: 1987
+confidence: T
+notes: |
+  FTL's grid-based dungeon crawler. MOUSE-DRIVEN — the entire UI (movement
+  arrows, hand icons, spell runes) is point-and-click. A pure joypad cannot
+  realistically play this; analog stick → mouse mode is the reasonable default.
+
+  Needs the host mouse OR an analog stick mapped to mouse. The libretro hatari
+  core exposes mouse via the standard libretro mouse device on port 1 — make
+  sure the controller profile maps right-stick (or left-stick when no movement
+  binding is needed) to mouse XY before promoting to V.
+es_settings:
+  hatari_machinetype: "st"
+  hatari_ramsize: "1"
+button_semantics:
+  L3: "mouse XY (analog stick → mouse)"
+  B:  "left mouse button — click / select / cast"
+  A:  "right mouse button — back / cancel"

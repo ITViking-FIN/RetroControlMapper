@@ -1,0 +1,35 @@
+system: amiga500
+title: Amiga 500 system defaults
+confidence: T
+notes: |
+  PROPOSED upgrade for amiga500/_default.yaml — leave the existing one as-is
+  while the user reviews this side-by-side.
+
+  Current _default.yaml is bare (just a "T" prose note about RetroPad device 1).
+  This proposal adds:
+    - explicit es_settings.puae_controller1 = "1" so the launcher writes
+      input_libretro_device_p1 = 1 even when the user has changed the global
+      default elsewhere (idempotent;reaffirms the assumption);
+    - core_options for the unmanaged puae_mapper_* keys (analogous to
+      vice_mapper_* on C64). These survive RetroBat regeneration since they
+      are NOT in ConfigurePuae() (verified against
+      emulatorlauncher/Generators/LibRetro.CoreOptions.cs lines 4518-4570).
+    - puae_keyrah_keypad_mappings stays unset by default (Keyrah-specific).
+
+  Y → F1 mirrors the C64 default: a one-button "menu / fire-2" escape that
+  most Amiga games either ignore harmlessly or use for pause / menu.
+
+  Note: ConfigurePuae() MANAGES puae_physical_keyboard_pass_through. We
+  surface it as an es_settings key (feature name puae_keyboard_pass_through)
+  rather than core_options, so RetroBat re-derives it on launch.
+es_settings:
+  puae_controller1: "1"
+  puae_keyboard_pass_through: "enabled"
+core_options:
+  # verify against ConfigurePuae() before V-promoting
+  puae_mapper_y: "RETROK_F1"            # Y → F1, parity with C64 default
+  puae_mapper_select: "TOGGLE_VKBD"     # Select toggles virtual keyboard
+button_semantics:
+  Y: "F1 — menu / pause / start (game-dependent)"
+  Select: "virtual keyboard toggle"
+  B: "joystick fire"

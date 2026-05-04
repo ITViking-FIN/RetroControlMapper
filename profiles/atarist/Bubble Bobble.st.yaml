@@ -1,0 +1,20 @@
+system: atarist
+rom: "Bubble Bobble.st"
+title: "Bubble Bobble"
+year: 1987
+confidence: T
+notes: |
+  Taito arcade port. 1-button joystick — fire = bubble shot, up = jump.
+  2-player co-op uses port 1 + port 2 joysticks; libretro hatari needs
+  hatari_twojoy enabled (it's on by default per ConfigureHatari).
+
+  F1 = start game on the ST version. Map controller Start → F1 via the
+  per-system input remap if 1-key launch matters; otherwise the title
+  screen accepts joystick fire too.
+es_settings:
+  hatari_machinetype: "st"
+  hatari_ramsize: "1"
+button_semantics:
+  B:  "fire — shoot bubble"
+  Up: "jump"
+  Start: "F1 — start (if remapped)"

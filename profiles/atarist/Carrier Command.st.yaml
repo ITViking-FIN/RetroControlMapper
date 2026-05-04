@@ -1,0 +1,23 @@
+system: atarist
+rom: "Carrier Command.st"
+title: "Carrier Command"
+year: 1988
+confidence: T
+notes: |
+  Realtime strategy / vehicle-sim hybrid. MIXED control: joystick for vehicle
+  piloting, mouse for command map / station UI / weapon targeting. Pad-only
+  play is awkward — some bindings will need physical keyboard fallthrough
+  (F-keys switch between bridge stations).
+
+  The hatari core's keyboard pass-through is on by default; key F1-F10 hits
+  reach the ST verbatim. Worth verifying which keys the user hits most often
+  before locking in a remap.
+es_settings:
+  hatari_machinetype: "st"
+  hatari_ramsize: "1"
+button_semantics:
+  L3: "vehicle stick (port 1 joystick)"
+  R3: "mouse XY (command UI)"
+  B:  "fire / left mouse"
+  A:  "right mouse / cancel"
+  Select: "F-key cycle (station switch)"

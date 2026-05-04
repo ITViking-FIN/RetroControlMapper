@@ -1,0 +1,43 @@
+system: zxspectrum
+title: ZX Spectrum system defaults
+confidence: T
+notes: |
+  Cross-game defaults for ZX Spectrum (Fuse libretro core).
+
+  Spectrum games are an absolute zoo for control: vanishingly few use the
+  joystick interfaces (Kempston / Sinclair / Cursor), most are pure-keyboard
+  with hardcoded letter keys (often Q/A/O/P/Space). The whole per-game
+  story on this platform is the keyboard mapping — analogous to C64 where
+  vice_mapper_* is the only way to get a pad to feel right.
+
+  RetroBat MANAGES these fuse core_options (do NOT put them in core_options
+  here — they will be clobbered):
+    fuse_auto_load, fuse_fast_load, fuse_machine
+  Source: emulatorlauncher/Generators/LibRetro.CoreOptions.cs ConfigureFuse().
+
+  RetroBat es_settings keys (consumed and turned into the above):
+    fuse_machine, zx_controller1, zx_controller2, zx_control_type
+
+  zx_control_type values (per ConfigureFuse):
+    "1" = joystick only (P3 keyboard disabled)
+    "2" = keyboard only (P1/P2 joysticks disabled)
+    default / "0" = keyboard + joysticks (P3 = libretro keyboard device 259)
+
+  Default we ship: 513 = Sinclair joystick on port 1, plus keyboard on P3 —
+  this is the closest analogue to "pad pretends to be Kempston/Sinclair AND
+  the host keyboard still reaches the Spectrum for letter keys."
+
+  All fuse_joypad_* mapper keys (controller-button → Spectrum-key) are
+  UNMANAGED and survive regeneration; per-game profiles use them like
+  vice_mapper_* on C64.
+es_settings:
+  zx_controller1: "513"            # Sinclair joystick interface
+  zx_controller2: "513"
+core_options:
+  # verify against ConfigureFuse() before V-promoting
+  fuse_size_border: "small"        # tighter viewport — Spectrum borders are huge
+  fuse_speaker_type: "filtered"    # softer buzzer — reduce ear fatigue
+button_semantics:
+  L3: "joystick (port 1)"
+  B:  "joystick fire"
+  Y:  "remappable Spectrum key (per-game; F-key default)"

@@ -1,0 +1,17 @@
+system: mame
+rom: "pacman.zip"
+title: "Pac-Man"
+year: 1980
+confidence: T
+notes: |
+  Namco / Midway. 4-way joystick — MAME's mame_mame_4way_enable should be
+  ON for accurate diagonal-rejection feel. No fire buttons. Coin = Select,
+  Start = Start.
+
+  RetroBat manages mame_mame_4way_enable; we set it via es_settings
+  (feature key: mame_mame_4way_enable).
+es_settings:
+  mame_mame_4way_enable: "enabled"
+button_semantics:
+  Select: "Coin (5)"
+  Start:  "1P Start (1)"

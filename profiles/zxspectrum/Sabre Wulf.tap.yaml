@@ -1,0 +1,17 @@
+system: zxspectrum
+rom: "Sabre Wulf.tap"
+title: "Sabre Wulf"
+year: 1984
+confidence: T
+notes: |
+  Ultimate Play the Game. Top-down jungle explorer, the Sabreman series
+  opener. 4-direction movement + sword swing fire button. Kempston / Sinclair
+  joystick supported.
+
+  Default Sinclair joystick on port 1 should suffice — no per-game key
+  remap likely needed unless the user wants the menu / pause keys on Y/X.
+es_settings:
+  zx_controller1: "513"
+button_semantics:
+  L3: "movement"
+  B:  "swing sword (fire)"

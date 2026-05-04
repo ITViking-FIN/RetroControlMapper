@@ -1,0 +1,16 @@
+system: zxspectrum
+rom: "Chuckie Egg.tap"
+title: "Chuckie Egg"
+year: 1983
+confidence: T
+notes: |
+  A&F Software. Ladder-and-platform classic. Default keys are configurable
+  at the start menu — common choices include Z=left, X=right, ;=up,
+  /=down, Return=jump.
+
+  Kempston joystick is supported in most releases. Single fire button.
+es_settings:
+  zx_controller1: "513"
+button_semantics:
+  L3: "movement"
+  B:  "jump"

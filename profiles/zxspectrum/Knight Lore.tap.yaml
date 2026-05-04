@@ -1,0 +1,18 @@
+system: zxspectrum
+rom: "Knight Lore.tap"
+title: "Knight Lore"
+year: 1984
+confidence: T
+notes: |
+  Ultimate Play the Game. Isometric arcade adventure — the original Filmation
+  engine title. Default keys: Q=up, A=down, O=left, P=right, M=jump (varies
+  by reissue). Joystick play needs a Sinclair-interface mapping.
+
+  Per-game scaffold: confirm the actual Spectrum key bindings before moving
+  off T. Many Knight Lore tape variants have different control selections at
+  the menu (joystick vs keyboard, then several keyboard layouts).
+es_settings:
+  zx_controller1: "513"
+button_semantics:
+  L3: "movement (Sinclair joystick)"
+  B:  "jump (M-key default)"
