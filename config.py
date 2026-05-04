@@ -35,6 +35,12 @@ except ImportError:  # non-Windows; tool is Windows-only but keep import safe
     winreg = None  # type: ignore[assignment]
 
 
+__version__ = "0.1.0"
+
+# GitHub repo coordinates — used by update_check.py for releases polling.
+GITHUB_OWNER = "ITViking-FIN"
+GITHUB_REPO = "RetroControlMapper"
+
 ENV_OVERRIDE = "RBCF_RETROBAT_ROOT"
 
 
@@ -270,4 +276,7 @@ __all__ = [
     "RA_CORE_OPTS",
     "BEZELS_DIR",
     "ROMS_ROOT",
+    "__version__",
+    "GITHUB_OWNER",
+    "GITHUB_REPO",
 ]
