@@ -876,6 +876,13 @@ def _scan_systems() -> dict:
     for sys_name in all_systems:
         rom_count = roms_by_system.get(sys_name, 0)
         profiles_count = len(by_system_profiles.get(sys_name, []))
+        # Filter out RetroBat systems the user has zero ROMs for AND
+        # zero profiles for. These are typically integration stubs
+        # (Amazon Luna, "2ship", etc.) declared in es_systems.cfg but
+        # never actually populated. Showing them as 0/0/0 rows in the
+        # onboarding scan is noise.
+        if rom_count == 0 and profiles_count == 0:
+            continue
         missing = rom_count - profiles_count
         if missing < 0:
             missing = 0

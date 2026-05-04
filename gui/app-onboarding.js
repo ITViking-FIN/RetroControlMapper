@@ -662,7 +662,7 @@
 
     const summary = el('div', { class: 'rbcf-onb-summary' });
     summary.appendChild(el('strong', {
-      text: `${totals.systems ?? systems.length} systems · ${totals.roms ?? '?'} games · ${totals.profiles ?? '?'} with profiles · ${totals.missing ?? '?'} missing`,
+      text: `${totals.systems ?? systems.length} systems · ${totals.roms ?? '?'} games · ${totals.profiles ?? '?'} with per-game profiles · ${totals.missing ?? '?'} missing`,
     }));
     wrap.appendChild(summary);
 
@@ -682,7 +682,7 @@
       el('tr', {}, [
         el('th', { text: 'System' }),
         el('th', { class: 'rbcf-onb-num', text: 'ROMs' }),
-        el('th', { class: 'rbcf-onb-num', text: 'Profiles' }),
+        el('th', { class: 'rbcf-onb-num', text: 'Per-game' }),
         el('th', { class: 'rbcf-onb-num', text: 'Missing' }),
       ]),
     ]);
@@ -735,6 +735,16 @@
         state.primaryEl.textContent = 'Nothing to scaffold';
       }
     } else {
+      // Auto-default the toggle to whichever mode actually has work to
+      // do. If defaults are all in place but per-game stubs are missing,
+      // jump straight to "Every ROM" mode so the primary button is
+      // already actionable. The user can flip back to "Defaults only"
+      // (the no-op state) if they want to confirm — but they won't
+      // be stuck with a disabled primary.
+      if (systemsWithoutDefault === 0 && missingTotal > 0
+          && state.scaffoldMode === 'defaults') {
+        state.scaffoldMode = 'all';
+      }
       // Mode toggle: defaults (safe) vs per-game stubs (advanced).
       const modeWrap = el('div', { class: 'rbcf-onb-mode-toggle' });
       const helpText = el('p', { class: 'rbcf-onb-muted rbcf-onb-mode-help' });
