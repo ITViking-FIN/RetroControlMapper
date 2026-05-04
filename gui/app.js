@@ -404,11 +404,29 @@ async function loadGames(systemId) {
 async function loadProfile(systemId, rom) {
   if (!systemId || !rom) {
     clearForm();
+    GAME_DETAIL.system = null;
+    GAME_DETAIL.rom = null;
+    GAME_DETAIL.profile = null;
+    GAME_DETAIL.systemDefault = null;
+    GAME_DETAIL.dirty = false;
+    renderGameDetailHeader(null, null, null);
+    applyInheritanceOverlay();
     return;
   }
   const data = await api('GET',
     `/api/profile?system=${encodeURIComponent(systemId)}&rom=${encodeURIComponent(rom)}`);
-  populateForm(data.profile || {});
+  const profile = data.profile || {};
+  const systemDefault = data.system_default || {};
+  // Flow 4 — stash on window for the overlay toggle handler.
+  GAME_DETAIL.system = systemId;
+  GAME_DETAIL.rom = rom;
+  GAME_DETAIL.profile = profile;
+  GAME_DETAIL.systemDefault = systemDefault;
+  GAME_DETAIL.dirty = false;
+  populateForm(profile);
+  renderGameDetailHeader(systemId, profile, systemDefault);
+  applyInheritanceOverlay();
+  maybeShowOverlayTooltip(systemId, profile, systemDefault);
 }
 
 function setTargetForSystem(systemId) {
@@ -835,8 +853,324 @@ function collectProfile() {
     es_settings,
     core_options,
     notes: notesEl.value.trim(),
+    // Flow 4: when the user has touched any value and the loaded profile
+    // had V/K confidence, silently downgrade to T on save. Keeps the
+    // confidence honest without a modal interruption. Revisit if users
+    // complain — a more polite "edit will downgrade, [Continue] / [Discard
+    // edit]" warning was specced but skipped this iteration.
+    confidence: (GAME_DETAIL.dirty && GAME_DETAIL.profile && GAME_DETAIL.profile.confidence)
+      ? 'T'
+      : (GAME_DETAIL.profile && GAME_DETAIL.profile.confidence) || '',
     apply: true,
   };
+}
+
+// ============================================================
+// Flow 4 — game-detail view: confidence pill + inheritance overlay.
+//
+// Microinteractions:
+//   - Confidence pill (V/K/T) renders in the Advanced overrides section
+//     header, tucked next to the section .hint.
+//   - "Show inheritance overlay" toggle lives in the same header strip.
+//     When ON, inherited rows fade and show a ghost value; override rows
+//     get a violet "Override" pill.
+//   - Per-row badges (`O` / `↓` / `–`) render unconditionally on every
+//     mapping & game-options row whenever a profile is loaded.
+//   - Overlay state is sticky per-system: `rbcf-overlay-<system>` = '1'.
+//   - First-time tooltip hint is per-system: `rbcf-overlay-tip-<system>`.
+//     Shows once when a profile loads and has at least one override.
+//
+// Decision #8 (DECISIONS.md): off by default, sticky once toggled, with a
+// first-time tooltip when an override exists.
+// ============================================================
+
+const GAME_DETAIL = {
+  system: null,
+  rom: null,
+  profile: null,
+  systemDefault: null,
+  dirty: false,
+};
+
+const OVERLAY_KEY_PREFIX = 'rbcf-overlay-';        // per-system overlay on/off
+const OVERLAY_TIP_PREFIX = 'rbcf-overlay-tip-';    // per-system one-shot tip
+
+function isOverlayOn(systemId) {
+  if (!systemId) return false;
+  try { return localStorage.getItem(OVERLAY_KEY_PREFIX + systemId) === '1'; }
+  catch (e) { return false; }
+}
+function setOverlayOn(systemId, on) {
+  if (!systemId) return;
+  try {
+    if (on) localStorage.setItem(OVERLAY_KEY_PREFIX + systemId, '1');
+    else    localStorage.removeItem(OVERLAY_KEY_PREFIX + systemId);
+  } catch (e) { /* ignore */ }
+}
+function wasOverlayTipShown(systemId) {
+  if (!systemId) return true;
+  try { return localStorage.getItem(OVERLAY_TIP_PREFIX + systemId) === '1'; }
+  catch (e) { return true; }
+}
+function markOverlayTipShown(systemId) {
+  if (!systemId) return;
+  try { localStorage.setItem(OVERLAY_TIP_PREFIX + systemId, '1'); }
+  catch (e) { /* ignore */ }
+}
+
+// Map a core_options key to the mapping-row's pad button (or null if it
+// doesn't belong to this system's mapper prefix).
+function coreOptKeyToPadBtn(systemId, key) {
+  const prefix = CORE_MAPPER_PREFIX[systemId];
+  if (!prefix || !key.startsWith(prefix)) return null;
+  return key.slice(prefix.length);
+}
+
+// Compute the source for a single key: 'override', 'inherited', or 'unset'.
+function keySource(profileVal, defaultVal) {
+  const has = (v) => v !== undefined && v !== null && v !== '';
+  if (has(profileVal)) return 'override';
+  if (has(defaultVal)) return 'inherited';
+  return 'unset';
+}
+
+const SOURCE_BADGE = {
+  override:  { glyph: 'O', label: 'Override',  cls: 'src-override',  title: 'Set in this game profile (override).' },
+  inherited: { glyph: '↓', label: 'Inherited', cls: 'src-inherited', title: 'Inherited from the system _default.yaml.' },
+  unset:     { glyph: '–', label: 'Not set',   cls: 'src-unset',     title: 'Not set at any level.' },
+};
+
+function makeRowBadge(source) {
+  const meta = SOURCE_BADGE[source] || SOURCE_BADGE.unset;
+  const span = document.createElement('span');
+  span.className = 'row-source-badge ' + meta.cls;
+  span.dataset.source = source;
+  span.title = meta.title;
+  span.setAttribute('aria-label', meta.label);
+  span.textContent = meta.glyph;
+  return span;
+}
+
+// Render the game-detail header strip. Hosts the confidence pill, the
+// "X of Y overrides" summary, and the overlay toggle. Lives at the top
+// of the Advanced game overrides section (#sec-game-options) — the
+// tightest space available without touching index.html.
+function renderGameDetailHeader(systemId, profile, systemDefault) {
+  const sec = document.getElementById('sec-game-options');
+  if (!sec) return;
+  let host = sec.querySelector('.rbcf-game-detail-header');
+  if (!systemId || !profile) {
+    if (host) host.remove();
+    return;
+  }
+  if (!host) {
+    host = document.createElement('div');
+    host.className = 'rbcf-game-detail-header';
+    // Insert directly after the section's <h2> so it sits between the
+    // header and the existing intro/options grid.
+    const h2 = sec.querySelector('h2');
+    if (h2 && h2.nextSibling) sec.insertBefore(host, h2.nextSibling);
+    else sec.prepend(host);
+  }
+
+  // Per-row computation of override count (es_settings + core_options).
+  const overrideCount = countOverrides(profile);
+  const conf = (profile.confidence || '').toUpperCase();
+  const overlayOn = isOverlayOn(systemId);
+
+  host.innerHTML = `
+    <div class="rbcf-gdh-row">
+      ${renderConfidencePillHTML(conf)}
+      <span class="rbcf-gdh-summary">
+        ${overrideCount > 0
+          ? `<strong>${overrideCount}</strong> override${overrideCount === 1 ? '' : 's'} on top of <code>${rbcfEsc(systemId)}/_default.yaml</code>`
+          : `No overrides — fully inherited from <code>${rbcfEsc(systemId)}/_default.yaml</code>`}
+      </span>
+      <span class="rbcf-gdh-spacer"></span>
+      <label class="rbcf-gdh-toggle" title="Fade inherited rows; show ghost values from the system default.">
+        <input type="checkbox" id="rbcf-overlay-toggle" ${overlayOn ? 'checked' : ''}>
+        <span>Show inheritance overlay</span>
+      </label>
+    </div>
+  `;
+
+  const toggle = host.querySelector('#rbcf-overlay-toggle');
+  if (toggle) {
+    toggle.addEventListener('change', () => {
+      setOverlayOn(systemId, toggle.checked);
+      applyInheritanceOverlay();
+    });
+  }
+}
+
+function renderConfidencePillHTML(conf) {
+  if (!conf || !'VKT'.includes(conf)) {
+    return `<span class="confidence-pill confidence-none" title="No confidence set on this profile.">·</span>`;
+  }
+  const meta = {
+    V: { label: 'Verified',   tip: 'Verified — bindings tested in-game.' },
+    K: { label: 'Known-good', tip: 'Known good — drawn from a trusted source but not personally tested.' },
+    T: { label: 'Scaffold',   tip: 'Scaffold — placeholder. Edit to verify and promote.' },
+  }[conf];
+  return `<span class="confidence-pill confidence-${conf}" title="${rbcfEsc(meta.tip)}" aria-label="Confidence ${rbcfEsc(meta.label)}">${conf} · ${rbcfEsc(meta.label)}</span>`;
+}
+
+function countOverrides(profile) {
+  if (!profile) return 0;
+  let n = 0;
+  for (const v of Object.values(profile.es_settings || {})) {
+    if (v !== undefined && v !== null && v !== '') n++;
+  }
+  for (const v of Object.values(profile.core_options || {})) {
+    if (v !== undefined && v !== null && v !== '') n++;
+  }
+  return n;
+}
+
+// Apply / refresh the overlay state on every mapping + opt-row. Reads the
+// current GAME_DETAIL state. Idempotent — safe to call after every change.
+function applyInheritanceOverlay() {
+  const sysId = GAME_DETAIL.system;
+  const profile = GAME_DETAIL.profile || {};
+  const sysDefault = GAME_DETAIL.systemDefault || {};
+  if (!sysId) {
+    // Strip any badges left over from a previous selection.
+    document.querySelectorAll('.row-source-badge').forEach(el => el.remove());
+    document.querySelectorAll('.map-row, .opt-row').forEach(row => {
+      row.classList.remove('rbcf-row-inherited', 'rbcf-row-override', 'rbcf-row-unset', 'rbcf-overlay-on');
+      row.querySelectorAll('.rbcf-ghost-value, .rbcf-override-pill').forEach(el => el.remove());
+    });
+    return;
+  }
+
+  const overlayOn = isOverlayOn(sysId);
+  const co = profile.core_options || {};
+  const dco = sysDefault.core_options || {};
+  const es = profile.es_settings || {};
+  const des = sysDefault.es_settings || {};
+
+  // ------- mapping rows (core_options keyed by pad button) -------
+  // Live DOM value wins so the user's in-flight edits shift the badge
+  // ('inherited' → 'override') as they type.
+  document.querySelectorAll('.map-row').forEach(row => {
+    const inp = row.querySelector('input[data-map-btn]');
+    if (!inp) return;
+    const padBtn = inp.dataset.mapBtn;
+    const prefix = CORE_MAPPER_PREFIX[sysId] || '';
+    const key = prefix + padBtn;
+    const liveVal = (inp.value || '').trim();
+    const profileVal = liveVal || co[key];
+    const defaultVal = dco[key];
+    const source = keySource(profileVal, defaultVal);
+    paintRow(row, source, overlayOn, defaultVal);
+    // Placeholder shows the inherited value when input is empty (always —
+    // feels natural even with overlay off; we only swap when empty).
+    if (source !== 'override' && defaultVal && !liveVal) {
+      inp.placeholder = defaultVal + '  (inherited)';
+    } else if (!liveVal && !defaultVal) {
+      inp.placeholder = 'e.g. RETROK_F1, RETROK_SPACE, --- to clear';
+    }
+  });
+
+  // ------- opt-rows (es_settings keyed by data-opt-key) -------
+  document.querySelectorAll('.opt-row').forEach(row => {
+    const el = row.querySelector('[data-opt-key]');
+    if (!el) return;
+    const key = el.dataset.optKey;
+    let liveVal;
+    if (el.type === 'checkbox') liveVal = el.checked ? '1' : '';
+    else liveVal = (el.value || '').trim();
+    const profileVal = liveVal || es[key];
+    const defaultVal = des[key];
+    const source = keySource(profileVal, defaultVal);
+    paintRow(row, source, overlayOn, defaultVal);
+  });
+}
+
+function paintRow(row, source, overlayOn, defaultVal) {
+  // Reset state classes.
+  row.classList.remove('rbcf-row-override', 'rbcf-row-inherited', 'rbcf-row-unset');
+  row.classList.toggle('rbcf-overlay-on', !!overlayOn);
+  row.classList.add('rbcf-row-' + source);
+
+  // Badge: always present (regardless of overlay) once a profile is loaded.
+  let badge = row.querySelector('.row-source-badge');
+  if (badge) badge.remove();
+  badge = makeRowBadge(source);
+  row.prepend(badge);
+
+  // Override pill (overlay-only, override-only).
+  let pill = row.querySelector('.rbcf-override-pill');
+  if (pill) pill.remove();
+  if (overlayOn && source === 'override') {
+    pill = document.createElement('span');
+    pill.className = 'rbcf-override-pill';
+    pill.textContent = 'Override';
+    row.appendChild(pill);
+  }
+
+  // Ghost value (overlay-only, inherited-only).
+  let ghost = row.querySelector('.rbcf-ghost-value');
+  if (ghost) ghost.remove();
+  if (overlayOn && source === 'inherited' && defaultVal) {
+    ghost = document.createElement('span');
+    ghost.className = 'rbcf-ghost-value';
+    ghost.textContent = '= ' + defaultVal;
+    ghost.title = 'Inherited from the system default.';
+    row.appendChild(ghost);
+  }
+}
+
+// First-time tooltip: when a profile with overrides loads on a system
+// that hasn't shown the tip yet, anchor a small auto-dismissing balloon
+// at the overlay toggle. Independent of the onboarding overlay.
+function maybeShowOverlayTooltip(systemId, profile, _systemDefault) {
+  if (!systemId || !profile) return;
+  if (wasOverlayTipShown(systemId)) return;
+  const overrides = countOverrides(profile);
+  if (overrides <= 0) return;
+  if (isOverlayOn(systemId)) {
+    // Already on — no need to suggest.
+    markOverlayTipShown(systemId);
+    return;
+  }
+  const toggle = document.getElementById('rbcf-overlay-toggle');
+  if (!toggle) return;
+
+  const tip = document.createElement('div');
+  tip.className = 'rbcf-overlay-tip';
+  tip.setAttribute('role', 'tooltip');
+  tip.innerHTML = `This profile has <strong>${overrides}</strong> override${overrides === 1 ? '' : 's'} — toggle the overlay to see what's inherited from the system default.`;
+
+  // Anchor: append to the header host, position the tip absolutely just
+  // below the toggle. Keeps it self-contained — no body-level portal.
+  const host = toggle.closest('.rbcf-game-detail-header') || document.body;
+  host.appendChild(tip);
+
+  // Auto-dismiss after a generous read window. User can also click to dismiss.
+  const dismiss = () => {
+    tip.classList.add('rbcf-overlay-tip-fade');
+    setTimeout(() => tip.remove(), 220);
+    markOverlayTipShown(systemId);
+  };
+  tip.addEventListener('click', dismiss);
+  setTimeout(dismiss, 6500);
+}
+
+// Mark the in-memory profile dirty when the user edits any field. Save-
+// time logic (collectProfile) reads GAME_DETAIL.dirty to silently downgrade
+// V/K confidence to T.
+function markGameDetailDirty() {
+  if (!GAME_DETAIL.profile) return;
+  if (GAME_DETAIL.dirty) return;
+  GAME_DETAIL.dirty = true;
+  // Repaint the confidence pill with a "(edit pending)" hint, but don't
+  // actually downgrade the in-memory value. Save flow handles it.
+  const pillHost = document.querySelector('.rbcf-game-detail-header .confidence-pill');
+  if (pillHost && /^[VK]$/.test(GAME_DETAIL.profile.confidence || '')) {
+    pillHost.classList.add('confidence-pending-downgrade');
+    pillHost.title = `Editing this profile will reset its confidence to T (until you re-verify) on save.`;
+  }
 }
 
 // ============================================================
@@ -1296,6 +1630,28 @@ selSystem.addEventListener('change', async () => {
 
 selGame.addEventListener('change', async () => {
   await loadProfile(selSystem.value, selGame.value);
+});
+
+// Flow 4 — silently downgrade V/K profiles to T when the user edits any
+// mapped value or per-game option. Listener uses event delegation so we
+// don't have to re-bind after buildMappingRows() / buildGameOptions().
+document.addEventListener('input', (e) => {
+  const t = e.target;
+  if (!t) return;
+  if (t.matches('input[data-map-btn]') || t.matches('[data-opt-key]') || t === notesEl) {
+    markGameDetailDirty();
+    // Recompute badges live so the user sees their edit shift a row from
+    // 'inherited' to 'override' (and vice versa when cleared).
+    if (GAME_DETAIL.system) applyInheritanceOverlay();
+  }
+});
+document.addEventListener('change', (e) => {
+  const t = e.target;
+  if (!t) return;
+  if (t.matches('[data-opt-key]')) {
+    markGameDetailDirty();
+    if (GAME_DETAIL.system) applyInheritanceOverlay();
+  }
 });
 
 $('btn-save').addEventListener('click', onSave);

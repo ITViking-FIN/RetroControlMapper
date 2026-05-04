@@ -9,7 +9,11 @@ Endpoints:
     GET  /static-files (any)            served from gui/
     GET  /api/systems                   list of supported systems
     GET  /api/games?system=X            list of ROMs in roms/<system>/
-    GET  /api/profile?system&rom        existing profile YAML (or {})
+    GET  /api/profile?system&rom        existing profile YAML (or {});
+                                        response also includes the loaded
+                                        system_default for the inheritance
+                                        overlay (Flow 4).
+    GET  /api/profile-default?system    system _default.yaml content (or {})
     GET  /api/retrobat-root             RetroBat install probe result (onboarding)
     GET  /api/scan                      per-system rom/profile counts (onboarding).
                                         Includes top-level `bezels_with_cutoffs`
@@ -585,8 +589,27 @@ def profile_path(system: str, rom: str) -> Path:
     return PROFILES_DIR / system / f"{rom}.yaml"
 
 
+def system_default_path(system: str) -> Path:
+    return PROFILES_DIR / system / "_default.yaml"
+
+
 def load_profile(system: str, rom: str) -> dict:
     p = profile_path(system, rom)
+    if not p.exists():
+        return {}
+    try:
+        return yaml.safe_load(p.read_text(encoding="utf-8")) or {}
+    except yaml.YAMLError as e:
+        return {"_error": f"YAML parse error: {e}"}
+
+
+def load_system_default(system: str) -> dict:
+    """Load <system>/_default.yaml if it exists. Used by Flow 4 (game-detail
+    view) so the frontend can compute the inheritance overlay client-side
+    without re-implementing _default.yaml resolution."""
+    if not system:
+        return {}
+    p = system_default_path(system)
     if not p.exists():
         return {}
     try:
@@ -1495,7 +1518,20 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             q = self._query()
             sys_id = (q.get("system", [""])[0] or "").strip()
             rom = (q.get("rom", [""])[0] or "").strip()
-            return self._json({"system": sys_id, "rom": rom, "profile": load_profile(sys_id, rom)})
+            # Flow 4 (game-detail view) consumes `system_default` to render
+            # the inheritance overlay without a second round-trip. Existing
+            # callers that don't read it (e.g. Stream-E onboarding) ignore
+            # the extra field.
+            return self._json({
+                "system": sys_id,
+                "rom": rom,
+                "profile": load_profile(sys_id, rom),
+                "system_default": load_system_default(sys_id),
+            })
+        if u.path == "/api/profile-default":
+            q = self._query()
+            sys_id = (q.get("system", [""])[0] or "").strip()
+            return self._json({"system": sys_id, "profile": load_system_default(sys_id)})
         if u.path == "/api/retrobat-root":
             return self._json(_retrobat_root_payload())
         if u.path == "/api/scan":

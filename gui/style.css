@@ -3296,3 +3296,257 @@ button.secondary:hover,
   .toast { animation: none; }
 }
 
+/* ============================================================
+   Flow 4 — game-detail view: confidence pill, inheritance
+   overlay toggle, per-row source badges, ghost values.
+   Reuses .rbcf-onb-status-ok / -error tokens for V/T pill colours;
+   K uses --acc-blue. Override pill uses --acc-violet (candy-violet
+   per the design language).
+   ============================================================ */
+
+.rbcf-game-detail-header {
+  margin: 12px 0 14px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--edge-bottom);
+  border-top-color: var(--edge-top);
+  border-radius: var(--radius-plate);
+  background: var(--plate-fill);
+  box-shadow: var(--shadow-soft);
+  position: relative;
+}
+.rbcf-gdh-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.rbcf-gdh-summary {
+  font-size: 12px;
+  color: var(--tx-secondary);
+}
+.rbcf-gdh-summary code {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--tx-primary);
+}
+.rbcf-gdh-summary strong { color: var(--acc-violet); }
+[data-theme="dark"] .rbcf-gdh-summary strong { color: var(--acc-violet-2); }
+@media (prefers-color-scheme: dark) {
+  [data-theme="auto"] .rbcf-gdh-summary strong { color: var(--acc-violet-2); }
+}
+.rbcf-gdh-spacer { flex: 1; }
+.rbcf-gdh-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--tx-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+.rbcf-gdh-toggle input[type="checkbox"] {
+  margin: 0;
+  cursor: pointer;
+}
+
+/* Confidence pill — V/K/T plus a muted "none" state. */
+.confidence-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--edge-bottom);
+  border-top-color: var(--edge-top);
+  background: var(--plate-fill);
+  color: var(--tx-secondary);
+  white-space: nowrap;
+  cursor: help;
+}
+.confidence-pill.confidence-V {
+  border-color: rgba(63, 185, 80, 0.55);
+  background: rgba(63, 185, 80, 0.18);
+  color: #1f8a3a;
+}
+[data-theme="dark"] .confidence-pill.confidence-V { color: #7ee897; }
+@media (prefers-color-scheme: dark) {
+  [data-theme="auto"] .confidence-pill.confidence-V { color: #7ee897; }
+}
+.confidence-pill.confidence-K {
+  border-color: rgba(88, 166, 255, 0.55);
+  background: rgba(88, 166, 255, 0.18);
+  color: #1761c4;
+}
+[data-theme="dark"] .confidence-pill.confidence-K { color: #8fc3ff; }
+@media (prefers-color-scheme: dark) {
+  [data-theme="auto"] .confidence-pill.confidence-K { color: #8fc3ff; }
+}
+.confidence-pill.confidence-T {
+  border-color: rgba(217, 154, 0, 0.55);
+  background: rgba(217, 154, 0, 0.18);
+  color: #a36b00;
+}
+[data-theme="dark"] .confidence-pill.confidence-T { color: #f0c060; }
+@media (prefers-color-scheme: dark) {
+  [data-theme="auto"] .confidence-pill.confidence-T { color: #f0c060; }
+}
+.confidence-pill.confidence-none {
+  opacity: 0.55;
+}
+/* Pending-downgrade hint — pulse the V/K pill when an unsaved edit will
+   downgrade it to T on save. */
+.confidence-pill.confidence-pending-downgrade {
+  position: relative;
+  outline: 1px dashed rgba(217, 154, 0, 0.65);
+  outline-offset: 2px;
+}
+
+/* Per-row source badge: small inline glyph + accessible tooltip. */
+.row-source-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: 4px;
+  flex-shrink: 0;
+  margin-right: 4px;
+  cursor: help;
+  line-height: 1;
+}
+.row-source-badge.src-override {
+  color: #a36b00;
+  background: rgba(217, 154, 0, 0.20);
+  border: 1px solid rgba(217, 154, 0, 0.45);
+}
+[data-theme="dark"] .row-source-badge.src-override { color: #f0c060; }
+@media (prefers-color-scheme: dark) {
+  [data-theme="auto"] .row-source-badge.src-override { color: #f0c060; }
+}
+.row-source-badge.src-inherited {
+  color: var(--tx-secondary);
+  background: transparent;
+  border: 1px solid var(--edge-bottom);
+}
+.row-source-badge.src-unset {
+  color: var(--tx-hint);
+  background: transparent;
+  border: 1px dashed var(--edge-bottom);
+  opacity: 0.55;
+}
+
+/* Re-thread the badge into the existing grid for .map-row (90px | 1fr).
+   Turn .map-row into a 3-col grid only when a badge is present. */
+.map-row:has(.row-source-badge) {
+  grid-template-columns: 22px 90px 1fr;
+}
+/* opt-row is column-flex; the badge floats top-right so it doesn't push
+   the existing label down. opt-row.bool is row-flex — badge sits before
+   the label. */
+.opt-row { position: relative; }
+/* Badge anchored top-right above the input; padding-top:6px compensates so
+   the top of the input doesn't overlap the badge when labels are long. */
+.opt-row > .row-source-badge {
+  position: absolute;
+  top: 6px;
+  right: 10px;
+  z-index: 1;
+}
+.opt-row.bool > .row-source-badge {
+  position: static;
+  margin-right: 4px;
+  align-self: center;
+}
+
+/* Inheritance overlay state. Applied row-by-row when overlay toggle is ON. */
+.rbcf-overlay-on.rbcf-row-inherited {
+  opacity: 0.6;
+}
+.rbcf-overlay-on.rbcf-row-inherited input,
+.rbcf-overlay-on.rbcf-row-inherited select {
+  background: transparent;
+}
+
+/* Override pill — appears in overlay mode on override rows. */
+.rbcf-override-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border-radius: var(--radius-pill);
+  background: rgba(124, 92, 255, 0.18);
+  color: var(--acc-violet);
+  border: 1px solid rgba(124, 92, 255, 0.45);
+  white-space: nowrap;
+  align-self: center;
+  justify-self: end;
+}
+.opt-row .rbcf-override-pill { margin-top: 4px; align-self: flex-start; }
+.map-row .rbcf-override-pill { grid-column: 3; justify-self: end; margin-left: 6px; }
+[data-theme="dark"] .rbcf-override-pill { color: var(--acc-violet-2); }
+@media (prefers-color-scheme: dark) {
+  [data-theme="auto"] .rbcf-override-pill { color: var(--acc-violet-2); }
+}
+/* Ghost value — muted text alongside an inherited row. */
+.rbcf-ghost-value {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--tx-hint);
+  font-style: italic;
+  align-self: center;
+}
+.map-row .rbcf-ghost-value { grid-column: 3; justify-self: start; margin-top: 4px; }
+.opt-row .rbcf-ghost-value { margin-top: 4px; align-self: flex-start; }
+
+/* First-time tooltip pointing at the overlay toggle. Auto-dismissing. */
+.rbcf-overlay-tip {
+  position: absolute;
+  right: 12px;
+  top: calc(100% + 6px);
+  z-index: 10;
+  max-width: 320px;
+  padding: 10px 14px;
+  background: var(--acc-violet);
+  color: #fff;
+  border-radius: var(--radius-input);
+  font-size: 12px;
+  line-height: 1.45;
+  box-shadow: var(--shadow-deep);
+  cursor: pointer;
+  animation: rbcf-overlay-tip-in 220ms var(--ease) both;
+}
+.rbcf-overlay-tip strong { color: #fff; }
+.rbcf-overlay-tip::after {
+  content: "";
+  position: absolute;
+  top: -6px;
+  right: 24px;
+  width: 12px;
+  height: 12px;
+  background: var(--acc-violet);
+  transform: rotate(45deg);
+  border-radius: 2px;
+}
+.rbcf-overlay-tip-fade {
+  opacity: 0;
+  transition: opacity 200ms var(--ease);
+}
+@keyframes rbcf-overlay-tip-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rbcf-overlay-tip { animation: none; }
+  .rbcf-overlay-tip-fade { transition: none; }
+}
+
