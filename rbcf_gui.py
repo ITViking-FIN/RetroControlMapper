@@ -10,6 +10,9 @@ Endpoints:
     GET  /api/systems               list of supported systems
     GET  /api/games?system=X        list of ROMs in roms/<system>/
     GET  /api/profile?system&rom    existing profile YAML (or {})
+    GET  /api/retrobat-root         RetroBat install probe result (onboarding)
+    GET  /api/scan                  per-system rom/profile counts (onboarding)
+    GET  /api/scaffold-all[?apply]  preview/write T-confidence scaffolds
     POST /api/save                  write a profile YAML
     POST /api/apply                 invoke rbcf.py apply as subprocess
 """
@@ -26,11 +29,13 @@ import threading
 import urllib.parse
 import webbrowser
 import xml.etree.ElementTree as ET
+from datetime import date
 from pathlib import Path
 
 import yaml
 
-from config import RETROBAT_ROOT, ROMS_ROOT, ES_SYSTEMS_CFG
+from config import RETROBAT_ROOT, ROMS_ROOT, ES_SYSTEMS_CFG, _probed_locations_summary
+from rbcf import load_profiles
 
 ROOT = Path(__file__).resolve().parent
 GUI_DIR = ROOT / "gui"
@@ -411,6 +416,242 @@ def run_apply() -> dict:
         return {"ok": False, "error": "apply timed out"}
 
 
+# ------------------------------ onboarding helpers ------------------------------
+
+# Mirror of audit_media.py RESERVED_DIRS — folder names that are media/asset
+# subfolders inside roms/<system>/, never ROMs themselves.
+ONBOARD_RESERVED_DIRS = {"images", "videos", "manuals", "marquees", "maps",
+                         "screenshots", "media", "boxart", "wheels", "mixrbv",
+                         "mixrbv1", "mixrbv2", "support", "downloaded_media"}
+
+
+def _retrobat_root_payload() -> dict:
+    """Build the response for GET /api/retrobat-root."""
+    if RETROBAT_ROOT is None:
+        return {
+            "root": None,
+            "found": False,
+            "probed": _probed_locations_summary(),
+        }
+    return {
+        "root": str(RETROBAT_ROOT).replace("\\", "/"),
+        "found": True,
+        "probed": _probed_locations_summary(),
+    }
+
+
+def _count_roms_in_system(system_dir: Path) -> int:
+    """Count ROM files recursively under a system folder, skipping reserved
+    asset subdirs and hidden / dotfiles. Used by /api/scan only — list_roms()
+    above is the canonical per-system enumerator for the editor flow.
+    """
+    if not system_dir.exists() or not system_dir.is_dir():
+        return 0
+    total = 0
+    try:
+        for entry in system_dir.iterdir():
+            name = entry.name
+            if name.startswith("."):
+                continue
+            if entry.is_dir():
+                if name.lower() in ONBOARD_RESERVED_DIRS:
+                    continue
+                # Recurse into non-reserved subdir (rare: multi-disk folders, etc.)
+                total += _count_roms_in_system(entry)
+                continue
+            if entry.is_file():
+                total += 1
+    except OSError:
+        return total
+    return total
+
+
+def _iter_rom_files(system_dir: Path):
+    """Yield Path objects for every ROM file under a system dir, skipping
+    reserved asset subdirs, hidden entries, and dotfiles."""
+    if not system_dir.exists() or not system_dir.is_dir():
+        return
+    try:
+        entries = list(system_dir.iterdir())
+    except OSError:
+        return
+    for entry in entries:
+        name = entry.name
+        if name.startswith("."):
+            continue
+        if entry.is_dir():
+            if name.lower() in ONBOARD_RESERVED_DIRS:
+                continue
+            # Recurse for any other subdir.
+            yield from _iter_rom_files(entry)
+            continue
+        if entry.is_file():
+            yield entry
+
+
+def _scan_systems() -> dict:
+    """Build the response for GET /api/scan."""
+    empty = {"systems": [], "totals": {"systems": 0, "roms": 0, "profiles": 0, "missing": 0}}
+    if RETROBAT_ROOT is None or not ROMS_ROOT.exists():
+        # No live RetroBat, but we may still have profiles. Still return empty
+        # per spec ("If RETROBAT_ROOT is None / ROMS_ROOT doesn't exist, return
+        # empty systems and zero totals; do not error.").
+        return empty
+
+    # Profile counts per system (excluding _default.yaml from rom_count).
+    profiles = load_profiles()
+    by_system_profiles: dict[str, list] = {}
+    has_default: dict[str, bool] = {}
+    for p in profiles:
+        if p.is_system_default:
+            has_default[p.system] = True
+        else:
+            by_system_profiles.setdefault(p.system, []).append(p)
+        # Make sure system appears even if it only has a _default.
+        by_system_profiles.setdefault(p.system, by_system_profiles.get(p.system, []))
+
+    # ROM systems: every direct subdir of ROMS_ROOT that isn't a reserved
+    # media folder.
+    roms_by_system: dict[str, int] = {}
+    try:
+        for entry in ROMS_ROOT.iterdir():
+            if not entry.is_dir():
+                continue
+            name = entry.name
+            if name.startswith("."):
+                continue
+            if name.lower() in ONBOARD_RESERVED_DIRS:
+                continue
+            roms_by_system[name] = _count_roms_in_system(entry)
+    except OSError:
+        pass
+
+    # Union of both sets.
+    all_systems = sorted(set(roms_by_system) | set(by_system_profiles))
+    out_systems = []
+    total_roms = 0
+    total_profiles = 0
+    total_missing = 0
+    for sys_name in all_systems:
+        rom_count = roms_by_system.get(sys_name, 0)
+        profiles_count = len(by_system_profiles.get(sys_name, []))
+        missing = rom_count - profiles_count
+        if missing < 0:
+            missing = 0
+        entry = {
+            "name": sys_name,
+            "rom_count": rom_count,
+            "profiles_count": profiles_count,
+            "missing": missing,
+            "has_default": bool(has_default.get(sys_name, False)),
+        }
+        out_systems.append(entry)
+        total_roms += rom_count
+        total_profiles += profiles_count
+        total_missing += missing
+
+    return {
+        "systems": out_systems,
+        "totals": {
+            "systems": len(out_systems),
+            "roms": total_roms,
+            "profiles": total_profiles,
+            "missing": total_missing,
+        },
+    }
+
+
+def _scaffold_all(apply: bool) -> dict:
+    """Build the response for GET /api/scaffold-all (preview or apply)."""
+    if RETROBAT_ROOT is None or not ROMS_ROOT.exists():
+        return {"preview": [], "applied": False, "count": 0}
+
+    # Set of (system, rom_filename) that already have a per-game profile.
+    existing: set[tuple[str, str]] = set()
+    for p in load_profiles():
+        if p.rom:
+            existing.add((p.system, p.rom))
+
+    today = date.today().isoformat()
+    preview: list[dict] = []
+    write_targets: list[tuple[Path, dict]] = []
+
+    try:
+        sys_dirs = list(ROMS_ROOT.iterdir())
+    except OSError:
+        sys_dirs = []
+
+    for sys_dir in sys_dirs:
+        if not sys_dir.is_dir():
+            continue
+        sys_name = sys_dir.name
+        if sys_name.startswith("."):
+            continue
+        if sys_name.lower() in ONBOARD_RESERVED_DIRS:
+            continue
+        for rom_path in _iter_rom_files(sys_dir):
+            rom_name = rom_path.name
+            if (sys_name, rom_name) in existing:
+                continue
+            yaml_name = f"{rom_name}.yaml"
+            target = PROFILES_DIR / sys_name / yaml_name
+            rel_display = f"profiles/{sys_name}/{yaml_name}"
+            scaffold = {
+                "system": sys_name,
+                "rom": rom_name,
+                "title": rom_path.stem,
+                "confidence": "T",
+                "notes": (
+                    f"Auto-scaffolded by /api/scaffold-all on {today}.\n"
+                    f"Inherits from {sys_name}/_default.yaml. Promote to V or K once verified.\n"
+                ),
+                "es_settings": {},
+                "core_options": {},
+            }
+            preview.append({
+                "system": sys_name,
+                "rom": rom_name,
+                "path": rel_display,
+            })
+            write_targets.append((target, scaffold))
+
+    result = {"preview": preview, "applied": False, "count": len(preview)}
+    if not apply:
+        return result
+
+    written: list[str] = []
+    profiles_root = PROFILES_DIR.resolve()
+    for target, scaffold in write_targets:
+        try:
+            resolved_parent = target.parent.resolve()
+        except OSError:
+            continue
+        # Safety: target path must be inside PROFILES_DIR.
+        try:
+            resolved_parent.relative_to(profiles_root)
+        except ValueError:
+            print(f"[scaffold-all] refusing path outside profiles/: {target}",
+                  file=sys.stderr)
+            continue
+        if target.exists():
+            # Never overwrite.
+            continue
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(
+                yaml.safe_dump(scaffold, sort_keys=False, allow_unicode=True, width=120),
+                encoding="utf-8",
+            )
+        except OSError as e:
+            print(f"[scaffold-all] failed to write {target}: {e}", file=sys.stderr)
+            continue
+        written.append(f"profiles/{target.parent.name}/{target.name}")
+
+    result["applied"] = bool(written)
+    result["written"] = written
+    return result
+
+
 # ------------------------------ HTTP layer ------------------------------
 
 class Handler(http.server.SimpleHTTPRequestHandler):
@@ -461,6 +702,14 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             sys_id = (q.get("system", [""])[0] or "").strip()
             rom = (q.get("rom", [""])[0] or "").strip()
             return self._json({"system": sys_id, "rom": rom, "profile": load_profile(sys_id, rom)})
+        if u.path == "/api/retrobat-root":
+            return self._json(_retrobat_root_payload())
+        if u.path == "/api/scan":
+            return self._json(_scan_systems())
+        if u.path == "/api/scaffold-all":
+            q = self._query()
+            apply_flag = (q.get("apply", ["false"])[0] or "").strip().lower() in ("1", "true", "yes")
+            return self._json(_scaffold_all(apply=apply_flag))
         if u.path in ("", "/"):
             self.path = "/index.html"
         return super().do_GET()
