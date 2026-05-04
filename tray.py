@@ -139,24 +139,34 @@ def _set_autostart(enabled: bool) -> None:
 
 
 def _build_tray_image(size: int = 64):
-    """Return a 64x64 PIL Image for the tray icon.
+    """Return a PIL Image for the tray icon.
 
-    Prefer gui/img/tray-icon.png if present; otherwise generate a solid
-    blue square with white "RB" text via PIL.ImageDraw. Caller has already
-    confirmed Pillow imports successfully.
+    Tries (in order): gui/img/icon/RetroControlMapper_256.png (the official
+    app icon — synthwave gamepad), then gui/img/tray-icon.png (legacy
+    fallback location), then a programmatic blue square with white "RB"
+    text. Caller has already confirmed Pillow imports successfully.
     """
     from PIL import Image, ImageDraw, ImageFont  # type: ignore[import-not-found]
 
-    asset = GUI_IMG_DIR / "tray-icon.png"
-    if asset.is_file():
+    # The official app icon ships at multiple resolutions; use 256 as the
+    # tray source — Pillow will downsample to `size` cleanly.
+    candidates = (
+        GUI_IMG_DIR / "icon" / "RetroControlMapper_256.png",
+        GUI_IMG_DIR / "tray-icon.png",
+    )
+    for asset in candidates:
+        if not asset.is_file():
+            continue
         try:
             img = Image.open(asset).convert("RGBA")
             if img.size != (size, size):
-                img = img.resize((size, size), Image.NEAREST)
+                # LANCZOS for the photographic icon — NEAREST would alias
+                # the synthwave gradients badly at small tray sizes.
+                img = img.resize((size, size), Image.LANCZOS)
             return img
         except (OSError, ValueError):
-            # Fall through to programmatic icon.
-            pass
+            continue
+    # Both assets missing or unreadable — fall through to programmatic icon.
 
     # Programmatic fallback: dark blue square, white "RB" centred.
     img = Image.new("RGBA", (size, size), (32, 80, 160, 255))
