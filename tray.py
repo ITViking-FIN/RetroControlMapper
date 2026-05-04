@@ -2,18 +2,27 @@
 RB-Controller_fix — system tray host.
 
 Phase 1 of the tray-app refactor (DECISIONS.md #1, sub-decision (i) pystray).
+Phase 2 layers the GUID watcher daemon + Windows autostart toggle on top —
+both are wired through the tray menu.
 
 The tray icon is the long-lived process. The HTTP server runs in a daemon
 thread under it; closing the browser leaves the icon (and server) alive.
 The only way to actually quit is the tray menu's "Quit" item.
 
-Watcher / autostart subsystems are NOT in this phase — they land in later
-waves once #1.implementation begins.
+Phase 2 additions:
+    * GUID watcher submenu — three radio items (Off / Detect only /
+      Auto-fold (silent)) wired to ``guid_watcher.set_mode``. The watcher
+      thread runs alongside the HTTP server thread under the same
+      ``shutdown_event``.
+    * "Run on Windows startup" toggle — writes/clears the
+      ``HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run`` value
+      ``RetroControlMapper``. HKCU = no UAC prompt.
 
 Public surface:
     start_tray_app(open_browser_on_start: bool = True) -> None
         Blocks until the user picks Quit from the tray menu. Spawns the
-        HTTP server in a daemon thread before showing the icon.
+        HTTP server + GUID watcher in daemon threads before showing the
+        icon.
 
 Graceful fallback:
     If `pystray` (or its companions Pillow / pystray's platform backend)
@@ -30,11 +39,103 @@ import webbrowser
 from pathlib import Path
 from typing import Optional
 
+try:
+    import winreg  # type: ignore[import-not-found]
+except ImportError:  # non-Windows; tray is Windows-only but keep import safe
+    winreg = None  # type: ignore[assignment]
+
 ROOT = Path(__file__).resolve().parent
 GUI_IMG_DIR = ROOT / "gui" / "img"
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
+
+# HKCU Run-key registration for the locked installer-spec autostart prompt.
+# HKCU (current user) avoids the UAC elevation that HKLM would require.
+_RUN_KEY_PATH = r"Software\Microsoft\Windows\CurrentVersion\Run"
+_RUN_KEY_VALUE = "RetroControlMapper"
+
+
+def _autostart_command_line() -> str:
+    """Return the command line we'd write into the Run key.
+
+    Two cases:
+
+    1. Frozen (PyInstaller --onefile): ``sys.executable`` is the bundled
+       ``.exe`` and ``sys.argv[0]`` matches it. Use ``sys.executable``
+       directly. Quote it so paths with spaces (Program Files) survive.
+    2. Source / dev: ``sys.executable`` is the Python interpreter and
+       ``sys.argv[0]`` is ``rbcf_gui.py``. Build ``"python.exe" "rbcf_gui.py"``
+       so re-launching at startup works without a shell context.
+    """
+    if getattr(sys, "frozen", False):
+        # PyInstaller / cx_Freeze: sys.executable is the .exe itself.
+        return f'"{sys.executable}"'
+    # Dev mode: invoke the interpreter on the script.
+    script = Path(sys.argv[0]).resolve() if sys.argv and sys.argv[0] else None
+    if script is None or not script.exists():
+        # Fall back to module form if argv[0] is unreliable.
+        return f'"{sys.executable}" -m rbcf_gui'
+    return f'"{sys.executable}" "{script}"'
+
+
+def _autostart_enabled() -> bool:
+    """True if the Run-key value exists and points at the current binary.
+
+    Returns False on any registry error rather than raising — a stale or
+    foreign Run entry is treated as "not us".
+    """
+    if winreg is None:
+        return False
+    expected = _autostart_command_line()
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, _RUN_KEY_PATH,
+                            0, winreg.KEY_READ) as key:
+            try:
+                value, _kind = winreg.QueryValueEx(key, _RUN_KEY_VALUE)
+            except FileNotFoundError:
+                return False
+    except OSError:
+        return False
+    if not isinstance(value, str):
+        return False
+    # Normalise whitespace; we don't need a strict equality — just
+    # confirmation the entry is OURS, not some leftover from a different
+    # install path.
+    return value.strip() == expected.strip()
+
+
+def _set_autostart(enabled: bool) -> None:
+    """Write or remove the Run-key value. Best-effort — never raises.
+
+    HKCU is per-user, so this works without UAC elevation. A registry
+    failure here (locked-down policy, antivirus interception) shouldn't
+    crash the tray; we log to stderr and the menu will reflect the
+    actual state on next refresh.
+    """
+    if winreg is None:
+        print("[tray] autostart unavailable: winreg not present "
+              "(non-Windows host?)", file=sys.stderr)
+        return
+    try:
+        if enabled:
+            cmd = _autostart_command_line()
+            with winreg.CreateKey(winreg.HKEY_CURRENT_USER,
+                                  _RUN_KEY_PATH) as key:
+                winreg.SetValueEx(key, _RUN_KEY_VALUE, 0, winreg.REG_SZ, cmd)
+        else:
+            try:
+                with winreg.OpenKey(winreg.HKEY_CURRENT_USER, _RUN_KEY_PATH,
+                                    0, winreg.KEY_SET_VALUE) as key:
+                    try:
+                        winreg.DeleteValue(key, _RUN_KEY_VALUE)
+                    except FileNotFoundError:
+                        pass
+            except FileNotFoundError:
+                pass
+    except OSError as e:
+        print(f"[tray] autostart registry write failed: {e}",
+              file=sys.stderr)
 
 
 def _build_tray_image(size: int = 64):
@@ -130,8 +231,9 @@ def start_tray_app(open_browser_on_start: bool = True,
         _foreground_fallback(open_browser_on_start)
         return
 
-    # Lazy-import the server entry to keep tray import cheap.
+    # Lazy-import the server entry + watcher to keep tray import cheap.
     from rbcf_gui import serve_http
+    import guid_watcher
 
     shutdown_event = threading.Event()
     ready_event = threading.Event()
@@ -157,6 +259,22 @@ def start_tray_app(open_browser_on_start: bool = True,
         daemon=True,
     )
     server_thread.start()
+
+    # Spawn the GUID watcher alongside the HTTP server. It reads its
+    # mode from the persisted state file; if no state has been saved
+    # yet, default to 'detect' (safe — never modifies es_input.cfg).
+    initial_state = guid_watcher.get_state()
+    initial_mode = initial_state.get("mode") or guid_watcher.DEFAULT_MODE
+    if initial_mode not in guid_watcher.VALID_MODES:
+        initial_mode = guid_watcher.DEFAULT_MODE
+    try:
+        watcher_thread = guid_watcher.start_watcher(
+            shutdown_event=shutdown_event,
+            mode=initial_mode,
+        )
+    except Exception as exc:  # noqa: BLE001 — never let watcher kill the tray
+        print(f"[tray] guid_watcher failed to start: {exc}", file=sys.stderr)
+        watcher_thread = None
 
     # Wait for the server to actually be listening before opening the
     # browser, so we don't get a "connection refused" race.
@@ -188,8 +306,60 @@ def start_tray_app(open_browser_on_start: bool = True,
         if ic is not None:
             ic.stop()
 
+    # ------------- GUID watcher submenu callbacks -------------
+    # pystray passes (icon, item) to checkable callbacks; the lambda we
+    # bind via `checked=` reads the live mode every time the menu opens
+    # so toggling stays in sync with `set_mode` from anywhere else.
+    def _make_set_mode(mode: str):
+        def _cb(icon, item):  # noqa: ARG001
+            try:
+                guid_watcher.set_mode(mode)
+            except Exception as exc:  # noqa: BLE001
+                print(f"[tray] set watcher mode failed: {exc}",
+                      file=sys.stderr)
+            # pystray re-renders the menu via the `checked` lambdas — no
+            # explicit refresh needed.
+        return _cb
+
+    def _is_mode(mode: str):
+        return lambda item: guid_watcher.get_state().get("mode") == mode  # noqa: ARG005
+
+    watcher_submenu = Menu(
+        MenuItem("Off",
+                 _make_set_mode("off"),
+                 checked=_is_mode("off"),
+                 radio=True),
+        MenuItem("Detect only",
+                 _make_set_mode("detect"),
+                 checked=_is_mode("detect"),
+                 radio=True),
+        MenuItem("Auto-fold (silent)",
+                 _make_set_mode("auto-fold"),
+                 checked=_is_mode("auto-fold"),
+                 radio=True),
+    )
+
+    def _watcher_label(item):  # noqa: ARG001
+        mode = guid_watcher.get_state().get("mode") or "detect"
+        return f"GUID watcher: {mode}"
+
+    # ------------- Autostart toggle -------------
+    def on_toggle_autostart(icon, item):  # noqa: ARG001
+        currently = _autostart_enabled()
+        _set_autostart(not currently)
+
+    def _autostart_label(item):  # noqa: ARG001
+        return ("Run on Windows startup: on"
+                if _autostart_enabled()
+                else "Run on Windows startup: off")
+
     menu = Menu(
         MenuItem("Show window", on_show, default=True),
+        Menu.SEPARATOR,
+        MenuItem(_watcher_label, watcher_submenu),
+        MenuItem(_autostart_label,
+                 on_toggle_autostart,
+                 checked=lambda item: _autostart_enabled()),  # noqa: ARG005
         Menu.SEPARATOR,
         MenuItem("About RB-Controller_fix", on_about),
         Menu.SEPARATOR,
@@ -207,13 +377,21 @@ def start_tray_app(open_browser_on_start: bool = True,
     # icon.run() blocks until icon.stop() is called.
     icon.run()
 
-    # After Icon.stop(): be sure shutdown_event is set so the server thread
-    # exits cleanly even if the user closes via an OS-level kill. The thread
-    # is daemon=True so the process exits regardless, but we'd like a clean
-    # shutdown.
+    # After Icon.stop(): be sure shutdown_event is set so the server +
+    # watcher threads exit cleanly even if the user closes via an OS-level
+    # kill. Both are daemon=True so the process exits regardless, but we'd
+    # like a clean shutdown.
     shutdown_event.set()
     # Give the server a brief window to drain. Daemon thread, so don't block long.
     server_thread.join(timeout=3.0)
+    if watcher_thread is not None:
+        # Watcher polls in 1s steps so it should observe shutdown_event
+        # within a couple of seconds at most.
+        watcher_thread.join(timeout=3.0)
 
 
-__all__ = ["start_tray_app"]
+__all__ = [
+    "start_tray_app",
+    "_autostart_enabled",
+    "_set_autostart",
+]

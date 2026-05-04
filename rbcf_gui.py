@@ -48,6 +48,18 @@ Endpoints:
                                         repo (ITViking-FIN/RetroControlMapper).
                                         Body: {allow_online, force}. Cache TTL
                                         24h (errors 1h). See update_check.py.
+    GET  /api/guid/watcher              GUID watcher state + last 50 events.
+                                        Surfaces guid_watcher.get_state() +
+                                        read_log() over HTTP for a future GUI
+                                        panel. v0.1.0 surface is the tray menu.
+    POST /api/guid/watcher              Body: {mode: 'off'|'detect'|'auto-fold'}.
+                                        Persists the new mode; live thread
+                                        picks it up on its next tick.
+    POST /api/guid/fold-pending         Body: {vid, pid}. Manually triggers a
+                                        fold for a specific alias group — used
+                                        when the watcher is in 'detect' mode
+                                        and the user clicks "fold this" in the
+                                        GUI.
 """
 from __future__ import annotations
 
@@ -1566,6 +1578,93 @@ def _update_check_cached() -> dict:
     return payload
 
 
+# ------------------------------ GUID watcher (Phase 2) -------------------
+
+def _watcher_get() -> dict:
+    """GET /api/guid/watcher — surface guid_watcher state + recent log."""
+    try:
+        import guid_watcher
+        state = guid_watcher.get_state()
+        recent = [e.to_dict() for e in guid_watcher.read_log(limit=50)]
+        return {
+            "ok": True,
+            "mode": state.get("mode"),
+            "last_seen_mtime": state.get("last_seen_mtime"),
+            "last_event_at": state.get("last_event_at"),
+            "log_count": state.get("log_count", 0),
+            "recent": recent,
+        }
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "error": f"watcher state read failed: {e}"}
+
+
+def _watcher_set(data: dict) -> dict:
+    """POST /api/guid/watcher — body: {mode}. Persist + return new mode."""
+    try:
+        import guid_watcher
+        mode = (data.get("mode") or "").strip()
+        if mode not in guid_watcher.VALID_MODES:
+            return {
+                "ok": False,
+                "error": f"invalid mode {mode!r}; "
+                         f"expected one of {list(guid_watcher.VALID_MODES)}",
+            }
+        guid_watcher.set_mode(mode)
+        return {"ok": True, "mode": mode}
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "error": f"set mode failed: {e}"}
+
+
+def _watcher_fold_pending(data: dict) -> dict:
+    """POST /api/guid/fold-pending — manually fold a single VID:PID group.
+
+    Body: ``{vid, pid}``. Used when the watcher is in 'detect' mode and
+    the user clicks "fold this" in the GUI for a specific group.
+    """
+    vid = (data.get("vid") or "").strip().lower()
+    pid = (data.get("pid") or "").strip().lower()
+    if not (HEX4_RE.match(vid) and HEX4_RE.match(pid)):
+        return {"ok": False, "error": "vid/pid must be 4-char hex strings"}
+
+    try:
+        from config import ES_INPUT
+        from guid_aliases import (
+            parse_es_input, group_aliases, expand_inputconfig,
+        )
+    except ImportError as e:
+        return {"ok": False, "error": f"alias module import failed: {e}"}
+
+    if not ES_INPUT.exists():
+        return {"ok": False, "error": f"es_input.cfg not found at {ES_INPUT}"}
+
+    try:
+        aliases = parse_es_input(ES_INPUT)
+        groups = group_aliases(aliases)
+        members = groups.get((vid, pid))
+        if not members:
+            return {
+                "ok": False,
+                "error": f"no alias group for vid={vid} pid={pid}",
+            }
+        if len(members) < 2:
+            return {
+                "ok": True,
+                "added": 0,
+                "kept": 0,
+                "note": "singleton group — nothing to fold",
+            }
+        added, kept = expand_inputconfig(ES_INPUT, members, dry=False)
+        return {
+            "ok": True,
+            "vid": vid,
+            "pid": pid,
+            "added": added,
+            "kept": kept,
+        }
+    except (OSError, ValueError) as e:
+        return {"ok": False, "error": f"fold failed: {e}"}
+
+
 # ------------------------------ Controller-image upload ------------------
 
 def _sniff_image_ext(payload: bytes) -> str | None:
@@ -1809,6 +1908,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._json(_backup_list())
         if u.path == "/api/update-check":
             return self._json(_update_check_cached())
+        if u.path == "/api/guid/watcher":
+            return self._json(_watcher_get())
         if u.path in ("", "/"):
             self.path = "/index.html"
         return super().do_GET()
@@ -1867,6 +1968,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._json(_system_lookup_clear(data))
         if u.path == "/api/update-check":
             return self._json(_update_check_endpoint(data))
+        if u.path == "/api/guid/watcher":
+            return self._json(_watcher_set(data))
+        if u.path == "/api/guid/fold-pending":
+            return self._json(_watcher_fold_pending(data))
         return self._json({"ok": False, "error": "unknown endpoint"}, status=404)
 
     def do_DELETE(self):
