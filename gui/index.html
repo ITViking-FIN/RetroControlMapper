@@ -26,28 +26,18 @@
     </div>
   </div>
   <div class="env">
-    <span id="pad-status" class="pad-pill">No pad — press a button</span>
+    <button id="pad-status" class="pad-pill" type="button"
+            aria-haspopup="dialog" aria-expanded="false"
+            title="Detected controllers — click to view all">
+      <span class="pad-name-short">probing…</span>
+      <svg class="pad-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <polyline points="6 9 12 15 18 9"/>
+      </svg>
+    </button>
   </div>
   <div class="page-actions"></div>
 </header>
-
-<section class="device-bar" id="device-bar">
-  <div class="device-bar-head" id="device-bar-toggle" role="button" tabindex="0" aria-expanded="false" title="Show / hide detected controllers">
-    <span class="chev" aria-hidden="true">▸</span>
-    <div class="device-bar-summary">
-      <span class="count" id="device-summary">probing…</span>
-    </div>
-  </div>
-  <div class="device-bar-body">
-    <div id="device-list" class="device-list"></div>
-    <div class="device-bar-actions">
-      <button id="btn-rescan" class="secondary tiny-btn" title="Re-probe Windows for connected controllers">
-        <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 15.5-6.3L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15.5 6.3L3 16"/><path d="M3 21v-5h5"/></svg>
-        Rescan
-      </button>
-    </div>
-  </div>
-</section>
 
 <main>
 

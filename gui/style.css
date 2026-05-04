@@ -373,6 +373,162 @@ header h1 {
   50%      { box-shadow: 0 0 0 6px rgba(63, 185, 80, 0.28); }
 }
 
+/* ---------- Pad-pill as button (click-to-expand) ---------- */
+/* The pill is a real <button> now — clicking opens the device popover.
+   Reset the default button chrome so it inherits the pill plate, then
+   layer on hover/focus/active affordances. */
+button.pad-pill {
+  font-family: var(--mono);
+  cursor: pointer;
+  /* Cap the visible width so the friendly name truncates rather than pushing
+     the page-actions group off-screen on narrow windows. */
+  max-width: 320px;
+}
+button.pad-pill:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-deep);
+  border-color: var(--edge-inner);
+}
+button.pad-pill.connected:hover {
+  box-shadow: var(--shadow-deep),
+              inset 0 0 12px rgba(63, 185, 80, 0.20),
+              0 0 24px rgba(63, 185, 80, 0.22);
+}
+button.pad-pill:active { transform: translateY(1px); box-shadow: var(--shadow-pressed); }
+button.pad-pill:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-soft), 0 0 0 4px var(--acc-bg);
+}
+
+.pad-pill .pad-name-short {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+.pad-pill .pad-chevron {
+  width: 12px; height: 12px;
+  color: var(--tx-hint);
+  flex-shrink: 0;
+  transition: transform var(--dur-base) var(--ease),
+              color var(--dur-base) var(--ease);
+}
+.pad-pill[aria-expanded="true"] .pad-chevron { transform: rotate(180deg); }
+.pad-pill.connected .pad-chevron { color: var(--state-ok-2); }
+
+/* ---------- Pad-pill popover (mirrors .rbcf-apply-settings-popover) ---------- */
+.pad-pill-popover {
+  background: var(--shell-fill);
+  backdrop-filter: var(--blur-high);
+  -webkit-backdrop-filter: var(--blur-high);
+  border: 1px solid var(--edge-bottom);
+  border-top-color: var(--edge-top);
+  border-radius: var(--radius-shell);
+  box-shadow: var(--shadow-deep),
+              inset 0 1px 0 rgba(255, 255, 255, 0.20);
+  z-index: 1100;
+  color: var(--tx-secondary);
+  overflow: hidden;
+  animation: rbcf-apply-fade-in var(--dur-base) var(--ease);
+  isolation: isolate;
+}
+.pad-pill-popover > * { position: relative; z-index: 1; }
+.pad-pill-popover::before {
+  content: "";
+  position: absolute;
+  inset: 7px;
+  border-radius: var(--radius-plate);
+  background: var(--plate-fill);
+  border: 1px solid var(--edge-bottom);
+  border-top-color: var(--edge-top);
+  box-shadow: var(--shadow-soft),
+              inset 0 1px 0 rgba(255, 255, 255, 0.30);
+  pointer-events: none;
+  z-index: 0;
+}
+[data-theme="dark"] .pad-pill-popover::before {
+  box-shadow: var(--shadow-soft), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+@media (prefers-color-scheme: dark) {
+  [data-theme="auto"] .pad-pill-popover::before {
+    box-shadow: var(--shadow-soft), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  }
+}
+
+.pad-pill-popover-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 16px 10px;
+  border-bottom: 1px solid var(--edge-bottom);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.30), transparent);
+  position: relative;
+}
+[data-theme="dark"] .pad-pill-popover-head {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent);
+}
+@media (prefers-color-scheme: dark) {
+  [data-theme="auto"] .pad-pill-popover-head {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent);
+  }
+}
+.pad-pill-popover-title {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--tx-primary);
+  padding-right: 28px;  /* leave room for the close X */
+}
+.pad-pill-popover-sub {
+  font-size: 11px;
+  color: var(--tx-hint);
+  font-family: var(--mono);
+  line-height: 1.4;
+  padding-right: 28px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pad-pill-popover-head .rbcf-apply-modal-x {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+}
+.pad-pill-popover-body {
+  padding: 12px 14px 4px;
+  max-height: 56vh;
+  overflow-y: auto;
+}
+.pad-pill-popover-body .device-list {
+  flex-direction: column;
+  align-items: stretch;
+  flex-wrap: nowrap;
+}
+.pad-pill-popover-body .device-card {
+  width: 100%;
+  text-align: left;
+  font-family: var(--mono);  /* match the original card treatment */
+  appearance: none;
+  -webkit-appearance: none;
+}
+.pad-pill-popover-body .device-empty {
+  padding: 14px 6px;
+  font-size: 12px;
+  color: var(--tx-muted);
+  text-align: center;
+  font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+}
+.pad-pill-popover-foot {
+  display: flex;
+  justify-content: flex-end;
+  padding: 10px 14px 14px;
+  border-top: 1px solid var(--edge-bottom);
+}
+
 /* ---------- Layout ---------- */
 
 main {

@@ -30,8 +30,9 @@ function setTheme(value) {
 // script tag is at the end of <body>).
 setTheme(getTheme());
 
-const padStatus = $('pad-status');
-const padName   = $('pad-name');
+const padStatus = $('pad-status');           // the .pad-pill button (header)
+const padPillNameEl = padStatus ? padStatus.querySelector('.pad-name-short') : null;
+const padName   = $('pad-name');             // source pane subtitle ("17 buttons · 4 axes")
 const targetName = $('target-name');
 const fixedNote = $('fixed-mapping-note');
 const fixedNoteWrap = $('fixed-mapping-note-wrap');
@@ -132,19 +133,54 @@ function setActivePad(index) {
   $$('.device-card').forEach(c => {
     c.classList.toggle('active', parseInt(c.dataset.padIndex) === index);
   });
+  updatePadPillText();
+}
+
+// ---- Pad pill: friendly-name driver --------------------------------------
+//
+// The pill in the page header always shows ONE thing: the friendly name of
+// the device the user is currently working with (or "(no controller)").
+// Sources of truth, in order:
+//   1. The probed device whose padIndex === activePadIndex.
+//   2. The first connected probed device (fallback if active slot is empty).
+//   3. The literal string "(no controller)".
+//
+// Triggered by: every successful loadDevices(), setActivePad(),
+// gamepadconnected / gamepaddisconnected.
+
+let LAST_DEVICES = [];
+
+function pickFriendlyName() {
+  if (!LAST_DEVICES || !LAST_DEVICES.length) return '(no controller)';
+  // Cards are rendered by index — the card at position N has padIndex=N. So
+  // the "active" device is whichever one sits at activePadIndex in the last
+  // probe result, falling back to the first device if that slot is empty.
+  const dev = LAST_DEVICES[activePadIndex] || LAST_DEVICES[0];
+  if (!dev) return '(no controller)';
+  return dev.name || dev.friendly_name || `${dev.vid}:${dev.pid}` || '(no controller)';
+}
+
+function updatePadPillText() {
+  if (!padPillNameEl) return;
+  const name = pickFriendlyName();
+  padPillNameEl.textContent = name;
+  padStatus.title = name === '(no controller)'
+    ? 'No controller detected — click to view / rescan'
+    : `${name} — click to view all detected controllers`;
 }
 
 function updateGamepad() {
   const pad = pickGamepad();
 
   if (!pad) {
-    padStatus.textContent = 'No pad — press a button';
+    // Pill text is driven by loadDevices() / setActivePad() / connect events,
+    // not by this 60Hz polling loop. Just keep the connected-state visual class
+    // in sync and clear the source-pane sub-label.
     padStatus.classList.remove('connected');
     padName.textContent = '—';
     $$('.src-btn.pressed, .tgt-btn.pressed, .map-row.pressed').forEach(el => el.classList.remove('pressed'));
     return;
   }
-  padStatus.textContent = pad.id.length > 36 ? pad.id.slice(0, 36) + '…' : pad.id;
   padStatus.classList.add('connected');
   padName.textContent = `${pad.buttons.length} buttons · ${pad.axes.length} axes`;
 
@@ -923,10 +959,17 @@ selGame.addEventListener('change', async () => {
 
 $('btn-save').addEventListener('click', onSave);
 $('btn-apply').addEventListener('click', onApply);
-$('btn-rescan').addEventListener('click', (e) => {
-  e.stopPropagation();  // don't toggle the device-bar collapse
-  loadDevices();
-});
+
+// Pad-pill is now a click-to-expand button — opens the device popover.
+// (The Rescan button id 'btn-rescan' lives inside the popover and is wired
+// when the popover is built.)
+if (padStatus) {
+  padStatus.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if ($('rbcf-device-popover')) dismissDevicePopover();
+    else showDevicePopover();
+  });
+}
 
 window.addEventListener('gamepadconnected', e => {
   console.log('connected:', e.gamepad.id);
@@ -940,109 +983,237 @@ window.addEventListener('gamepaddisconnected', e => {
 });
 
 // ============================================================
-// Device bar (collapsible — summarises detected controllers)
+// Device popover (anchored to the .pad-pill in the page header).
+// Replaces the old standalone .device-bar section. Mirrors the
+// settings-cog popover's a11y (outside-click + Escape dismiss,
+// previous-focus restoration, focus management).
 // ============================================================
 
-const DEVICE_BAR_KEY = 'rbcf-device-bar-expanded';
+let _rbcfDevicePopOutsideHandler = null;
+let _rbcfDevicePopKeyHandler = null;
+let _rbcfDevicePopPrevFocus = null;
 
-function setDeviceBarExpanded(expanded) {
-  const bar = $('device-bar');
-  bar.classList.toggle('expanded', expanded);
-  const head = $('device-bar-toggle');
-  if (head) head.setAttribute('aria-expanded', String(expanded));
-  try { localStorage.setItem(DEVICE_BAR_KEY, expanded ? '1' : '0'); } catch (e) { /* ignore */ }
+function dismissDevicePopover(opts) {
+  const pop = $('rbcf-device-popover');
+  if (pop) pop.remove();
+  if (padStatus) padStatus.setAttribute('aria-expanded', 'false');
+  if (_rbcfDevicePopOutsideHandler) {
+    document.removeEventListener('mousedown', _rbcfDevicePopOutsideHandler, true);
+    _rbcfDevicePopOutsideHandler = null;
+  }
+  if (_rbcfDevicePopKeyHandler) {
+    document.removeEventListener('keydown', _rbcfDevicePopKeyHandler, true);
+    _rbcfDevicePopKeyHandler = null;
+  }
+  // Only restore focus when explicitly requested (Escape key, close button,
+  // or card-click). Outside-click leaves focus where the user clicked.
+  if (opts && opts.restoreFocus
+      && _rbcfDevicePopPrevFocus
+      && document.contains(_rbcfDevicePopPrevFocus)) {
+    try { _rbcfDevicePopPrevFocus.focus(); } catch (e) { /* ignore */ }
+  }
+  _rbcfDevicePopPrevFocus = null;
 }
 
-function setupDeviceBar() {
-  const head = $('device-bar-toggle');
-  if (!head) return;
-  // Default: collapsed unless user previously expanded it.
-  let expanded = false;
-  try { expanded = localStorage.getItem(DEVICE_BAR_KEY) === '1'; } catch (e) { /* ignore */ }
-  setDeviceBarExpanded(expanded);
-  head.addEventListener('click', () => {
-    setDeviceBarExpanded(!$('device-bar').classList.contains('expanded'));
+function _rbcfDevicePopFocusables(root) {
+  return Array.from(root.querySelectorAll(
+    'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+  )).filter(el => !el.disabled && el.offsetParent !== null);
+}
+
+function showDevicePopover() {
+  dismissDevicePopover();
+  if (!padStatus) return;
+  _rbcfDevicePopPrevFocus = document.activeElement;
+
+  const pop = document.createElement('div');
+  pop.id = 'rbcf-device-popover';
+  pop.className = 'pad-pill-popover';
+  pop.setAttribute('role', 'dialog');
+  pop.setAttribute('aria-label', 'Detected controllers');
+
+  // Static shell — body gets re-rendered by paintDevicePopover() now and
+  // on every successful loadDevices() while the popover is open.
+  pop.innerHTML = `
+    <div class="pad-pill-popover-head">
+      <h3 class="pad-pill-popover-title">Detected controllers</h3>
+      <span class="pad-pill-popover-sub" id="pad-pill-popover-sub">—</span>
+      <button type="button" class="rbcf-apply-modal-x" aria-label="Close" data-act="close">×</button>
+    </div>
+    <div class="pad-pill-popover-body">
+      <div id="device-list" class="device-list"></div>
+    </div>
+    <div class="pad-pill-popover-foot">
+      <button id="btn-rescan" class="secondary tiny-btn" type="button"
+              title="Re-probe Windows for connected controllers">
+        <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M3 12a9 9 0 0 1 15.5-6.3L21 8"/>
+          <path d="M21 3v5h-5"/>
+          <path d="M21 12a9 9 0 0 1-15.5 6.3L3 16"/>
+          <path d="M3 21v-5h5"/>
+        </svg>
+        Rescan
+      </button>
+    </div>
+  `;
+  document.body.appendChild(pop);
+
+  // Position the popover under the pad-pill (left-aligned with the pill,
+  // mirroring the settings-cog popover's right-anchored placement).
+  const r = padStatus.getBoundingClientRect();
+  const popW = 360;
+  let left = r.left;
+  if (left + popW > window.innerWidth - 8) left = window.innerWidth - popW - 8;
+  if (left < 8) left = 8;
+  pop.style.position = 'fixed';
+  pop.style.top = (r.bottom + 6) + 'px';
+  pop.style.left = left + 'px';
+  pop.style.width = popW + 'px';
+
+  padStatus.setAttribute('aria-expanded', 'true');
+
+  // Wire the close button.
+  pop.querySelector('[data-act="close"]').addEventListener('click', () => {
+    dismissDevicePopover({ restoreFocus: true });
   });
-  head.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' || e.key === ' ') {
+  // Wire Rescan (id 'btn-rescan' is preserved per the spec).
+  pop.querySelector('#btn-rescan').addEventListener('click', (e) => {
+    e.stopPropagation();
+    loadDevices();
+  });
+
+  // Render the cached devices immediately (avoid a "probing…" flash if we
+  // already have data). Kick a refresh in the background.
+  paintDevicePopover();
+  loadDevices();
+
+  // Outside-click dismiss — but ignore clicks on the pill itself (the pill's
+  // click handler already toggles).
+  _rbcfDevicePopOutsideHandler = (e) => {
+    if (pop.contains(e.target) || padStatus.contains(e.target)) return;
+    dismissDevicePopover();
+  };
+  document.addEventListener('mousedown', _rbcfDevicePopOutsideHandler, true);
+
+  // Escape closes; Tab traps focus inside the popover.
+  _rbcfDevicePopKeyHandler = (e) => {
+    if (e.key === 'Escape') {
       e.preventDefault();
-      setDeviceBarExpanded(!$('device-bar').classList.contains('expanded'));
+      dismissDevicePopover({ restoreFocus: false });
+      try { padStatus.focus(); } catch (err) { /* ignore */ }
+      return;
     }
+    if (e.key !== 'Tab') return;
+    const items = _rbcfDevicePopFocusables(pop);
+    if (!items.length) return;
+    const first = items[0], last = items[items.length - 1];
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault(); last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault(); first.focus();
+    }
+  };
+  document.addEventListener('keydown', _rbcfDevicePopKeyHandler, true);
+
+  // Auto-focus the active card if there is one, else the Rescan button.
+  setTimeout(() => {
+    const active = pop.querySelector('.device-card.active') || pop.querySelector('.device-card') || pop.querySelector('#btn-rescan');
+    if (active) { try { active.focus(); } catch (e) { /* ignore */ } }
+  }, 0);
+}
+
+// Render the cached LAST_DEVICES into the open popover (no-op if closed).
+// Also updates the popover's sub-line ("17 buttons · 4 axes · XInput") for
+// the active pad — moved here from the always-visible pill.
+function paintDevicePopover() {
+  const list = document.querySelector('#rbcf-device-popover #device-list');
+  if (!list) return;  // popover not open; nothing to do
+  list.innerHTML = '';
+
+  // Sub-line: gives the user the per-controller detail that used to live in
+  // the always-visible pill (button-count, axes-count for the active pad).
+  const sub = document.querySelector('#rbcf-device-popover #pad-pill-popover-sub');
+  if (sub) {
+    const pad = pickGamepad();
+    const friendly = pickFriendlyName();
+    if (pad) {
+      sub.textContent = `${friendly} · ${pad.buttons.length} buttons · ${pad.axes.length} axes`;
+    } else {
+      sub.textContent = friendly;
+    }
+  }
+
+  if (!LAST_DEVICES.length) {
+    list.innerHTML =
+      '<div class="device-empty">No controllers detected. Connect one and click Rescan.</div>';
+    return;
+  }
+
+  LAST_DEVICES.forEach((d, idx) => {
+    const card = document.createElement('button');
+    card.type = 'button';
+    card.className = 'device-card' + (d.xinput ? ' xinput' : '');
+    card.dataset.padIndex = String(idx);
+    card.dataset.key = d.key || `${d.vid}:${d.pid}`;
+    if (idx === activePadIndex) card.classList.add('active');
+    const thumb = document.createElement('div');
+    thumb.className = 'thumb' + (d.image ? '' : ' no-img');
+    if (d.image) {
+      const img = document.createElement('img');
+      img.src = d.image;
+      img.alt = d.name || '';
+      img.referrerPolicy = 'no-referrer';
+      thumb.appendChild(img);
+    } else {
+      thumb.textContent = d.xinput ? 'XI' : 'HID';
+    }
+    const meta = document.createElement('div');
+    meta.className = 'meta';
+    meta.innerHTML = `
+      <span class="name"></span>
+      <span class="vid-pid"></span>
+    `;
+    meta.querySelector('.name').textContent = d.name || d.friendly_name || 'Unknown device';
+    meta.querySelector('.vid-pid').textContent = `${d.vid}:${d.pid}${d.xinput ? ' · XInput' : ''}`;
+    card.appendChild(thumb);
+    card.appendChild(meta);
+    card.title = `${d.instance_id || ''}\n\nClick to use this controller as the live source.`;
+    // Click → make this card the active source, update the pill, close pop.
+    card.addEventListener('click', (e) => {
+      e.stopPropagation();
+      setActivePad(idx);
+      showToast(`Active source: ${d.name || d.friendly_name || `${d.vid}:${d.pid}`}`, 'info', 2000);
+      dismissDevicePopover();
+    });
+    list.appendChild(card);
   });
 }
 
 // ============================================================
-// Device probe (Windows VID:PID via PowerShell, surfaced as cards)
+// Device probe (Windows VID:PID via PowerShell). The pill text
+// is driven from this; the popover (if open) is repainted from
+// the cache.
 // ============================================================
 
 async function loadDevices() {
-  const list = $('device-list');
-  const summary = $('device-summary');
-  if (summary) summary.innerHTML = '<span class="spinner"></span> probing…';
-  list.innerHTML = '';
   try {
     const data = await api('GET', '/api/devices');
     const devs = data.devices || [];
-    if (!devs.length) {
-      if (summary) {
-        summary.classList.remove('has-pad');
-        summary.textContent = 'No HID gamepads detected.';
-      }
-      list.innerHTML = '<span class="muted small">Nothing connected via Windows HID.</span>';
-      return;
-    }
-    // Summary (collapsed view)
-    if (summary) {
-      const xinputCount = devs.filter(d => d.xinput).length;
-      const total = devs.length;
-      const parts = [];
-      parts.push(`${total} controller${total === 1 ? '' : 's'} detected`);
-      if (xinputCount) parts.push(`${xinputCount} XInput`);
-      summary.classList.toggle('has-pad', total > 0);
-      summary.textContent = parts.join(' · ');
-    }
-    // Expanded view
-    list.innerHTML = '';
-    devs.forEach((d, idx) => {
-      const card = document.createElement('div');
-      card.className = 'device-card' + (d.xinput ? ' xinput' : '');
-      card.dataset.padIndex = String(idx);
-      card.dataset.key = d.key || `${d.vid}:${d.pid}`;
-      if (idx === activePadIndex) card.classList.add('active');
-      const thumb = document.createElement('div');
-      thumb.className = 'thumb' + (d.image ? '' : ' no-img');
-      if (d.image) {
-        const img = document.createElement('img');
-        img.src = d.image;
-        img.alt = d.name || '';
-        img.referrerPolicy = 'no-referrer';
-        thumb.appendChild(img);
-      } else {
-        thumb.textContent = d.xinput ? 'XI' : 'HID';
-      }
-      const meta = document.createElement('div');
-      meta.className = 'meta';
-      meta.innerHTML = `
-        <span class="name"></span>
-        <span class="vid-pid"></span>
-      `;
-      meta.querySelector('.name').textContent = d.name || d.friendly_name || 'Unknown device';
-      meta.querySelector('.vid-pid').textContent = `${d.vid}:${d.pid}${d.xinput ? ' · XInput' : ''}`;
-      card.appendChild(thumb);
-      card.appendChild(meta);
-      card.title = `${d.instance_id || ''}\n\nClick to use this controller as the live source.`;
-      // Click → make this card the active source
-      card.addEventListener('click', (e) => {
-        e.stopPropagation();
-        setActivePad(idx);
-        showToast(`Active source: ${d.name || d.friendly_name || `${d.vid}:${d.pid}`}`, 'info', 2000);
-      });
-      list.appendChild(card);
-    });
+    // Tag each device with its render index — useful for friendly-name lookup.
+    devs.forEach((d, i) => { d.padIndex = i; });
+    LAST_DEVICES = devs;
   } catch (e) {
-    if (summary) summary.textContent = `probe error: ${e.message}`;
-    list.innerHTML = `<span class="muted small">probe error: ${e.message}</span>`;
+    LAST_DEVICES = [];
+    // Surface the error inside the popover if it's open.
+    const list = document.querySelector('#rbcf-device-popover #device-list');
+    if (list) {
+      list.innerHTML = `<div class="device-empty">probe error: ${rbcfEsc(e.message)}</div>`;
+    }
   }
+  // Always refresh derived UI: the pill text + (if open) the popover body.
+  updatePadPillText();
+  paintDevicePopover();
 }
 
 // ============================================================
@@ -1110,8 +1281,9 @@ function setupCollapsibles() {
     await loadGames(SYSTEMS[0].id);
   }
   setupCollapsibles();
-  setupDeviceBar();
   injectSettingsCog();
-  loadDevices();  // fire & forget, populates the device bar
+  // Set the pill's initial label before the probe lands.
+  updatePadPillText();
+  loadDevices();  // fire & forget — drives the pad-pill text + popover body
   loop();
 })();
