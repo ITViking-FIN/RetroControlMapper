@@ -32,10 +32,9 @@ ehthumbs.db
 Desktop.ini
 .DS_Store
 
-# Packaging output (future PyInstaller builds)
+# Packaging output (PyInstaller builds — the .exe and intermediate cache)
 build/
 dist/
-*.spec
 
 # Research scratchpads — agents stage downloaded source for inspection here
 .tmp_research/
