@@ -870,3 +870,400 @@ section.collapsible.collapsed > *:not(h2) { display: none; }
   .map-region { grid-template-columns: 1fr; gap: 6px; }
   .map-region-label { padding: 0; }
 }
+
+/* ==========================================================================
+   Onboarding overlay (Flow 1 — first-run welcome)
+   All classes scoped under .rbcf-onb- to avoid leaking into the main GUI.
+   The overlay is a fixed full-viewport panel painted *over* the existing
+   GUI; nothing in the main app needs to know about it.
+   ========================================================================== */
+
+html.rbcf-onb-locked,
+html.rbcf-onb-locked body { overflow: hidden; }
+
+.rbcf-onb-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;                     /* above toolbar (z:50) and toast (z:1000) */
+  background: rgba(7, 9, 13, 0.78);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 16px;
+  animation: rbcf-onb-fade-in 0.18s ease-out;
+}
+.rbcf-onb-overlay.rbcf-onb-leaving {
+  animation: rbcf-onb-fade-out 0.18s ease-in forwards;
+  pointer-events: none;
+}
+@keyframes rbcf-onb-fade-in  { from { opacity: 0; } to { opacity: 1; } }
+@keyframes rbcf-onb-fade-out { from { opacity: 1; } to { opacity: 0; } }
+
+.rbcf-onb-card {
+  background: var(--bg-1);
+  border: 1px solid var(--bd-3);
+  border-radius: 12px;
+  width: min(720px, 100%);
+  max-height: calc(100vh - 64px);
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(124, 92, 255, 0.2);
+  overflow: hidden;
+  color: var(--tx-2);
+}
+
+.rbcf-onb-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 18px 22px 14px;
+  border-bottom: 1px solid var(--bd-1);
+  background: linear-gradient(180deg, rgba(124, 92, 255, 0.06), transparent);
+}
+.rbcf-onb-step-pill {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(124, 92, 255, 0.14);
+  color: var(--acc-2);
+  border: 1px solid rgba(124, 92, 255, 0.30);
+}
+.rbcf-onb-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--tx-1);
+  letter-spacing: -0.01em;
+  flex: 1;
+}
+.rbcf-onb-x {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--tx-3);
+  font-size: 22px;
+  line-height: 1;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  cursor: pointer;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.1s, color 0.1s, border-color 0.1s;
+}
+.rbcf-onb-x:hover { background: var(--bg-2); color: var(--tx-1); border-color: var(--bd-2); }
+.rbcf-onb-x:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--acc-bg); }
+
+.rbcf-onb-body {
+  padding: 18px 22px;
+  overflow-y: auto;
+  flex: 1;
+}
+.rbcf-onb-lede {
+  margin: 0 0 14px;
+  color: var(--tx-2);
+  font-size: 13px;
+  line-height: 1.55;
+}
+.rbcf-onb-muted {
+  color: var(--tx-3);
+  font-size: 12px;
+  margin: 4px 0 0;
+}
+
+.rbcf-onb-status {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 8px;
+  background: var(--bg-3);
+  border: 1px solid var(--bd-1);
+}
+.rbcf-onb-status-ok {
+  border-color: rgba(63, 185, 80, 0.40);
+  background: rgba(63, 185, 80, 0.06);
+}
+.rbcf-onb-status-error {
+  border-color: rgba(248, 81, 73, 0.40);
+  background: rgba(248, 81, 73, 0.06);
+}
+.rbcf-onb-status-msg { flex: 1; min-width: 0; }
+.rbcf-onb-status-msg strong { color: var(--tx-1); display: block; margin-bottom: 4px; }
+.rbcf-onb-status-msg code {
+  font-family: var(--mono);
+  background: var(--bg-1);
+  border: 1px solid var(--bd-1);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 12px;
+}
+.rbcf-onb-check {
+  width: 22px; height: 22px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: rgba(63, 185, 80, 0.20);
+  color: var(--green-2);
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+}
+.rbcf-onb-cross {
+  width: 22px; height: 22px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: rgba(248, 81, 73, 0.20);
+  color: var(--red);
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+}
+
+.rbcf-onb-spinner {
+  display: inline-block;
+  width: 14px; height: 14px;
+  border: 2px solid var(--bd-2);
+  border-top-color: var(--acc);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  vertical-align: middle;
+  margin-right: 4px;
+}
+
+.rbcf-onb-details {
+  margin-top: 10px;
+  font-size: 12px;
+}
+.rbcf-onb-details summary {
+  color: var(--tx-3);
+  cursor: pointer;
+  user-select: none;
+}
+.rbcf-onb-details summary:hover { color: var(--tx-2); }
+.rbcf-onb-probed {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--tx-3);
+}
+.rbcf-onb-probed li { margin: 2px 0; word-break: break-all; }
+
+.rbcf-onb-rootform {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+.rbcf-onb-input {
+  flex: 1;
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 7px 10px;
+  background: var(--bg-1);
+  color: var(--tx-1);
+  border: 1px solid var(--bd-3);
+  border-radius: var(--radius-1);
+  min-width: 0;
+}
+.rbcf-onb-input:focus { outline: none; border-color: var(--acc); box-shadow: 0 0 0 3px var(--acc-bg); }
+
+.rbcf-onb-summary {
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: var(--bg-3);
+  border: 1px solid var(--bd-1);
+  margin-bottom: 14px;
+  color: var(--tx-1);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+.rbcf-onb-loading {
+  padding: 20px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--tx-3);
+  justify-content: center;
+}
+
+.rbcf-onb-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.rbcf-onb-table th, .rbcf-onb-table td {
+  padding: 8px 10px;
+  text-align: left;
+  border-bottom: 1px solid var(--bd-1);
+}
+.rbcf-onb-table th {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--tx-3);
+  font-weight: 600;
+  background: var(--bg-3);
+}
+.rbcf-onb-table tbody tr:hover { background: rgba(124, 92, 255, 0.04); }
+.rbcf-onb-num { text-align: right; font-family: var(--mono); }
+.rbcf-onb-warn { color: var(--yellow); font-weight: 600; }
+
+.rbcf-onb-empty {
+  padding: 18px;
+  text-align: center;
+  color: var(--tx-3);
+  font-size: 13px;
+  background: var(--bg-3);
+  border: 1px dashed var(--bd-2);
+  border-radius: 8px;
+}
+
+.rbcf-onb-banner {
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: rgba(124, 92, 255, 0.08);
+  border: 1px solid rgba(124, 92, 255, 0.35);
+  color: var(--tx-1);
+  font-size: 13px;
+  margin-bottom: 14px;
+  line-height: 1.5;
+}
+.rbcf-onb-banner strong { color: var(--acc-2); }
+
+.rbcf-onb-preview-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.rbcf-onb-preview-system {
+  background: var(--bg-3);
+  border: 1px solid var(--bd-1);
+  border-radius: var(--radius-1);
+  padding: 8px 12px;
+}
+.rbcf-onb-preview-system summary {
+  cursor: pointer;
+  user-select: none;
+  font-size: 13px;
+  color: var(--tx-2);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.rbcf-onb-preview-system summary strong { color: var(--tx-1); }
+.rbcf-onb-pill {
+  margin-left: auto;
+  font-size: 10px;
+  font-family: var(--mono);
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: rgba(88, 166, 255, 0.10);
+  color: var(--blue-2);
+  border: 1px solid rgba(88, 166, 255, 0.30);
+}
+.rbcf-onb-preview-files {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 11px;
+  font-family: var(--mono);
+  max-height: 200px;
+  overflow-y: auto;
+}
+.rbcf-onb-preview-files li {
+  padding: 3px 0;
+  border-bottom: 1px dashed var(--bd-1);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.rbcf-onb-preview-files li:last-child { border-bottom: none; }
+.rbcf-onb-rom { color: var(--tx-2); }
+.rbcf-onb-arrow { color: var(--tx-4); }
+
+.rbcf-onb-skip-row {
+  margin-top: 14px;
+  display: flex;
+  justify-content: center;
+}
+
+.rbcf-onb-foot {
+  padding: 14px 22px;
+  border-top: 1px solid var(--bd-1);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--bg-2);
+}
+.rbcf-onb-foot-secondary { display: flex; gap: 8px; }
+.rbcf-onb-foot-primary  { margin-left: auto; display: flex; gap: 8px; }
+
+.rbcf-onb-btn {
+  font-size: 13px;
+  padding: 8px 16px;
+  border-radius: var(--radius-1);
+  font-family: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: background 0.12s, border-color 0.12s, transform 0.05s, box-shadow 0.12s;
+  line-height: 1;
+}
+.rbcf-onb-btn:active:not(:disabled) { transform: translateY(1px); }
+.rbcf-onb-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.rbcf-onb-btn:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--acc-bg); }
+
+.rbcf-onb-btn-primary {
+  background: var(--acc);
+  color: #fff;
+  border-color: var(--acc);
+}
+.rbcf-onb-btn-primary:hover:not(:disabled) {
+  background: var(--acc-2);
+  border-color: var(--acc-2);
+  box-shadow: 0 4px 14px rgba(124,92,255,0.35);
+}
+.rbcf-onb-btn-secondary {
+  background: var(--bg-2);
+  color: var(--tx-2);
+  border-color: var(--bd-3);
+}
+.rbcf-onb-btn-secondary:hover:not(:disabled) {
+  background: #1c2128;
+  border-color: var(--bd-2);
+}
+.rbcf-onb-btn-tertiary {
+  background: transparent;
+  color: var(--tx-3);
+  border-color: transparent;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  padding: 6px 8px;
+}
+.rbcf-onb-btn-tertiary:hover:not(:disabled) { color: var(--tx-1); }
+
+.rbcf-onb-live {
+  position: absolute;
+  width: 1px; height: 1px;
+  margin: -1px; padding: 0; overflow: hidden;
+  clip: rect(0, 0, 0, 0); border: 0;
+}
+
+@media (max-width: 600px) {
+  .rbcf-onb-card { width: 100%; }
+  .rbcf-onb-foot { flex-wrap: wrap; }
+  .rbcf-onb-foot-primary { margin-left: 0; width: 100%; }
+  .rbcf-onb-foot-primary .rbcf-onb-btn { flex: 1; }
+  .rbcf-onb-rootform { flex-direction: column; }
+}

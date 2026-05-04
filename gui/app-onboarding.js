@@ -1,0 +1,782 @@
+// app-onboarding.js — first-run welcome flow for RB-Controller_fix.
+//
+// Self-contained, vanilla JS. Loaded from index.html *before* app.js so
+// the overlay is the first thing painted on top of the existing UI.
+//
+// Gating:
+//   localStorage['rbcf-onboarded'] === '1'   → don't show
+//   URL contains   ?reset-onboarding=1       → clear flag, force show
+//
+// Persistence:
+//   localStorage['rbcf-onboarded']           — set to '1' on apply / skip
+//   localStorage['rbcf-retrobat-override']   — manual root path the user
+//                                              typed when /api/retrobat-root
+//                                              returned found:false
+//
+// All CSS classes prefixed `rbcf-onb-` so we don't leak into the main GUI.
+// All DOM IDs prefixed `rbcf-onb-`.
+//
+// Endpoint contract (shared with the backend stream):
+//   GET  /api/retrobat-root              → { root, found, probed }
+//   PUT  /api/retrobat-root?root=<path>  → { root, found, probed }   (echo)
+//   GET  /api/scan                       → { systems, totals }
+//   GET  /api/scaffold-all               → { preview, applied:false, count }
+//   GET  /api/scaffold-all?apply=true    → { preview, applied:true, count, written }
+//
+// 404 from any endpoint → backend not yet available, show inline notice
+// + still let the user "Skip onboarding for now".
+
+(function () {
+  'use strict';
+
+  // ----------------------------------------------------------------
+  // Gate
+  // ----------------------------------------------------------------
+
+  const ONB_KEY    = 'rbcf-onboarded';
+  const ROOT_KEY   = 'rbcf-retrobat-override';
+  const RESET_PARAM = 'reset-onboarding';
+
+  function shouldShow() {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get(RESET_PARAM) === '1') {
+      try { localStorage.removeItem(ONB_KEY); } catch (e) { /* ignore */ }
+      return true;
+    }
+    try {
+      return localStorage.getItem(ONB_KEY) !== '1';
+    } catch (e) {
+      // localStorage disabled — show every time, gracefully.
+      return true;
+    }
+  }
+
+  function markOnboarded() {
+    try { localStorage.setItem(ONB_KEY, '1'); } catch (e) { /* ignore */ }
+  }
+
+  // ----------------------------------------------------------------
+  // Tiny helpers
+  // ----------------------------------------------------------------
+
+  function el(tag, attrs, children) {
+    const node = document.createElement(tag);
+    if (attrs) {
+      for (const k in attrs) {
+        if (k === 'class') node.className = attrs[k];
+        else if (k === 'text') node.textContent = attrs[k];
+        else if (k === 'html') node.innerHTML = attrs[k];
+        else if (k.startsWith('on') && typeof attrs[k] === 'function') {
+          node.addEventListener(k.slice(2).toLowerCase(), attrs[k]);
+        } else {
+          node.setAttribute(k, attrs[k]);
+        }
+      }
+    }
+    if (children) {
+      for (const c of children) {
+        if (c == null) continue;
+        node.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
+      }
+    }
+    return node;
+  }
+
+  function escapeHtml(s) {
+    if (s == null) return '';
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  async function fetchJson(method, url) {
+    let resp;
+    try {
+      resp = await fetch(url, { method, headers: { 'Accept': 'application/json' } });
+    } catch (e) {
+      const err = new Error('network: ' + e.message);
+      err.kind = 'network';
+      throw err;
+    }
+    if (resp.status === 404) {
+      const err = new Error('Backend endpoint not yet available — try again after server restart.');
+      err.kind = 'not-implemented';
+      err.status = 404;
+      throw err;
+    }
+    if (!resp.ok) {
+      const err = new Error(`${method} ${url} → ${resp.status}`);
+      err.kind = 'http';
+      err.status = resp.status;
+      throw err;
+    }
+    try {
+      return await resp.json();
+    } catch (e) {
+      const err = new Error('Bad JSON from ' + url);
+      err.kind = 'json';
+      throw err;
+    }
+  }
+
+  // Toast — reuse main app's #toast if available; otherwise inline notice.
+  function lightToast(msg, kind) {
+    if (typeof window.showToast === 'function') {
+      try { window.showToast(msg, kind || 'info'); return; } catch (e) { /* fall through */ }
+    }
+    // Fallback: brief inline notice at the bottom of the overlay
+    const live = document.getElementById('rbcf-onb-live');
+    if (live) live.textContent = msg;
+  }
+
+  // ----------------------------------------------------------------
+  // State
+  // ----------------------------------------------------------------
+
+  const state = {
+    step: 1,
+    rootInfo: null,    // last /api/retrobat-root result
+    scan: null,        // last /api/scan result
+    preview: null,     // last /api/scaffold-all (no apply) result
+    busy: false,
+    overlayEl: null,
+    bodyEl: null,
+    primaryEl: null,
+    lastFocusBeforeOverlay: null,
+    keyHandler: null,
+    focusTrapHandler: null,
+  };
+
+  // ----------------------------------------------------------------
+  // Overlay shell
+  // ----------------------------------------------------------------
+
+  function buildOverlay() {
+    const overlay = el('div', {
+      class: 'rbcf-onb-overlay',
+      id: 'rbcf-onb-overlay',
+      role: 'dialog',
+      'aria-modal': 'true',
+      'aria-labelledby': 'rbcf-onb-title',
+      'aria-describedby': 'rbcf-onb-body',
+    });
+
+    const card = el('div', { class: 'rbcf-onb-card' });
+
+    const head = el('header', { class: 'rbcf-onb-head' }, [
+      el('div', { class: 'rbcf-onb-step-pill', id: 'rbcf-onb-step-pill', text: 'Step 1 of 3' }),
+      el('h2', { class: 'rbcf-onb-title', id: 'rbcf-onb-title', text: 'Welcome' }),
+      el('button', {
+        class: 'rbcf-onb-x',
+        type: 'button',
+        'aria-label': 'Close onboarding',
+        title: 'Skip onboarding',
+        onclick: requestSkip,
+      }, ['×']),
+    ]);
+
+    const body = el('div', { class: 'rbcf-onb-body', id: 'rbcf-onb-body' });
+
+    const footer = el('footer', { class: 'rbcf-onb-foot' }, [
+      el('div', { class: 'rbcf-onb-foot-secondary', id: 'rbcf-onb-foot-secondary' }),
+      el('div', { class: 'rbcf-onb-foot-primary', id: 'rbcf-onb-foot-primary' }),
+    ]);
+
+    const live = el('div', {
+      class: 'rbcf-onb-live',
+      id: 'rbcf-onb-live',
+      'aria-live': 'polite',
+      role: 'status',
+    });
+
+    card.appendChild(head);
+    card.appendChild(body);
+    card.appendChild(footer);
+    card.appendChild(live);
+    overlay.appendChild(card);
+
+    state.overlayEl = overlay;
+    state.bodyEl = body;
+    return overlay;
+  }
+
+  function setStepHeader(stepNum, title) {
+    const pill  = document.getElementById('rbcf-onb-step-pill');
+    const titleEl = document.getElementById('rbcf-onb-title');
+    if (pill) pill.textContent = `Step ${stepNum} of 3`;
+    if (titleEl) titleEl.textContent = title;
+  }
+
+  function clearFooter() {
+    const sec = document.getElementById('rbcf-onb-foot-secondary');
+    const pri = document.getElementById('rbcf-onb-foot-primary');
+    if (sec) sec.innerHTML = '';
+    if (pri) pri.innerHTML = '';
+    state.primaryEl = null;
+  }
+
+  function setFooterPrimary(label, onclick, opts) {
+    const pri = document.getElementById('rbcf-onb-foot-primary');
+    if (!pri) return null;
+    const btn = el('button', {
+      type: 'button',
+      class: 'rbcf-onb-btn rbcf-onb-btn-primary',
+      onclick,
+    }, [label]);
+    if (opts && opts.disabled) btn.disabled = true;
+    pri.appendChild(btn);
+    state.primaryEl = btn;
+    return btn;
+  }
+
+  function setFooterSecondary(label, onclick, kind) {
+    const sec = document.getElementById('rbcf-onb-foot-secondary');
+    if (!sec) return null;
+    const btn = el('button', {
+      type: 'button',
+      class: 'rbcf-onb-btn ' + (kind === 'tertiary' ? 'rbcf-onb-btn-tertiary' : 'rbcf-onb-btn-secondary'),
+      onclick,
+    }, [label]);
+    sec.appendChild(btn);
+    return btn;
+  }
+
+  function focusPrimary() {
+    if (state.primaryEl && typeof state.primaryEl.focus === 'function') {
+      state.primaryEl.focus();
+    }
+  }
+
+  // ----------------------------------------------------------------
+  // STEP 1 — RetroBat detection
+  // ----------------------------------------------------------------
+
+  async function renderStep1() {
+    state.step = 1;
+    setStepHeader(1, 'Find your RetroBat install');
+    clearFooter();
+
+    state.bodyEl.innerHTML = '';
+    state.bodyEl.appendChild(el('p', {
+      class: 'rbcf-onb-lede',
+      text: 'RB-Controller_fix needs to know where RetroBat lives so it can edit the right config files. We never write outside that folder without confirming first.',
+    }));
+
+    const status = el('div', { class: 'rbcf-onb-status', id: 'rbcf-onb-root-status' }, [
+      el('span', { class: 'rbcf-onb-spinner' }),
+      el('span', { text: 'Looking for RetroBat…' }),
+    ]);
+    state.bodyEl.appendChild(status);
+
+    setFooterPrimary('Continue', () => goToStep2(), { disabled: true });
+    setFooterSecondary('Skip onboarding for now', requestSkip, 'tertiary');
+
+    try {
+      const data = await fetchJson('GET', '/api/retrobat-root');
+      state.rootInfo = data;
+      paintRootStatus(data);
+    } catch (e) {
+      paintRootError(e);
+    }
+  }
+
+  function paintRootStatus(data) {
+    const wrap = document.getElementById('rbcf-onb-root-status');
+    if (!wrap) return;
+    wrap.innerHTML = '';
+
+    if (data && data.found) {
+      wrap.classList.remove('rbcf-onb-status-error');
+      wrap.classList.add('rbcf-onb-status-ok');
+      wrap.appendChild(el('span', { class: 'rbcf-onb-check', 'aria-hidden': 'true', text: '✓' }));
+      const msg = el('div', { class: 'rbcf-onb-status-msg' }, [
+        el('strong', { text: 'Found RetroBat.' }),
+        el('div', {}, [
+          'Located at ',
+          el('code', { text: data.root || '(unknown)' }),
+          '. Looks good.',
+        ]),
+      ]);
+      wrap.appendChild(msg);
+      if (state.primaryEl) state.primaryEl.disabled = false;
+      focusPrimary();
+      return;
+    }
+
+    // Not found — render probed list + override input.
+    wrap.classList.remove('rbcf-onb-status-ok');
+    wrap.classList.add('rbcf-onb-status-error');
+    wrap.appendChild(el('span', { class: 'rbcf-onb-cross', 'aria-hidden': 'true', text: '!' }));
+
+    const block = el('div', { class: 'rbcf-onb-status-msg' });
+    block.appendChild(el('strong', { text: "We couldn't find RetroBat." }));
+    block.appendChild(el('p', {
+      class: 'rbcf-onb-muted',
+      text: 'We looked in the usual places but came up empty. If RetroBat is installed somewhere else, type the install root here.',
+    }));
+
+    if (data && Array.isArray(data.probed) && data.probed.length) {
+      const list = el('ul', { class: 'rbcf-onb-probed' });
+      for (const p of data.probed) {
+        list.appendChild(el('li', { text: String(p) }));
+      }
+      const det = el('details', { class: 'rbcf-onb-details' }, [
+        el('summary', { text: `Where we looked (${data.probed.length})` }),
+        list,
+      ]);
+      block.appendChild(det);
+    }
+
+    const override = (function () {
+      try { return localStorage.getItem(ROOT_KEY) || ''; } catch (e) { return ''; }
+    })();
+
+    const form = el('form', {
+      class: 'rbcf-onb-rootform',
+      onsubmit: (e) => { e.preventDefault(); submitRootOverride(); },
+    });
+    const input = el('input', {
+      type: 'text',
+      id: 'rbcf-onb-root-input',
+      class: 'rbcf-onb-input',
+      placeholder: 'E:\\RetroBat\\',
+      value: override,
+      'aria-label': 'RetroBat install root',
+    });
+    const submitBtn = el('button', {
+      type: 'submit',
+      class: 'rbcf-onb-btn rbcf-onb-btn-secondary',
+      text: 'Use this path',
+    });
+    form.appendChild(input);
+    form.appendChild(submitBtn);
+    block.appendChild(form);
+
+    wrap.appendChild(block);
+
+    if (state.primaryEl) state.primaryEl.disabled = true;
+  }
+
+  function paintRootError(e) {
+    const wrap = document.getElementById('rbcf-onb-root-status');
+    if (!wrap) return;
+    wrap.innerHTML = '';
+    wrap.classList.remove('rbcf-onb-status-ok');
+    wrap.classList.add('rbcf-onb-status-error');
+    wrap.appendChild(el('span', { class: 'rbcf-onb-cross', 'aria-hidden': 'true', text: '!' }));
+    const msg = el('div', { class: 'rbcf-onb-status-msg' }, [
+      el('strong', { text: e.kind === 'not-implemented' ? 'Backend not ready' : 'Probe error' }),
+      el('p', { class: 'rbcf-onb-muted', text: e.message }),
+      el('p', { class: 'rbcf-onb-muted', text: 'You can skip onboarding for now and try again after the server restarts.' }),
+    ]);
+    wrap.appendChild(msg);
+    // Allow Continue to advance — step 2 will render its own error if /api/scan also 404s.
+    if (state.primaryEl) state.primaryEl.disabled = false;
+  }
+
+  async function submitRootOverride() {
+    const input = document.getElementById('rbcf-onb-root-input');
+    if (!input) return;
+    const path = (input.value || '').trim();
+    if (!path) return;
+    try { localStorage.setItem(ROOT_KEY, path); } catch (e) { /* ignore */ }
+    const wrap = document.getElementById('rbcf-onb-root-status');
+    if (wrap) {
+      wrap.innerHTML = '';
+      wrap.classList.remove('rbcf-onb-status-error', 'rbcf-onb-status-ok');
+      wrap.appendChild(el('span', { class: 'rbcf-onb-spinner' }));
+      wrap.appendChild(el('span', { text: 'Re-checking…' }));
+    }
+    try {
+      const data = await fetchJson('PUT', '/api/retrobat-root?root=' + encodeURIComponent(path));
+      state.rootInfo = data;
+      paintRootStatus(data);
+    } catch (e) {
+      paintRootError(e);
+    }
+  }
+
+  // ----------------------------------------------------------------
+  // STEP 2 — Scan summary
+  // ----------------------------------------------------------------
+
+  async function goToStep2() {
+    state.step = 2;
+    setStepHeader(2, "Here's what we found");
+    clearFooter();
+    state.bodyEl.innerHTML = '';
+    state.bodyEl.appendChild(el('p', {
+      class: 'rbcf-onb-lede',
+      text: 'Quick scan of your ROM library and existing profile coverage.',
+    }));
+
+    const wrap = el('div', { class: 'rbcf-onb-scan', id: 'rbcf-onb-scan' }, [
+      el('div', { class: 'rbcf-onb-loading' }, [
+        el('span', { class: 'rbcf-onb-spinner' }),
+        el('span', { text: 'Scanning systems and ROMs…' }),
+      ]),
+    ]);
+    state.bodyEl.appendChild(wrap);
+
+    setFooterPrimary('Scaffold all (preview)', () => goToStep3(), { disabled: true });
+    setFooterSecondary("Skip — I'll do this later", requestSkip, 'tertiary');
+
+    try {
+      const data = await fetchJson('GET', '/api/scan');
+      state.scan = data;
+      paintScan(data);
+    } catch (e) {
+      paintScanError(e);
+    }
+  }
+
+  function paintScan(data) {
+    const wrap = document.getElementById('rbcf-onb-scan');
+    if (!wrap) return;
+    wrap.innerHTML = '';
+
+    const totals = (data && data.totals) || {};
+    const systems = (data && Array.isArray(data.systems)) ? data.systems : [];
+
+    const summary = el('div', { class: 'rbcf-onb-summary' });
+    summary.appendChild(el('strong', {
+      text: `${totals.systems ?? systems.length} systems · ${totals.roms ?? '?'} games · ${totals.profiles ?? '?'} with profiles · ${totals.missing ?? '?'} missing`,
+    }));
+    wrap.appendChild(summary);
+
+    if (!systems.length) {
+      wrap.appendChild(el('div', {
+        class: 'rbcf-onb-empty',
+        text: 'No systems detected. Drop ROMs into RetroBat\'s roms folder and rescan.',
+      }));
+      // Still allow user to skip past.
+      if (state.primaryEl) state.primaryEl.disabled = true;
+      focusPrimary();
+      return;
+    }
+
+    const tbl = el('table', { class: 'rbcf-onb-table' });
+    const thead = el('thead', {}, [
+      el('tr', {}, [
+        el('th', { text: 'System' }),
+        el('th', { class: 'rbcf-onb-num', text: 'ROMs' }),
+        el('th', { class: 'rbcf-onb-num', text: 'Profiles' }),
+        el('th', { class: 'rbcf-onb-num', text: 'Missing' }),
+      ]),
+    ]);
+    const tbody = el('tbody');
+    for (const s of systems) {
+      const missingCls = (s.missing > 0) ? 'rbcf-onb-num rbcf-onb-warn' : 'rbcf-onb-num';
+      const tr = el('tr', {}, [
+        el('td', { text: s.name || '?' }),
+        el('td', { class: 'rbcf-onb-num', text: String(s.rom_count ?? 0) }),
+        el('td', { class: 'rbcf-onb-num', text: String(s.profiles_count ?? 0) }),
+        el('td', { class: missingCls, text: String(s.missing ?? 0) }),
+      ]);
+      tbody.appendChild(tr);
+    }
+    tbl.appendChild(thead);
+    tbl.appendChild(tbody);
+    wrap.appendChild(tbl);
+
+    const missingTotal = totals.missing ?? systems.reduce((a, s) => a + (s.missing || 0), 0);
+    if (missingTotal > 0) {
+      if (state.primaryEl) {
+        state.primaryEl.disabled = false;
+        state.primaryEl.textContent = `Scaffold ${missingTotal} missing (preview)`;
+      }
+    } else {
+      if (state.primaryEl) {
+        state.primaryEl.disabled = true;
+        state.primaryEl.textContent = 'Nothing to scaffold';
+      }
+      wrap.appendChild(el('p', {
+        class: 'rbcf-onb-muted',
+        text: 'Every detected ROM already has a profile. Nothing to do here.',
+      }));
+    }
+    focusPrimary();
+  }
+
+  function paintScanError(e) {
+    const wrap = document.getElementById('rbcf-onb-scan');
+    if (!wrap) return;
+    wrap.innerHTML = '';
+    wrap.appendChild(el('div', { class: 'rbcf-onb-status rbcf-onb-status-error' }, [
+      el('span', { class: 'rbcf-onb-cross', 'aria-hidden': 'true', text: '!' }),
+      el('div', { class: 'rbcf-onb-status-msg' }, [
+        el('strong', { text: e.kind === 'not-implemented' ? 'Backend endpoint not yet available' : 'Scan failed' }),
+        el('p', { class: 'rbcf-onb-muted', text: e.kind === 'not-implemented' ? 'Try again after the server restarts.' : e.message }),
+      ]),
+    ]));
+    if (state.primaryEl) state.primaryEl.disabled = true;
+    focusPrimary();
+  }
+
+  // ----------------------------------------------------------------
+  // STEP 3 — Preview & apply
+  // ----------------------------------------------------------------
+
+  async function goToStep3() {
+    state.step = 3;
+    setStepHeader(3, 'Preview — nothing has been written yet');
+    clearFooter();
+    state.bodyEl.innerHTML = '';
+
+    const wrap = el('div', { class: 'rbcf-onb-preview', id: 'rbcf-onb-preview' }, [
+      el('div', { class: 'rbcf-onb-loading' }, [
+        el('span', { class: 'rbcf-onb-spinner' }),
+        el('span', { text: 'Computing preview…' }),
+      ]),
+    ]);
+    state.bodyEl.appendChild(wrap);
+
+    setFooterPrimary('Apply', onApply, { disabled: true });
+    setFooterSecondary('Cancel', () => goToStep2(), 'secondary');
+    // Tertiary "skip for now" lives inline in the preview body once it lands.
+
+    try {
+      const data = await fetchJson('GET', '/api/scaffold-all');
+      state.preview = data;
+      paintPreview(data);
+    } catch (e) {
+      paintPreviewError(e);
+    }
+  }
+
+  function paintPreview(data) {
+    const wrap = document.getElementById('rbcf-onb-preview');
+    if (!wrap) return;
+    wrap.innerHTML = '';
+
+    const items = (data && Array.isArray(data.preview)) ? data.preview : [];
+    const count = data && typeof data.count === 'number' ? data.count : items.length;
+
+    if (count === 0) {
+      wrap.appendChild(el('div', { class: 'rbcf-onb-empty' }, [
+        el('strong', { text: 'Nothing to scaffold.' }),
+        ' Every detected ROM already has a profile.',
+      ]));
+      if (state.primaryEl) {
+        state.primaryEl.disabled = true;
+        state.primaryEl.textContent = 'Apply';
+      }
+      addSkipForNowFooter();
+      return;
+    }
+
+    const banner = el('div', { class: 'rbcf-onb-banner' });
+    banner.appendChild(el('strong', { text: 'Nothing has been written yet. ' }));
+    banner.appendChild(document.createTextNode(
+      `Click Apply to create these ${count} files. Click Cancel to back out.`
+    ));
+    wrap.appendChild(banner);
+
+    // Group by system for legibility.
+    const bySystem = new Map();
+    for (const it of items) {
+      const sys = it.system || '?';
+      if (!bySystem.has(sys)) bySystem.set(sys, []);
+      bySystem.get(sys).push(it);
+    }
+
+    const list = el('div', { class: 'rbcf-onb-preview-list' });
+    for (const [sys, rows] of bySystem) {
+      const sect = el('details', { class: 'rbcf-onb-preview-system', open: '' });
+      sect.appendChild(el('summary', {}, [
+        el('strong', { text: sys }),
+        el('span', { class: 'rbcf-onb-pill', text: `${rows.length} file${rows.length === 1 ? '' : 's'}` }),
+      ]));
+      const ul = el('ul', { class: 'rbcf-onb-preview-files' });
+      for (const r of rows) {
+        ul.appendChild(el('li', {}, [
+          el('span', { class: 'rbcf-onb-rom', text: r.rom || '(no rom)' }),
+          el('span', { class: 'rbcf-onb-arrow', 'aria-hidden': 'true', text: ' → ' }),
+          el('code', { text: r.path || '?' }),
+        ]));
+      }
+      sect.appendChild(ul);
+      list.appendChild(sect);
+    }
+    wrap.appendChild(list);
+
+    if (state.primaryEl) {
+      state.primaryEl.disabled = false;
+      state.primaryEl.textContent = `Apply (create ${count} file${count === 1 ? '' : 's'})`;
+    }
+    addSkipForNowFooter();
+    focusPrimary();
+  }
+
+  function addSkipForNowFooter() {
+    // Tertiary skip lives in the body bottom — small, not destructive-looking.
+    if (document.getElementById('rbcf-onb-skip-tertiary')) return;
+    const wrap = document.getElementById('rbcf-onb-preview');
+    if (!wrap) return;
+    const row = el('div', { class: 'rbcf-onb-skip-row', id: 'rbcf-onb-skip-tertiary' });
+    row.appendChild(el('button', {
+      type: 'button',
+      class: 'rbcf-onb-btn rbcf-onb-btn-tertiary',
+      onclick: () => {
+        markOnboarded();
+        dismiss();
+      },
+    }, ['Skip onboarding for now']));
+    wrap.appendChild(row);
+  }
+
+  function paintPreviewError(e) {
+    const wrap = document.getElementById('rbcf-onb-preview');
+    if (!wrap) return;
+    wrap.innerHTML = '';
+    wrap.appendChild(el('div', { class: 'rbcf-onb-status rbcf-onb-status-error' }, [
+      el('span', { class: 'rbcf-onb-cross', 'aria-hidden': 'true', text: '!' }),
+      el('div', { class: 'rbcf-onb-status-msg' }, [
+        el('strong', { text: e.kind === 'not-implemented' ? 'Backend endpoint not yet available' : 'Preview failed' }),
+        el('p', { class: 'rbcf-onb-muted', text: e.kind === 'not-implemented' ? 'Try again after the server restarts.' : e.message }),
+      ]),
+    ]));
+    if (state.primaryEl) state.primaryEl.disabled = true;
+    addSkipForNowFooter();
+  }
+
+  async function onApply() {
+    if (state.busy) return;
+    state.busy = true;
+    if (state.primaryEl) {
+      state.primaryEl.disabled = true;
+      state.primaryEl.textContent = 'Applying…';
+    }
+    try {
+      const data = await fetchJson('GET', '/api/scaffold-all?apply=true');
+      const written = (data && Array.isArray(data.written)) ? data.written.length : (data && data.count) || 0;
+      lightToast(`Scaffolded ${written} profile${written === 1 ? '' : 's'}.`, 'success');
+      markOnboarded();
+      dismiss();
+    } catch (e) {
+      if (state.primaryEl) {
+        state.primaryEl.disabled = false;
+        state.primaryEl.textContent = 'Retry apply';
+      }
+      paintPreviewError(e);
+      lightToast('Apply failed: ' + e.message, 'error');
+    } finally {
+      state.busy = false;
+    }
+  }
+
+  // ----------------------------------------------------------------
+  // Skip / dismiss
+  // ----------------------------------------------------------------
+
+  function requestSkip() {
+    // If mid-flow (step 2 or 3 with state present), confirm. Step 1 = no friction.
+    if (state.step >= 2 && (state.scan || state.preview)) {
+      const ok = window.confirm("Skip onboarding? You can re-run it later by visiting `?reset-onboarding=1`.");
+      if (!ok) return;
+    }
+    markOnboarded();
+    dismiss();
+  }
+
+  function dismiss() {
+    if (!state.overlayEl) return;
+    state.overlayEl.classList.add('rbcf-onb-leaving');
+    // Tear down listeners
+    if (state.keyHandler) {
+      window.removeEventListener('keydown', state.keyHandler, true);
+      state.keyHandler = null;
+    }
+    if (state.focusTrapHandler) {
+      document.removeEventListener('focusin', state.focusTrapHandler, true);
+      state.focusTrapHandler = null;
+    }
+    document.documentElement.classList.remove('rbcf-onb-locked');
+    setTimeout(() => {
+      if (state.overlayEl && state.overlayEl.parentNode) {
+        state.overlayEl.parentNode.removeChild(state.overlayEl);
+      }
+      state.overlayEl = null;
+      // Restore focus to whatever was focused before the overlay
+      if (state.lastFocusBeforeOverlay && typeof state.lastFocusBeforeOverlay.focus === 'function') {
+        try { state.lastFocusBeforeOverlay.focus(); } catch (e) { /* ignore */ }
+      }
+    }, 180);
+  }
+
+  // ----------------------------------------------------------------
+  // A11y: focus trap + escape
+  // ----------------------------------------------------------------
+
+  function focusableElsIn(root) {
+    if (!root) return [];
+    return Array.from(root.querySelectorAll(
+      'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    ));
+  }
+
+  function setupAccessibility() {
+    state.keyHandler = function (e) {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        e.preventDefault();
+        requestSkip();
+        return;
+      }
+      if (e.key === 'Tab' && state.overlayEl) {
+        const els = focusableElsIn(state.overlayEl);
+        if (!els.length) return;
+        const first = els[0];
+        const last = els[els.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
+    };
+    window.addEventListener('keydown', state.keyHandler, true);
+
+    // Belt-and-braces: if focus escapes the overlay (e.g. via screen reader),
+    // pull it back. Won't fight the user during normal Tab.
+    state.focusTrapHandler = function (e) {
+      if (!state.overlayEl) return;
+      if (e.target && state.overlayEl.contains(e.target)) return;
+      const els = focusableElsIn(state.overlayEl);
+      if (els.length) els[0].focus();
+    };
+    document.addEventListener('focusin', state.focusTrapHandler, true);
+  }
+
+  // ----------------------------------------------------------------
+  // Mount
+  // ----------------------------------------------------------------
+
+  function mount() {
+    if (!shouldShow()) return;
+    state.lastFocusBeforeOverlay = document.activeElement;
+    document.documentElement.classList.add('rbcf-onb-locked');
+    const overlay = buildOverlay();
+    document.body.appendChild(overlay);
+    setupAccessibility();
+    renderStep1();
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', mount, { once: true });
+  } else {
+    mount();
+  }
+
+  // Tiny dev-affordance: also expose a console reset.
+  // Usage: rbcfResetOnboarding() in DevTools, then reload.
+  window.rbcfResetOnboarding = function () {
+    try { localStorage.removeItem(ONB_KEY); } catch (e) { /* ignore */ }
+    console.info('[rbcf] onboarded flag cleared. Reload to see the welcome flow.');
+  };
+})();
