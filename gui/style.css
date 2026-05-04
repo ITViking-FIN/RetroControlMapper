@@ -316,83 +316,132 @@ header h1 {
   margin-left: 4px;
 }
 
-/* Pad status pill — frosted plate, idle / connected / error states. */
+/* Pad-list container — holds one .pad-pill per detected controller plus
+   the standalone Rescan icon button (#btn-rescan-quick) at the right end. */
+.pad-list {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  /* Cap the row width so on narrow windows pills wrap rather than push the
+     settings cog off-screen. */
+  max-width: 760px;
+}
+
+/* Pad pill — candy-gradient by default for ALL pills. The active pill
+   shows a green status dot via .is-active; inactive pills hide the dot. */
 .pad-pill {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 7px 16px;
+  padding: 7px 14px;
   border-radius: var(--radius-pill);
-  background: var(--plate-fill);
-  backdrop-filter: var(--blur-low);
-  -webkit-backdrop-filter: var(--blur-low);
-  border: 1px solid var(--edge-bottom);
-  border-top-color: var(--edge-top);
+  /* Candy gradient — promoted from .device-card.active so every pill in
+     the header reads as a vivid, "live" affordance regardless of state. */
+  background: var(--acc-gradient);
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  border-top-color: rgba(255, 255, 255, 0.75);
   font-size: 12px;
   font-family: var(--mono);
-  color: var(--tx-muted);
-  box-shadow: var(--shadow-soft);
+  color: #fff;
+  text-shadow: 0 1px 1px rgba(20, 24, 38, 0.18);
+  box-shadow: var(--shadow-soft),
+              inset 0 1px 0 rgba(255, 255, 255, 0.45);
   transition: background var(--dur-base) var(--ease),
               border-color var(--dur-base) var(--ease),
               color var(--dur-base) var(--ease),
               box-shadow var(--dur-base) var(--ease),
               transform var(--dur-base) var(--ease);
 }
+/* Status dot — only the active pill renders one. Reserve no space on
+   inactive pills so the chevron sits flush against the name. */
 .pad-pill::before {
   content: "";
   width: 8px; height: 8px;
   border-radius: 50%;
-  background: var(--tx-hint);
-  box-shadow: 0 0 0 0 rgba(110, 118, 129, 0);
+  background: var(--state-ok-2);
+  box-shadow: 0 0 0 4px rgba(63, 185, 80, 0.28),
+              0 0 12px rgba(63, 185, 80, 0.55);
+  flex-shrink: 0;
+  animation: pulse 1.6s ease-in-out infinite;
   transition: background var(--dur-base) var(--ease),
               box-shadow var(--dur-base) var(--ease);
 }
-.pad-pill.connected {
-  background: rgba(63, 185, 80, 0.14);
-  border-color: rgba(63, 185, 80, 0.40);
-  border-top-color: rgba(255, 255, 255, 0.55);
-  color: #1f6f2c;
-  box-shadow: var(--shadow-soft),
-              inset 0 0 12px rgba(63, 185, 80, 0.18);
+.pad-pill:not(.is-active)::before { display: none; }
+
+/* Empty-state placeholder pill — muted, no candy. */
+.pad-pill.is-placeholder {
+  background: var(--plate-fill);
+  color: var(--tx-muted);
+  border-color: var(--edge-bottom);
+  border-top-color: var(--edge-top);
+  text-shadow: none;
+  box-shadow: var(--shadow-soft);
 }
-[data-theme="dark"] .pad-pill.connected,
-.pad-pill.connected {
-  /* keep light-mode rule above; dark gets a brighter text colour */
-}
-[data-theme="dark"] .pad-pill.connected { color: var(--state-ok-2); }
-@media (prefers-color-scheme: dark) {
-  [data-theme="auto"] .pad-pill.connected { color: var(--state-ok-2); }
-}
-.pad-pill.connected::before {
-  background: var(--state-ok-2);
-  box-shadow: 0 0 0 4px rgba(63, 185, 80, 0.18);
-  animation: pulse 1.6s ease-in-out infinite;
-}
+.pad-pill.is-placeholder::before { display: none; }
+
 @keyframes pulse {
-  0%, 100% { box-shadow: 0 0 0 4px rgba(63, 185, 80, 0.14); }
-  50%      { box-shadow: 0 0 0 6px rgba(63, 185, 80, 0.28); }
+  0%, 100% { box-shadow: 0 0 0 4px rgba(63, 185, 80, 0.20),
+                          0 0 10px rgba(63, 185, 80, 0.45); }
+  50%      { box-shadow: 0 0 0 6px rgba(63, 185, 80, 0.34),
+                          0 0 14px rgba(63, 185, 80, 0.65); }
 }
 
+/* Standalone header Rescan icon button — small, frosted, no label. */
+.rescan-quick {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 50%;
+  background: var(--plate-fill);
+  border: 1px solid var(--edge-bottom);
+  border-top-color: var(--edge-top);
+  color: var(--tx-muted);
+  cursor: pointer;
+  box-shadow: var(--shadow-soft);
+  transition: transform var(--dur-base) var(--ease),
+              box-shadow var(--dur-base) var(--ease),
+              color var(--dur-base) var(--ease),
+              border-color var(--dur-base) var(--ease);
+}
+.rescan-quick:hover {
+  transform: translateY(-1px) rotate(60deg);
+  color: var(--acc-violet);
+  border-color: var(--acc-violet);
+  box-shadow: var(--shadow-deep);
+}
+.rescan-quick:active { transform: translateY(0) rotate(0deg); }
+.rescan-quick:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-soft), 0 0 0 4px var(--acc-bg);
+}
+.rescan-quick .btn-icon { width: 16px; height: 16px; }
+
 /* ---------- Pad-pill as button (click-to-expand) ---------- */
-/* The pill is a real <button> now — clicking opens the device popover.
-   Reset the default button chrome so it inherits the pill plate, then
-   layer on hover/focus/active affordances. */
+/* Each pill is a real <button>. Clicking switches active source (if not
+   already) AND opens that pill's details popover anchored beneath it. */
 button.pad-pill {
   font-family: var(--mono);
   cursor: pointer;
-  /* Cap the visible width so the friendly name truncates rather than pushing
-     the page-actions group off-screen on narrow windows. */
-  max-width: 320px;
+  /* Cap the visible width so long device names truncate rather than push
+     other pills off-screen. */
+  max-width: 280px;
 }
 button.pad-pill:hover {
   transform: translateY(-1px);
-  box-shadow: var(--shadow-deep);
-  border-color: var(--edge-inner);
-}
-button.pad-pill.connected:hover {
   box-shadow: var(--shadow-deep),
-              inset 0 0 12px rgba(63, 185, 80, 0.20),
-              0 0 24px rgba(63, 185, 80, 0.22);
+              inset 0 1px 0 rgba(255, 255, 255, 0.55),
+              0 0 22px rgba(124, 92, 255, 0.28);
+  border-color: rgba(255, 255, 255, 0.75);
+}
+button.pad-pill.is-placeholder:hover {
+  /* Empty-state pill: no candy halo, just a soft lift. */
+  box-shadow: var(--shadow-deep);
+  border-color: var(--acc-violet);
+  color: var(--tx-primary);
 }
 button.pad-pill:active { transform: translateY(1px); box-shadow: var(--shadow-pressed); }
 button.pad-pill:focus-visible {
@@ -407,16 +456,18 @@ button.pad-pill:focus-visible {
   text-overflow: ellipsis;
   white-space: nowrap;
   text-align: left;
+  /* Active pill — when both dot and name are present, give them tight
+     visual breathing room (gap on .pad-pill already handles spacing). */
 }
 .pad-pill .pad-chevron {
   width: 12px; height: 12px;
-  color: var(--tx-hint);
+  color: rgba(255, 255, 255, 0.85);
   flex-shrink: 0;
   transition: transform var(--dur-base) var(--ease),
               color var(--dur-base) var(--ease);
 }
+.pad-pill.is-placeholder .pad-chevron { color: var(--tx-hint); }
 .pad-pill[aria-expanded="true"] .pad-chevron { transform: rotate(180deg); }
-.pad-pill.connected .pad-chevron { color: var(--state-ok-2); }
 
 /* ---------- Pad-pill popover (mirrors .rbcf-apply-settings-popover) ---------- */
 .pad-pill-popover {
@@ -503,18 +554,6 @@ button.pad-pill:focus-visible {
   max-height: 56vh;
   overflow-y: auto;
 }
-.pad-pill-popover-body .device-list {
-  flex-direction: column;
-  align-items: stretch;
-  flex-wrap: nowrap;
-}
-.pad-pill-popover-body .device-card {
-  width: 100%;
-  text-align: left;
-  font-family: var(--mono);  /* match the original card treatment */
-  appearance: none;
-  -webkit-appearance: none;
-}
 .pad-pill-popover-body .device-empty {
   padding: 14px 6px;
   font-size: 12px;
@@ -522,11 +561,79 @@ button.pad-pill:focus-visible {
   text-align: center;
   font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
 }
+
+/* Per-controller detail block inside the popover. */
+.pad-detail-thumb {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 0 10px;
+}
+.pad-detail-thumb img {
+  max-width: 120px;
+  max-height: 80px;
+  object-fit: contain;
+  border-radius: 8px;
+  background: var(--content-fill);
+  padding: 6px;
+  box-shadow: inset 0 1px 2px rgba(20, 24, 38, 0.10),
+              var(--shadow-soft);
+}
+.pad-detail-table {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 12px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--tx-secondary);
+  padding: 4px 2px 8px;
+}
+.pad-detail-row {
+  display: contents;
+}
+.pad-detail-row .pad-detail-k {
+  color: var(--tx-hint);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 10px;
+  align-self: center;
+}
+.pad-detail-row .pad-detail-v {
+  color: var(--tx-primary);
+  word-break: break-all;
+}
+.pad-detail-row .pad-detail-v code {
+  font-family: var(--mono);
+  font-size: 11px;
+  background: var(--content-fill);
+  padding: 1px 5px;
+  border-radius: 4px;
+  border: 1px solid var(--edge-bottom);
+}
+
 .pad-pill-popover-foot {
   display: flex;
+  align-items: center;
   justify-content: flex-end;
+  gap: 10px;
   padding: 10px 14px 14px;
   border-top: 1px solid var(--edge-bottom);
+}
+.pad-pill-popover-foot .rbcf-apply-spacer { flex: 1; }
+.pad-pill-popover-foot .pad-detail-primary {
+  /* "Use as active source" — candy primary, matches the page's other
+     primary buttons. */
+  background: var(--acc-gradient);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  border-top-color: rgba(255, 255, 255, 0.75);
+  text-shadow: 0 1px 1px rgba(20, 24, 38, 0.18);
+  box-shadow: var(--shadow-soft), inset 0 1px 0 rgba(255, 255, 255, 0.45);
+}
+.pad-pill-popover-foot .pad-detail-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-deep), 0 0 22px rgba(124, 92, 255, 0.28);
 }
 
 /* ---------- Layout ---------- */
@@ -3098,12 +3205,9 @@ button.secondary:hover,
   }
 }
 
-/* --- Pad-pill shimmer when connected: extra ambient halo --- */
-.pad-pill.connected {
-  box-shadow: var(--shadow-soft),
-              inset 0 0 12px rgba(63, 185, 80, 0.18),
-              0 0 24px rgba(63, 185, 80, 0.18);
-}
+/* (Stream Z's .pad-pill.connected halo block was removed when the pill
+   stopped using a "connected" state — every pill now uses candy by
+   default and the active one is distinguished by the .is-active green dot.) */
 
 /* --- Modal entry — tighten the scale curve into a slightly springy pop.
        Override the existing fade-in keyframes for a richer reveal. --- */
