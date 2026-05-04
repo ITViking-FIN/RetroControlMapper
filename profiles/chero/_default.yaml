@@ -1,0 +1,11 @@
+system: chero
+title: chero (system default)
+confidence: T
+notes: 'Auto-scaffolded by /api/scaffold-defaults on 2026-05-04.
+
+  Empty placeholder — fill in es_settings / core_options as you verify which keys survive RetroBat regeneration. See CLAUDE.md
+  and docs/GUID_DRIFT_DESIGN.md for the rules.
+
+  '
+es_settings: {}
+core_options: {}
