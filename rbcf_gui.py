@@ -562,15 +562,23 @@ def _scan_systems() -> dict:
 
 
 def _scaffold_all(apply: bool) -> dict:
-    """Build the response for GET /api/scaffold-all (preview or apply)."""
+    """Build the response for GET /api/scaffold-all (preview or apply).
+
+    Per decision #9 in DECISIONS.md, scaffold-all also includes missing
+    `_default.yaml` files alongside per-game stubs. Defaults appear first
+    in the preview list (so they get written first if applied).
+    """
     if RETROBAT_ROOT is None or not ROMS_ROOT.exists():
         return {"preview": [], "applied": False, "count": 0}
 
     # Set of (system, rom_filename) that already have a per-game profile.
     existing: set[tuple[str, str]] = set()
+    existing_defaults: set[str] = set()
     for p in load_profiles():
         if p.rom:
             existing.add((p.system, p.rom))
+        if p.is_system_default:
+            existing_defaults.add(p.system)
 
     today = date.today().isoformat()
     preview: list[dict] = []
@@ -581,6 +589,42 @@ def _scaffold_all(apply: bool) -> dict:
     except OSError:
         sys_dirs = []
 
+    # First pass: scaffold missing _default.yaml entries so they appear at
+    # the top of the preview and get written before per-game stubs.
+    for sys_dir in sys_dirs:
+        if not sys_dir.is_dir():
+            continue
+        sys_name = sys_dir.name
+        if sys_name.startswith(".") or sys_name.lower() in ONBOARD_RESERVED_DIRS:
+            continue
+        if sys_name in existing_defaults:
+            continue
+        rom_count = _count_roms_in_system(sys_dir)
+        if rom_count == 0:
+            continue
+        target = PROFILES_DIR / sys_name / "_default.yaml"
+        rel_display = f"profiles/{sys_name}/_default.yaml"
+        scaffold = {
+            "system": sys_name,
+            "title": f"{sys_name} (system default)",
+            "confidence": "T",
+            "notes": (
+                f"Auto-scaffolded by /api/scaffold-all on {today}.\n"
+                f"Empty placeholder — fill in es_settings / core_options as you "
+                f"verify which keys survive RetroBat regeneration. See CLAUDE.md "
+                f"and docs/GUID_DRIFT_DESIGN.md for the rules.\n"
+            ),
+            "es_settings": {},
+            "core_options": {},
+        }
+        preview.append({
+            "system": sys_name,
+            "path": rel_display,
+            "rom_count": rom_count,
+        })
+        write_targets.append((target, scaffold))
+
+    # Second pass: per-game stubs.
     for sys_dir in sys_dirs:
         if not sys_dir.is_dir():
             continue
