@@ -162,6 +162,43 @@ HARDCODED_SYSTEMS = [
      "fixed_mapping_note": "blueMSX / fMSX: D-pad/stick → joy · B → trigger A · A → trigger B · keyboard pass-through for SPACE/ESC/F-keys"},
     {"id": "amstradcpc",   "name": "Amstrad CPC", "target_controller": "joystick_1btn",
      "fixed_mapping_note": "Caprice32 (cap32): D-pad/stick → joy · B → fire 1 · A → fire 2 · X → SPACE · keyboard pass-through configurable via cap32_combokey"},
+
+    # --- Tier 5: arcade hardware (per user request — usually straightforward) ---
+    # Sega Naomi family: Atomiswave shares Naomi ROM board, mapping is identical.
+    {"id": "naomi",        "name": "Sega Naomi", "target_controller": None,
+     "fixed_mapping_note": "Flycast: D-pad/stick → joy · B=A · A=B · X=X · Y=Y · L=Coin · R=Start (1P) · stick = analog when game supports it"},
+    {"id": "naomi2",       "name": "Sega Naomi 2", "target_controller": None,
+     "fixed_mapping_note": "Flycast: same as Naomi — B=A · A=B · X=X · Y=Y · L=Coin · R=Start"},
+    {"id": "atomiswave",   "name": "Sammy Atomiswave", "target_controller": None,
+     "fixed_mapping_note": "Flycast: B=A · A=B · X=X · Y=Y · L=Coin · R=Start (Naomi-derived hardware, identical pad mapping)"},
+    # Sega Model 2/3 / Chihiro / Triforce — emulator-launched (m2emulator / Supermodel / Dolphin)
+    {"id": "model2",       "name": "Sega Model 2", "target_controller": None,
+     "fixed_mapping_note": "m2emulator: D-pad → joy · B/A/X/Y → arcade button 1-4 · L=button 5 · R=button 6 · Select=Coin · Start=Start (per-game button count varies; check the game's I/O panel)"},
+    {"id": "model3",       "name": "Sega Model 3", "target_controller": None,
+     "fixed_mapping_note": "Supermodel: B/A/X/Y → arcade button 1-4 · L=button 5 · R=button 6 · Select=Coin · Start=Start · L3/R3 → service / test (Daytona steering needs analog stick)"},
+    {"id": "chihiro",      "name": "Sega Chihiro", "target_controller": None,
+     "fixed_mapping_note": "Cxbx-R: B=A · A=B · X=X · Y=Y · L=Black · R=White · Select=Back · Start=Start (Xbox-derived hardware, native Xbox controller mapping)"},
+    {"id": "triforce",     "name": "Triforce (Nintendo+Sega+Namco)", "target_controller": None,
+     "fixed_mapping_note": "Dolphin: GameCube-style — B=A · A=B · X=X · Y=Y · L=L · R=R · Z=Z (Z usually L2/R2) · Start=Start"},
+    # Daphne — laserdisc games. Single Action button + Start.
+    {"id": "daphne",       "name": "Daphne (laserdisc)", "target_controller": None,
+     "fixed_mapping_note": "hypseus-singe: D-pad → joy · B = Action 1 · A = Action 2 · X = Action 3 · Select = Coin · Start = Start (most games use 1-2 action buttons; Dragon's Lair: B = Sword)"},
+    # Cave shmup hardware
+    {"id": "cave",         "name": "Cave Arcade", "target_controller": None,
+     "fixed_mapping_note": "FBNeo: B = Shot · A = Bomb · X = Auto-fire · Y = (unused on most) · Select = Coin · Start = Start"},
+    # Gaelco — Spanish arcade boards
+    {"id": "gaelco",       "name": "Gaelco Arcade", "target_controller": None,
+     "fixed_mapping_note": "MAME: D-pad → joy · B/A/X/Y → arcade button 1-4 · Select = Coin · Start = Start (button count varies — World Rally uses 1, Speed Up uses analog wheel)"},
+    # Namco arcade family
+    {"id": "namco2x6",     "name": "Namco System 246/256", "target_controller": None,
+     "fixed_mapping_note": "PCSX2 / play!: PS2-derived — B=Cross · A=Circle · X=Square · Y=Triangle · L=L1 · R=R1 · L2=L2 · R2=R2 · Select=Select · Start=Start"},
+    # HBMAME — homebrew MAME variant, identical mapping.
+    {"id": "hbmame",       "name": "HBMAME (homebrew MAME)", "target_controller": None,
+     "fixed_mapping_note": "MAME: same as MAME — D-pad → joy · B/A/X/Y → arcade button 1-4 · L/R/L2/R2 → button 5-8 · Select = Coin · Start = Start"},
+
+    # --- Tier 6: personal request (Odyssey2 / Videopac) ---
+    {"id": "odyssey2",     "name": "Magnavox Odyssey² / Philips Videopac", "target_controller": "joystick_1btn",
+     "fixed_mapping_note": "O2EM: D-pad/stick → joy · B = Action button (single-action controller) · keyboard pass-through for the console's built-in alphanumeric keyboard (Voice/Quest games)"},
 ]
 
 
