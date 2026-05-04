@@ -63,9 +63,13 @@ CATALOG_YAML = ROOT / "controller_catalog.yaml"
 SYNC_MANIFEST = ROOT / "sync_manifest.json"
 KNOWN_IMG_DIR = GUI_DIR / "img" / "known"
 
-# Each system declares which "target controller" we render on the right side.
-# Adding a new system here is the main extension point.
-SYSTEMS = [
+# Curated metadata for the systems we have full target-side support for.
+# These get rich `target_controller` SVGs and `fixed_mapping_note` blurbs.
+# Other systems discovered in es_systems.cfg are merged in at import time
+# with `target_controller`/`fixed_mapping_note` set to None — the frontend
+# already handles those gracefully ("no target controller diagram for this
+# system yet"). See `_merge_systems()` below.
+HARDCODED_SYSTEMS = [
     {"id": "c64",       "name": "Commodore 64",   "target_controller": "joystick_1btn",
      "fixed_mapping_note": "VICE: D-pad/stick → joy direction · B → fire · A → fire2 · X → SPACE"},
     {"id": "amiga500",  "name": "Amiga 500",      "target_controller": "joystick_1btn",
@@ -75,6 +79,86 @@ SYSTEMS = [
     {"id": "amigacd32", "name": "Amiga CD32",     "target_controller": "cd32_pad",
      "fixed_mapping_note": "CD32 Pad (device 517): B=Red · A=Blue · Y=Yellow · X=Green · L=Forward · R=Rewind · Start=Play · Select=Reverse"},
 ]
+
+
+def _load_systems_from_retrobat() -> list[dict]:
+    """Parse es_systems.cfg and return one dict per `<system>` element.
+
+    Mirrors the small parser in audit_media.py (kept inlined to avoid
+    importing audit_media at GUI startup). Returns [] if the install
+    isn't detected or the file is missing/unparseable.
+    """
+    if RETROBAT_ROOT is None or not ES_SYSTEMS_CFG.exists():
+        return []
+    try:
+        tree = ET.parse(ES_SYSTEMS_CFG)
+    except ET.ParseError as e:
+        print(f"[rbcf_gui] could not parse es_systems.cfg: {e}", file=sys.stderr)
+        return []
+    out: list[dict] = []
+    for sys_node in tree.getroot().findall("system"):
+        name = (sys_node.findtext("name") or "").strip()
+        if not name:
+            continue
+        fullname = (sys_node.findtext("fullname") or "").strip()
+        ext_raw = (sys_node.findtext("extension") or "").strip()
+        exts = [tok.lower() for tok in ext_raw.split() if tok.startswith(".")]
+        out.append({
+            "id": name,
+            "name": fullname or name,
+            "target_controller": None,
+            "fixed_mapping_note": None,
+            "extensions": exts,
+        })
+    out.sort(key=lambda s: s["name"].lower())
+    return out
+
+
+def _merge_systems() -> list[dict]:
+    """Merge discovered systems with HARDCODED_SYSTEMS metadata overlay.
+
+    The hardcoded entry's `name`, `target_controller`, `fixed_mapping_note`
+    win for ids present in both lists; the discovered `extensions` is
+    preserved. If RetroBat isn't detected, falls back to HARDCODED_SYSTEMS
+    only so the editor still works for the curated 4.
+    """
+    discovered = _load_systems_from_retrobat()
+    if not discovered:
+        # No install detected — return curated 4 with empty extensions.
+        return [{**s, "extensions": []} for s in HARDCODED_SYSTEMS]
+    overlay = {s["id"]: s for s in HARDCODED_SYSTEMS}
+    merged: list[dict] = []
+    for entry in discovered:
+        ov = overlay.get(entry["id"])
+        if ov is not None:
+            merged.append({
+                "id": entry["id"],
+                "name": ov["name"],
+                "target_controller": ov["target_controller"],
+                "fixed_mapping_note": ov["fixed_mapping_note"],
+                "extensions": entry["extensions"],
+            })
+        else:
+            merged.append(entry)
+    # If a hardcoded entry has no matching <system> in es_systems.cfg
+    # (unusual — install missing the system folder?), still surface it so
+    # the editor remains usable for that curated system.
+    discovered_ids = {e["id"] for e in discovered}
+    for hc in HARDCODED_SYSTEMS:
+        if hc["id"] not in discovered_ids:
+            merged.append({**hc, "extensions": []})
+    merged.sort(key=lambda s: s["name"].lower())
+    return merged
+
+
+# Module-level cache, mirroring the KNOWN_CONTROLLERS = load_catalog() pattern.
+SYSTEMS = _merge_systems()
+
+
+def refresh_systems():
+    """Re-read es_systems.cfg and rebuild the merged SYSTEMS list."""
+    global SYSTEMS
+    SYSTEMS = _merge_systems()
 
 # Some per-system options surfaced in the UI. Keys must match what RetroBat's
 # Configurevice() / ConfigurePuae() bind from SystemConfig.
