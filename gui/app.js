@@ -4,6 +4,24 @@
 const $  = (id) => document.getElementById(id);
 const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
+// Verbose polling diagnostic — enable with ?debug=1 in the URL.
+// Throttled to one log per ~30 frames (~500ms) so the console doesn't drown.
+const DEBUG = new URLSearchParams(location.search).has('debug');
+let _debugFrameCount = 0;
+function debugFrame(pad, pressed, tgtMap) {
+  if (!DEBUG) return;
+  _debugFrameCount++;
+  // Only log when something is pressed (signal, not idle noise).
+  if (pressed.length === 0) return;
+  if (_debugFrameCount % 4 !== 0) return; // ~1 in 4 frames during press
+  const tgtLookups = pressed.map(name => `${name}→${tgtMap[name] ?? '∅'}`);
+  console.log('[rbcf-debug]',
+    'padIdx=', pad.index,
+    'padId="' + (pad.id || '').slice(0, 32) + '"',
+    'pressed=', pressed.join(','),
+    'tgt=', tgtLookups.join(','));
+}
+
 // ============================================================
 // Theme (Frosted Acrylic — Light / Dark / Auto)
 // Runs *before* init() so the page never flashes the wrong theme.
@@ -155,11 +173,13 @@ function updateGamepad() {
   $$('.src-btn.pressed, .tgt-btn.pressed, .map-row.pressed').forEach(el => el.classList.remove('pressed'));
 
   // Buttons
+  const _dbgPressed = [];
   for (let i = 0; i < pad.buttons.length; i++) {
     const btn = pad.buttons[i];
     if (!btn || !btn.pressed) continue;
     const name = PAD_INDEX_TO_NAME[i];
     if (!name) continue;
+    if (DEBUG) _dbgPressed.push(name);
     // Source SVG
     const srcEl = document.getElementById(`src-btn-${name}`);
     if (srcEl) srcEl.classList.add('pressed');
@@ -167,12 +187,20 @@ function updateGamepad() {
     const tgtName = tgtMap[name];
     if (tgtName) {
       const tgtEl = document.getElementById(`tgt-btn-${tgtName}`);
+      if (DEBUG && !tgtEl) {
+        console.warn('[rbcf-debug] no element found for tgt-btn-' + tgtName,
+                     '(source=' + name + ', sysId=' + sysId + ')');
+      }
       if (tgtEl) tgtEl.classList.add('pressed');
+    } else if (DEBUG) {
+      console.warn('[rbcf-debug] tgtMap missing entry for "' + name + '"',
+                   '(sysId=' + sysId + ', tgtMap keys=' + Object.keys(tgtMap).join(',') + ')');
     }
     // Mapping row
     const row = document.querySelector(`.map-row[data-pad-btn="${name}"]`);
     if (row) row.classList.add('pressed');
   }
+  if (DEBUG) debugFrame(pad, _dbgPressed, tgtMap);
 
   // Axes — highlight the STICK on source (not d-pad) and the equivalent
   // direction on TARGET (since libretro analog_dpad_mode=1 routes stick→d-pad).
