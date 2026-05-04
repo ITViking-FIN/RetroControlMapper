@@ -307,6 +307,15 @@ header h1 {
 .subtitle { margin: 2px 0 0; color: var(--tx-muted); font-size: 12px; }
 .env { display: flex; align-items: center; gap: 10px; }
 
+/* Header-level global actions (settings cog lives here, sits between
+   .env / .pad-pill and the right edge of the header). */
+.page-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: 4px;
+}
+
 /* Pad status pill — frosted plate, idle / connected / error states. */
 .pad-pill {
   display: inline-flex;
@@ -866,6 +875,125 @@ code {
   gap: 6px;
 }
 .pane .footnote svg { width: 12px; height: 12px; flex-shrink: 0; color: var(--tx-hint); }
+
+/* ---------- Target pane: header strip (selectors) + footer (actions) ---------- */
+
+/* Header strip — sits between the pane <h2> and the controller SVG host.
+   Houses the System + Game selectors. Plate-treatment matches the deep
+   Frosted Acrylic pass: subtle plate fill, top-edge glow, soft separator. */
+.pane.target .target-selectors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  align-items: flex-end;
+  margin: 0 0 14px;
+  padding: 12px 14px;
+  background: var(--plate-fill);
+  backdrop-filter: var(--blur-low);
+  -webkit-backdrop-filter: var(--blur-low);
+  border: 1px solid var(--edge-bottom);
+  border-top-color: var(--edge-top);
+  border-radius: var(--radius-plate);
+  box-shadow: inset 0 1px 2px rgba(20, 24, 38, 0.04);
+}
+.pane.target .target-selectors .field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1 1 200px;
+  min-width: 180px;
+}
+.pane.target .target-selectors .field label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--tx-muted);
+  font-weight: 600;
+}
+/* Selects — mirror the existing .toolbar select treatment so the look is
+   consistent with the rest of the app. */
+.pane.target .target-selectors select {
+  font-size: 13px;
+  padding: 9px 32px 9px 14px;
+  background: var(--content-fill);
+  color: var(--tx-primary);
+  border: 1px solid var(--edge-bottom);
+  border-top-color: var(--edge-top);
+  border-radius: var(--radius-input);
+  width: 100%;
+  font-family: inherit;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%234a5160' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  cursor: pointer;
+  box-shadow: var(--shadow-soft),
+              inset 0 1px 2px rgba(20, 24, 38, 0.06);
+  transition: border-color var(--dur-base) var(--ease),
+              box-shadow var(--dur-base) var(--ease),
+              background var(--dur-base) var(--ease),
+              transform var(--dur-fast) var(--ease);
+}
+[data-theme="dark"] .pane.target .target-selectors select {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23c9d1d9' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
+}
+@media (prefers-color-scheme: dark) {
+  [data-theme="auto"] .pane.target .target-selectors select {
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23c9d1d9' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
+  }
+}
+.pane.target .target-selectors select:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-soft), inset 0 1px 2px rgba(20,24,38,0.06);
+  border-color: var(--edge-inner);
+}
+.pane.target .target-selectors select:focus {
+  outline: none;
+  border-color: var(--acc-violet);
+  box-shadow: var(--shadow-soft),
+              inset 0 1px 2px rgba(20, 24, 38, 0.06),
+              0 0 0 4px var(--acc-bg);
+}
+
+/* Footer action row — Apply (secondary) + Save (primary). Status-line
+   sits on the left so the user can see "saving…" / "applied" feedback
+   right next to the buttons that produced it. */
+.pane.target .target-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 14px 0 0;
+  padding: 12px 14px;
+  background: var(--plate-fill);
+  backdrop-filter: var(--blur-low);
+  -webkit-backdrop-filter: var(--blur-low);
+  border: 1px solid var(--edge-bottom);
+  border-top-color: var(--edge-top);
+  border-radius: var(--radius-plate);
+  box-shadow: inset 0 1px 2px rgba(20, 24, 38, 0.04);
+}
+.pane.target .target-actions .grow { flex: 1; }
+.pane.target .target-actions #status-line {
+  font-family: var(--mono);
+  color: var(--tx-muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+/* Mirror the toolbar's secondary-chip treatment for the Apply button so
+   it picks up the frosted-chip look in its new home. */
+.pane.target .target-actions button.secondary {
+  background: var(--content-fill);
+  color: var(--tx-primary);
+  backdrop-filter: var(--blur-low);
+  -webkit-backdrop-filter: var(--blur-low);
+  box-shadow: var(--shadow-soft);
+}
+.pane.target .target-actions button.secondary:hover {
+  background: var(--content-fill);
+  border-color: var(--edge-inner);
+  box-shadow: var(--shadow-deep);
+}
 
 /* ---------- SVG controller styling ---------- */
 

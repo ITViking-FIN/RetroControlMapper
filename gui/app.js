@@ -797,9 +797,19 @@ function showSettingsPopover() {
 }
 
 function injectSettingsCog() {
-  // Slot the cog into the existing toolbar action group (next to Apply / Save).
-  const actions = document.querySelector('.toolbar .actions');
-  if (!actions || $('rbcf-apply-settings-cog')) return;
+  // Slot the cog into the page header's action group (next to the pad-pill).
+  // The cog is global UI — it doesn't belong inside the per-target panel where
+  // the system/game selectors and Apply/Save buttons now live.
+  let actions = document.querySelector('.page-actions');
+  if (!actions) {
+    // New-installation fallback: create the container inside <header>.
+    const header = document.querySelector('header');
+    if (!header) return;
+    actions = document.createElement('div');
+    actions.className = 'page-actions';
+    header.appendChild(actions);
+  }
+  if ($('rbcf-apply-settings-cog')) return;
   const btn = document.createElement('button');
   btn.id = 'rbcf-apply-settings-cog';
   btn.type = 'button';
@@ -815,8 +825,7 @@ function injectSettingsCog() {
       <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
     </svg>
   `;
-  // Place the cog *before* Apply/Save so primary actions stay last.
-  actions.insertBefore(btn, actions.firstChild);
+  actions.appendChild(btn);
   btn.addEventListener('click', (e) => {
     e.stopPropagation();
     if ($('rbcf-apply-settings-popover')) dismissSettingsPopover();

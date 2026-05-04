@@ -28,6 +28,7 @@
   <div class="env">
     <span id="pad-status" class="pad-pill">No pad — press a button</span>
   </div>
+  <div class="page-actions"></div>
 </header>
 
 <section class="device-bar" id="device-bar">
@@ -45,29 +46,6 @@
         Rescan
       </button>
     </div>
-  </div>
-</section>
-
-<section class="toolbar">
-  <div class="field">
-    <label for="sel-system">System</label>
-    <select id="sel-system"></select>
-  </div>
-  <div class="field">
-    <label for="sel-game">Game</label>
-    <select id="sel-game"><option value="">(system default)</option></select>
-  </div>
-  <span class="grow"></span>
-  <span id="status-line"></span>
-  <div class="actions">
-    <button id="btn-apply" class="secondary" title="Push all saved profiles to RetroBat">
-      <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-      Apply
-    </button>
-    <button id="btn-save" class="primary" title="Save this game's profile and apply to RetroBat">
-      <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-      Save profile
-    </button>
   </div>
 </section>
 
@@ -99,11 +77,33 @@
       Target system
       <span class="hint" id="target-name">—</span>
     </h2>
+    <div class="target-selectors">
+      <div class="field">
+        <label for="sel-system">System</label>
+        <select id="sel-system"></select>
+      </div>
+      <div class="field">
+        <label for="sel-game">Game</label>
+        <select id="sel-game"><option value="">(system default)</option></select>
+      </div>
+    </div>
     <div class="ctrl-svg-host" id="tgt-host"></div>
     <p class="footnote" id="fixed-mapping-note-wrap" hidden>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
       <span id="fixed-mapping-note"></span>
     </p>
+    <div class="target-actions">
+      <span id="status-line"></span>
+      <span class="grow"></span>
+      <button id="btn-apply" class="secondary" title="Push all saved profiles to RetroBat">
+        <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Apply
+      </button>
+      <button id="btn-save" class="primary" title="Save this game's profile and apply to RetroBat">
+        <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+        Save profile
+      </button>
+    </div>
   </div>
 </section>
 
