@@ -1300,3 +1300,329 @@ html.rbcf-onb-locked body { overflow: hidden; }
   .rbcf-onb-rootform { flex-direction: column; }
   .rbcf-onb-mode-toggle { flex-direction: column; }
 }
+
+/* ==========================================================================
+   Save→Apply preview modal + Settings popover (decision #10)
+   All classes scoped under .rbcf-apply- to avoid leaking into the main GUI.
+   ========================================================================== */
+
+.rbcf-apply-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10001;                     /* above onboarding (10000) and toast (1000) */
+  background: rgba(7, 9, 13, 0.78);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 16px;
+  animation: rbcf-apply-fade-in 0.16s ease-out;
+}
+@keyframes rbcf-apply-fade-in { from { opacity: 0; } to { opacity: 1; } }
+
+.rbcf-apply-modal-card {
+  background: var(--bg-1);
+  border: 1px solid var(--bd-3);
+  border-radius: 12px;
+  width: min(720px, 100%);
+  max-height: calc(100vh - 64px);
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(124, 92, 255, 0.2);
+  overflow: hidden;
+  color: var(--tx-2);
+}
+
+.rbcf-apply-modal-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px 12px;
+  border-bottom: 1px solid var(--bd-1);
+  background: linear-gradient(180deg, rgba(124, 92, 255, 0.06), transparent);
+}
+.rbcf-apply-modal-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--tx-1);
+  letter-spacing: -0.01em;
+  flex: 1;
+}
+.rbcf-apply-modal-x {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--tx-3);
+  font-size: 22px;
+  line-height: 1;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  cursor: pointer;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.1s, color 0.1s, border-color 0.1s;
+}
+.rbcf-apply-modal-x:hover { background: var(--bg-2); color: var(--tx-1); border-color: var(--bd-2); }
+.rbcf-apply-modal-x:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--acc-bg); }
+
+.rbcf-apply-modal-banner {
+  margin: 14px 20px 0;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: rgba(124, 92, 255, 0.08);
+  border: 1px solid rgba(124, 92, 255, 0.35);
+  color: var(--tx-1);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.rbcf-apply-modal-banner strong { color: var(--acc-2); }
+
+.rbcf-apply-modal-body {
+  padding: 14px 20px 4px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.rbcf-apply-group {
+  margin-bottom: 14px;
+}
+.rbcf-apply-group-title {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--tx-3);
+  font-weight: 600;
+  margin: 0 0 6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.rbcf-apply-group-count {
+  font-family: var(--mono);
+  font-size: 10px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(88, 166, 255, 0.10);
+  color: var(--blue-2);
+  border: 1px solid rgba(88, 166, 255, 0.30);
+  letter-spacing: 0;
+}
+.rbcf-apply-warn {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--yellow);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.rbcf-apply-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  background: var(--bg-3);
+  border: 1px solid var(--bd-1);
+  border-radius: var(--radius-1);
+  overflow: hidden;
+}
+.rbcf-apply-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 12px;
+  font-size: 12px;
+  line-height: 1.5;
+  border-bottom: 1px dashed var(--bd-1);
+}
+.rbcf-apply-list li:last-child { border-bottom: none; }
+.rbcf-apply-mark {
+  font-family: var(--mono);
+  color: var(--yellow);
+  font-weight: 700;
+  width: 12px;
+  flex-shrink: 0;
+}
+.rbcf-apply-text { flex: 1; min-width: 0; word-break: break-word; }
+.rbcf-apply-text code {
+  font-family: var(--mono);
+  background: var(--bg-1);
+  border: 1px solid var(--bd-1);
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-size: 11px;
+  color: var(--tx-1);
+}
+.rbcf-apply-empty {
+  padding: 10px 12px;
+  font-size: 12px;
+  color: var(--tx-4);
+  background: var(--bg-3);
+  border: 1px dashed var(--bd-1);
+  border-radius: var(--radius-1);
+  font-style: italic;
+}
+
+.rbcf-apply-modal-foot {
+  padding: 14px 20px;
+  border-top: 1px solid var(--bd-1);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg-2);
+}
+.rbcf-apply-spacer { flex: 1; }
+
+.rbcf-apply-btn {
+  font-size: 13px;
+  padding: 8px 16px;
+  border-radius: var(--radius-1);
+  font-family: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: background 0.12s, border-color 0.12s, transform 0.05s, box-shadow 0.12s;
+  line-height: 1;
+}
+.rbcf-apply-btn:active:not(:disabled) { transform: translateY(1px); }
+.rbcf-apply-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.rbcf-apply-btn:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--acc-bg); }
+.rbcf-apply-btn-primary {
+  background: var(--acc);
+  color: #fff;
+  border-color: var(--acc);
+}
+.rbcf-apply-btn-primary:hover:not(:disabled) {
+  background: var(--acc-2);
+  border-color: var(--acc-2);
+  box-shadow: 0 4px 14px rgba(124,92,255,0.35);
+}
+.rbcf-apply-btn-secondary {
+  background: var(--bg-2);
+  color: var(--tx-2);
+  border-color: var(--bd-3);
+}
+.rbcf-apply-btn-secondary:hover:not(:disabled) {
+  background: #1c2128;
+  border-color: var(--bd-2);
+}
+.rbcf-apply-link {
+  background: transparent;
+  color: var(--tx-3);
+  border: 1px solid transparent;
+  font-size: 12px;
+  padding: 6px 8px;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  font-family: inherit;
+  border-radius: var(--radius-1);
+}
+.rbcf-apply-link:hover { color: var(--tx-1); }
+.rbcf-apply-link:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--acc-bg); }
+
+/* ---------- Settings cog + popover ---------- */
+
+.rbcf-apply-settings-toggle {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.rbcf-apply-settings-toggle .btn-icon { width: 16px; height: 16px; }
+
+.rbcf-apply-settings-popover {
+  background: var(--bg-1);
+  border: 1px solid var(--bd-3);
+  border-radius: var(--radius-2);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(124, 92, 255, 0.2);
+  z-index: 1100;
+  color: var(--tx-2);
+  overflow: hidden;
+}
+.rbcf-apply-settings-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--bd-1);
+  background: linear-gradient(180deg, rgba(124, 92, 255, 0.05), transparent);
+}
+.rbcf-apply-settings-title {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--tx-2);
+  flex: 1;
+}
+.rbcf-apply-settings-body {
+  padding: 12px 14px 14px;
+}
+.rbcf-apply-settings-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  cursor: pointer;
+  user-select: none;
+}
+.rbcf-apply-settings-row input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 34px; height: 20px;
+  border-radius: 999px;
+  background: var(--bg-3);
+  border: 1px solid var(--bd-3);
+  position: relative;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.rbcf-apply-settings-row input[type="checkbox"]::after {
+  content: "";
+  position: absolute;
+  top: 2px; left: 2px;
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  background: var(--tx-3);
+  transition: left 0.15s, background 0.15s;
+}
+.rbcf-apply-settings-row input[type="checkbox"]:checked {
+  background: var(--acc);
+  border-color: var(--acc);
+}
+.rbcf-apply-settings-row input[type="checkbox"]:checked::after {
+  left: 17px;
+  background: #fff;
+}
+.rbcf-apply-settings-row input[type="checkbox"]:focus-visible {
+  outline: none; box-shadow: 0 0 0 3px var(--acc-bg);
+}
+.rbcf-apply-settings-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+.rbcf-apply-settings-label-main {
+  font-size: 13px;
+  color: var(--tx-1);
+  font-weight: 500;
+}
+.rbcf-apply-settings-label-help {
+  font-size: 11px;
+  color: var(--tx-4);
+  line-height: 1.4;
+}
+
+@media (max-width: 600px) {
+  .rbcf-apply-modal-card { width: 100%; }
+  .rbcf-apply-modal-foot { flex-wrap: wrap; }
+}

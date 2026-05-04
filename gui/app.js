@@ -429,6 +429,334 @@ function collectProfile() {
 }
 
 // ============================================================
+// Save→Apply two-step (decision #10): default flow shows a
+// dry-run preview modal between save and apply.
+// localStorage 'rbcf-one-click-apply' = '1' opts back into the
+// legacy one-click behaviour.
+// ============================================================
+
+const ONE_CLICK_KEY = 'rbcf-one-click-apply';
+
+function isOneClickApplyEnabled() {
+  try { return localStorage.getItem(ONE_CLICK_KEY) === '1'; }
+  catch (e) { return false; }
+}
+function setOneClickApply(enabled) {
+  try {
+    if (enabled) localStorage.setItem(ONE_CLICK_KEY, '1');
+    else         localStorage.removeItem(ONE_CLICK_KEY);
+  } catch (e) { /* ignore quota / disabled storage */ }
+}
+
+// Escape an arbitrary string for safe interpolation into innerHTML.
+function rbcfEsc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+// Build the planned-changes list HTML from the in-memory profile.
+function buildPlannedChangesHTML(profile) {
+  const sysId = profile.system || '';
+  const rom = profile.rom || '';
+  const target = rom ? `${rbcfEsc(sysId)}["${rbcfEsc(rom)}"]` : `${rbcfEsc(sysId)} default`;
+
+  const esEntries = Object.entries(profile.es_settings || {});
+  const coEntries = Object.entries(profile.core_options || {});
+
+  let html = '';
+
+  html += '<div class="rbcf-apply-group">';
+  html += '<div class="rbcf-apply-group-title">es_settings.cfg <span class="rbcf-apply-group-count">'
+        + esEntries.length + '</span></div>';
+  if (esEntries.length === 0) {
+    html += '<div class="rbcf-apply-empty">No per-game es_settings changes.</div>';
+  } else {
+    html += '<ul class="rbcf-apply-list">';
+    for (const [k, v] of esEntries) {
+      html += '<li><span class="rbcf-apply-mark">~</span>'
+            + '<span class="rbcf-apply-text">Will set <code>' + target + '.'
+            + rbcfEsc(k) + '</code> = <code>' + rbcfEsc(v) + '</code></span></li>';
+    }
+    html += '</ul>';
+  }
+  html += '</div>';
+
+  html += '<div class="rbcf-apply-group">';
+  html += '<div class="rbcf-apply-group-title">retroarch-core-options.cfg <span class="rbcf-apply-group-count">'
+        + coEntries.length + '</span> <span class="rbcf-apply-warn">(global per system)</span></div>';
+  if (coEntries.length === 0) {
+    html += '<div class="rbcf-apply-empty">No core-option changes.</div>';
+  } else {
+    html += '<ul class="rbcf-apply-list">';
+    for (const [k, v] of coEntries) {
+      html += '<li><span class="rbcf-apply-mark">~</span>'
+            + '<span class="rbcf-apply-text">Will set RetroArch core option <code>'
+            + rbcfEsc(k) + '</code> = <code>' + rbcfEsc(v) + '</code></span></li>';
+    }
+    html += '</ul>';
+  }
+  html += '</div>';
+
+  return html;
+}
+
+// Modal focus-trap state.
+let _rbcfApplyPrevFocus = null;
+let _rbcfApplyTrapHandler = null;
+
+function _rbcfApplyFocusables(root) {
+  return Array.from(root.querySelectorAll(
+    'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+  )).filter(el => !el.disabled && el.offsetParent !== null);
+}
+
+function dismissApplyModal() {
+  const overlay = $('rbcf-apply-modal');
+  if (!overlay) return;
+  if (_rbcfApplyTrapHandler) {
+    document.removeEventListener('keydown', _rbcfApplyTrapHandler, true);
+    _rbcfApplyTrapHandler = null;
+  }
+  overlay.remove();
+  if (_rbcfApplyPrevFocus && document.contains(_rbcfApplyPrevFocus)) {
+    try { _rbcfApplyPrevFocus.focus(); } catch (e) { /* ignore */ }
+  }
+  _rbcfApplyPrevFocus = null;
+}
+
+// Trigger the apply step (POST /api/apply) and toast.
+async function performApplyAfterSave(profile) {
+  setStatus('applying…');
+  try {
+    const r = await api('POST', '/api/apply', {});
+    if (r.ok) {
+      setStatus('applied · ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+      const tag = profile && profile.rom
+        ? `${profile.system}/${profile.rom}`
+        : 'all profiles';
+      showToast(`Applied ${tag}.`, 'success');
+    } else {
+      setStatus('apply failed');
+      showToast('Apply failed: ' + (r.error || 'rc ' + r.returncode), 'error');
+    }
+  } catch (e) {
+    setStatus('apply error');
+    showToast('Apply error: ' + e.message, 'error');
+  }
+}
+
+function showApplyPreviewModal(profile) {
+  // Tear down any pre-existing modal (defensive).
+  dismissApplyModal();
+  _rbcfApplyPrevFocus = document.activeElement;
+
+  const overlay = document.createElement('div');
+  overlay.id = 'rbcf-apply-modal';
+  overlay.className = 'rbcf-apply-modal-overlay';
+  overlay.setAttribute('role', 'dialog');
+  overlay.setAttribute('aria-modal', 'true');
+  overlay.setAttribute('aria-labelledby', 'rbcf-apply-modal-title');
+
+  const tag = profile.rom
+    ? `${rbcfEsc(profile.system)} / ${rbcfEsc(profile.rom)}`
+    : rbcfEsc(profile.system || 'profile');
+
+  overlay.innerHTML = `
+    <div class="rbcf-apply-modal-card" role="document">
+      <div class="rbcf-apply-modal-head">
+        <h2 class="rbcf-apply-modal-title" id="rbcf-apply-modal-title">Preview — review before applying</h2>
+        <button type="button" class="rbcf-apply-modal-x" aria-label="Cancel" data-act="cancel">×</button>
+      </div>
+      <div class="rbcf-apply-modal-banner">
+        Your profile <strong>${tag}</strong> is saved. These changes will be written to RetroBat config files when you click <strong>Apply</strong>. Click <strong>Cancel</strong> to leave RetroBat untouched — the saved profile YAML stays on disk.
+      </div>
+      <div class="rbcf-apply-modal-body">
+        ${buildPlannedChangesHTML(profile)}
+      </div>
+      <div class="rbcf-apply-modal-foot">
+        <button type="button" class="rbcf-apply-link" data-act="never">Don't show this again</button>
+        <span class="rbcf-apply-spacer"></span>
+        <button type="button" class="rbcf-apply-btn rbcf-apply-btn-secondary" data-act="cancel">Cancel</button>
+        <button type="button" class="rbcf-apply-btn rbcf-apply-btn-primary" data-act="apply">Apply</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  const card = overlay.querySelector('.rbcf-apply-modal-card');
+  const applyBtn = overlay.querySelector('[data-act="apply"]');
+  const cancelBtn = overlay.querySelector('[data-act="cancel"]');
+  const xBtn = overlay.querySelector('.rbcf-apply-modal-x');
+  const neverBtn = overlay.querySelector('[data-act="never"]');
+
+  applyBtn.addEventListener('click', async () => {
+    applyBtn.disabled = true;
+    cancelBtn.disabled = true;
+    try {
+      await performApplyAfterSave(profile);
+    } finally {
+      dismissApplyModal();
+    }
+  });
+  cancelBtn.addEventListener('click', () => {
+    setStatus('apply cancelled · profile saved');
+    showToast('Cancelled — RetroBat config left untouched.', 'info', 2500);
+    dismissApplyModal();
+  });
+  xBtn.addEventListener('click', () => cancelBtn.click());
+  neverBtn.addEventListener('click', async () => {
+    setOneClickApply(true);
+    showToast('One-Click Save & Apply enabled.', 'info', 2200);
+    applyBtn.disabled = true;
+    cancelBtn.disabled = true;
+    try {
+      await performApplyAfterSave(profile);
+    } finally {
+      dismissApplyModal();
+    }
+  });
+
+  // Backdrop click = cancel.
+  overlay.addEventListener('mousedown', (e) => {
+    if (e.target === overlay) cancelBtn.click();
+  });
+
+  // Focus trap + Escape handler.
+  _rbcfApplyTrapHandler = (e) => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      cancelBtn.click();
+      return;
+    }
+    if (e.key !== 'Tab') return;
+    const items = _rbcfApplyFocusables(card);
+    if (!items.length) return;
+    const first = items[0], last = items[items.length - 1];
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault(); last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault(); first.focus();
+    }
+  };
+  document.addEventListener('keydown', _rbcfApplyTrapHandler, true);
+
+  // Auto-focus the primary action.
+  setTimeout(() => { try { applyBtn.focus(); } catch (e) { /* ignore */ } }, 0);
+}
+
+// ============================================================
+// Settings popover (toolbar cog)
+// ============================================================
+
+let _rbcfSettingsOutsideHandler = null;
+let _rbcfSettingsKeyHandler = null;
+
+function dismissSettingsPopover() {
+  const pop = $('rbcf-apply-settings-popover');
+  if (pop) pop.remove();
+  const cog = $('rbcf-apply-settings-cog');
+  if (cog) cog.setAttribute('aria-expanded', 'false');
+  if (_rbcfSettingsOutsideHandler) {
+    document.removeEventListener('mousedown', _rbcfSettingsOutsideHandler, true);
+    _rbcfSettingsOutsideHandler = null;
+  }
+  if (_rbcfSettingsKeyHandler) {
+    document.removeEventListener('keydown', _rbcfSettingsKeyHandler, true);
+    _rbcfSettingsKeyHandler = null;
+  }
+}
+
+function showSettingsPopover() {
+  dismissSettingsPopover();
+  const cog = $('rbcf-apply-settings-cog');
+  if (!cog) return;
+
+  const pop = document.createElement('div');
+  pop.id = 'rbcf-apply-settings-popover';
+  pop.className = 'rbcf-apply-settings-popover';
+  pop.setAttribute('role', 'dialog');
+  pop.setAttribute('aria-label', 'RB-Controller_fix Settings');
+  pop.innerHTML = `
+    <div class="rbcf-apply-settings-head">
+      <h3 class="rbcf-apply-settings-title">RB-Controller_fix Settings</h3>
+      <button type="button" class="rbcf-apply-modal-x" aria-label="Close" data-act="close">×</button>
+    </div>
+    <div class="rbcf-apply-settings-body">
+      <label class="rbcf-apply-settings-row">
+        <input type="checkbox" id="rbcf-apply-one-click-toggle" ${isOneClickApplyEnabled() ? 'checked' : ''}>
+        <span class="rbcf-apply-settings-label">
+          <span class="rbcf-apply-settings-label-main">One-Click Save & Apply</span>
+          <span class="rbcf-apply-settings-label-help">Skip the preview modal and apply immediately on Save.</span>
+        </span>
+      </label>
+    </div>
+  `;
+  document.body.appendChild(pop);
+
+  // Position the popover under the cog (right-aligned).
+  const r = cog.getBoundingClientRect();
+  const popW = 320;
+  let left = r.right - popW;
+  if (left < 8) left = 8;
+  pop.style.position = 'fixed';
+  pop.style.top = (r.bottom + 6) + 'px';
+  pop.style.left = left + 'px';
+  pop.style.width = popW + 'px';
+
+  cog.setAttribute('aria-expanded', 'true');
+
+  const cb = pop.querySelector('#rbcf-apply-one-click-toggle');
+  cb.addEventListener('change', () => {
+    setOneClickApply(cb.checked);
+    showToast(
+      cb.checked ? 'One-Click Save & Apply enabled.' : 'Preview before Apply enabled.',
+      'info', 2000);
+  });
+  pop.querySelector('[data-act="close"]').addEventListener('click', dismissSettingsPopover);
+
+  _rbcfSettingsOutsideHandler = (e) => {
+    if (pop.contains(e.target) || cog.contains(e.target)) return;
+    dismissSettingsPopover();
+  };
+  document.addEventListener('mousedown', _rbcfSettingsOutsideHandler, true);
+  _rbcfSettingsKeyHandler = (e) => {
+    if (e.key === 'Escape') { e.preventDefault(); dismissSettingsPopover(); cog.focus(); }
+  };
+  document.addEventListener('keydown', _rbcfSettingsKeyHandler, true);
+
+  setTimeout(() => { try { cb.focus(); } catch (e) { /* ignore */ } }, 0);
+}
+
+function injectSettingsCog() {
+  // Slot the cog into the existing toolbar action group (next to Apply / Save).
+  const actions = document.querySelector('.toolbar .actions');
+  if (!actions || $('rbcf-apply-settings-cog')) return;
+  const btn = document.createElement('button');
+  btn.id = 'rbcf-apply-settings-cog';
+  btn.type = 'button';
+  btn.className = 'secondary rbcf-apply-settings-toggle';
+  btn.title = 'RB-Controller_fix Settings';
+  btn.setAttribute('aria-label', 'Settings');
+  btn.setAttribute('aria-haspopup', 'dialog');
+  btn.setAttribute('aria-expanded', 'false');
+  btn.innerHTML = `
+    <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="3"/>
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+    </svg>
+  `;
+  // Place the cog *before* Apply/Save so primary actions stay last.
+  actions.insertBefore(btn, actions.firstChild);
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if ($('rbcf-apply-settings-popover')) dismissSettingsPopover();
+    else showSettingsPopover();
+  });
+}
+
+// ============================================================
 // Save / apply
 // ============================================================
 
@@ -443,6 +771,10 @@ async function onSave() {
   }
   const btn = $('btn-save');
   const profile = collectProfile();
+  // Decision #10: default flow saves YAML only and then prompts via a
+  // dry-run preview modal before applying. Opt-in one-click skips it.
+  const oneClick = isOneClickApplyEnabled();
+  profile.apply = oneClick;
   btn.disabled = true;
   setStatus('saving…');
   try {
@@ -452,11 +784,18 @@ async function onSave() {
       showToast('Save failed: ' + (r.error || 'unknown'), 'error');
       return;
     }
-    let msg = `Saved ${profile.system}/${profile.rom}`;
-    if (r.apply && r.apply.ok) msg += ' · applied';
-    else if (r.apply) msg += ' · apply failed (' + (r.apply.error || 'rc ' + r.apply.returncode) + ')';
-    setStatus('saved · ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
-    showToast(msg, 'success');
+    if (oneClick) {
+      // Legacy one-click behaviour — server already attempted apply.
+      let msg = `Saved ${profile.system}/${profile.rom}`;
+      if (r.apply && r.apply.ok) msg += ' · applied';
+      else if (r.apply) msg += ' · apply failed (' + (r.apply.error || 'rc ' + r.apply.returncode) + ')';
+      setStatus('saved · ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+      showToast(msg, 'success');
+    } else {
+      setStatus('saved · review preview to apply');
+      showToast(`Saved ${profile.system}/${profile.rom} — review preview.`, 'info', 2200);
+      showApplyPreviewModal(profile);
+    }
     await loadGames(profile.system);
     selGame.value = profile.rom;
   } catch (e) {
@@ -695,6 +1034,7 @@ function setupCollapsibles() {
   }
   setupCollapsibles();
   setupDeviceBar();
+  injectSettingsCog();
   loadDevices();  // fire & forget, populates the device bar
   loop();
 })();
