@@ -30,7 +30,7 @@ import urllib.request
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-USER_AGENT = "RB-Controller_fix/1.0 (+https://github.com/<placeholder>)"
+USER_AGENT = "RB-Controller_fix/0.1.2 (+https://github.com/ITViking-FIN/RetroControlMapper)"
 HTTP_TIMEOUT = 10  # seconds — every outbound request
 
 # system_id sanity. Anything outside this is rejected (path-traversal guard).

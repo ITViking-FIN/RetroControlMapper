@@ -17,8 +17,12 @@ from collections import defaultdict
 from pathlib import Path
 
 from config import ROMS_ROOT, ES_SYSTEMS_CFG as ES_SYSTEMS
+import xml_safe
 
-REPORT = Path(r"D:/RB-Controller_fix/scrape_audit_report.md")
+# Audit finding LOW: hardcoded "D:/RB-Controller_fix/" path. Replace with
+# Path(__file__).parent so the report lands next to the script regardless
+# of where the project tree lives.
+REPORT = Path(__file__).resolve().parent / "scrape_audit_report.md"
 
 RESERVED_DIRS = {"images", "videos", "manuals", "marquees", "maps",
                  "screenshots", "media", "boxart", "wheels", "mixrbv",
@@ -35,9 +39,12 @@ def load_system_extensions():
         return {}
     out = {}
     try:
-        tree = ET.parse(ES_SYSTEMS)
+        tree = xml_safe.safe_parse(ES_SYSTEMS)
     except ET.ParseError as e:
         print(f"[warn] could not parse es_systems.cfg: {e}", file=sys.stderr)
+        return out
+    except xml_safe.XMLSecurityError as e:
+        print(f"[warn] {e}", file=sys.stderr)
         return out
     for sys_node in tree.getroot().findall("system"):
         name = (sys_node.findtext("name") or "").strip()
@@ -76,9 +83,12 @@ def parse_gamelist(path: Path):
     if not path.exists():
         return {}
     try:
-        root = ET.parse(path).getroot()
+        root = xml_safe.safe_parse(path).getroot()
     except ET.ParseError as e:
         print(f"[warn] gamelist parse error in {path}: {e}", file=sys.stderr)
+        return {}
+    except xml_safe.XMLSecurityError as e:
+        print(f"[warn] {e}", file=sys.stderr)
         return {}
     out = {}
     base = path.parent

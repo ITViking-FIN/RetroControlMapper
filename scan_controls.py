@@ -13,6 +13,7 @@ from collections import defaultdict
 from pathlib import Path
 
 from config import ROMS_ROOT
+import xml_safe
 CONTROL_TAGS = ("controls", "control", "controles", "controle",
                 "buttons", "controlscheme", "input", "inputs",
                 "controller", "scheme", "controlsdat")
@@ -24,9 +25,12 @@ all_tags_seen = set()
 def scan_gamelist(path):
     sys_name = path.parent.name
     try:
-        root = ET.parse(path).getroot()
+        root = xml_safe.safe_parse(path).getroot()
     except ET.ParseError as e:
         print(f"[warn] {path}: parse error {e}", file=sys.stderr)
+        return
+    except xml_safe.XMLSecurityError as e:
+        print(f"[warn] {e}", file=sys.stderr)
         return
     for g in root.findall("game"):
         per_system[sys_name]["games"] += 1

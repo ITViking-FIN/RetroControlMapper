@@ -41,7 +41,7 @@ MANIFEST = ROOT / "sync_manifest.json"
 LOG_FILE = ROOT / "controller_sync.log"
 
 COMMONS_API = "https://commons.wikimedia.org/w/api.php"
-USER_AGENT = "RB-Controller_fix/0.1 (controller catalog sync; https://github.com/local)"
+USER_AGENT = "RB-Controller_fix/0.1.2 controller-catalog-sync (+https://github.com/ITViking-FIN/RetroControlMapper)"
 TIMEOUT_S = 20
 MAX_RETRIES = 3
 RETRY_SLEEP_S = 4

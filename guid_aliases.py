@@ -28,6 +28,7 @@ from datetime import datetime
 from pathlib import Path
 
 from config import RETROBAT_ROOT
+import xml_safe
 
 
 # History ring-buffer location (decision #5).
@@ -116,10 +117,13 @@ def parse_es_input(path: Path) -> list[GuidAlias]:
               file=sys.stderr)
         return []
     try:
-        tree = ET.parse(path)
+        tree = xml_safe.safe_parse(path)
     except ET.ParseError as e:
         print(f"[guid_aliases] {path}: XML parse error: {e}",
               file=sys.stderr)
+        return []
+    except xml_safe.XMLSecurityError as e:
+        print(f"[guid_aliases] {e}", file=sys.stderr)
         return []
     except OSError as e:
         print(f"[guid_aliases] {path}: {e}", file=sys.stderr)
@@ -283,10 +287,13 @@ def expand_inputconfig(
         return (0, 0)
 
     try:
-        tree = ET.parse(es_input_path)
+        tree = xml_safe.safe_parse(es_input_path)
     except ET.ParseError as e:
         print(f"[guid_aliases] {es_input_path}: XML parse error: {e}",
               file=sys.stderr)
+        return (0, 0)
+    except xml_safe.XMLSecurityError as e:
+        print(f"[guid_aliases] {e}", file=sys.stderr)
         return (0, 0)
 
     root = tree.getroot()

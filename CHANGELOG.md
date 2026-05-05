@@ -4,6 +4,71 @@ All notable changes to RetroControlMapper. Format follows [Keep a
 Changelog](https://keepachangelog.com); versioning follows
 [SemVer](https://semver.org).
 
+## [v0.1.2] — 2026-05-05
+
+**Security release.** A post-v0.1.1 audit found three HIGH-severity
+issues in the local HTTP server. All fixed; v0.1.1 users should
+upgrade. The in-app update check picks this release up automatically.
+
+### Security
+
+- **H1 — DNS rebinding via missing Origin validation.** Any website
+  open in the user's browser could `fetch()` to `localhost:8765` and
+  trigger config writes. Added an Origin/Host whitelist on every
+  state-changing request (POST + DELETE): allowed origins are
+  `http://localhost:<port>`, `http://127.0.0.1:<port>`, `http://[::1]:
+  <port>` (with or without port), and the empty/missing-Origin case
+  for native CLI callers (curl, our own SSE writes). Cross-origin
+  requests now return 403.
+- **H2 — write-mode endpoints exploitable via `<img>` CSRF.** The
+  `?apply=true` path on `/api/scaffold-{all,defaults}` and
+  `/api/bezel-cutoffs` was reachable via GET, meaning a malicious
+  `<img src="http://localhost:8765/api/scaffold-all/stream?apply=true">`
+  on any visited page would silently mass-write profile YAMLs.
+  Write-mode endpoints now require POST; GET preserves the read-only
+  preview.
+- **H3 — unbounded JSON body size.** POSTs read `Content-Length`
+  bytes blind, allowing a multi-GB body to exhaust memory. JSON body
+  cap of 1 MB enforced; oversize → 413.
+
+### Fixed
+
+- **M4 — XXE / billion-laughs DoS in XML parsing.** Eight `ET.parse`
+  call sites (across `guid_aliases`, `rbcf_gui`, `audit_media`,
+  `scan_controls`) accepted external XML and processed internal DTD
+  entity expansion. New `xml_safe.safe_parse()` helper rejects any
+  XML containing DOCTYPE or ENTITY declarations in the prolog. Hand-
+  rolled — no `defusedxml` dependency added per user direction.
+- **M5 — missing `import sys` in `update_check.py`.** `set_consent()`
+  references `sys.stderr` on the OSError path; would have crashed
+  with `NameError` if the consent file failed to write.
+- **M6 — `_parse_iso` double-corrected UTC.** Cache TTL was off by
+  the local DST offset in DST-observing timezones. Now uses
+  `datetime.fromisoformat()` with explicit UTC tzinfo.
+- **M7 — `BACKUP_TAG` frozen at import.** A tray app running past
+  midnight stamped backups with yesterday's date. Now computed lazily
+  on every access via a small `_BackupTag` shim that preserves the
+  existing call-site syntax.
+
+### Changed
+
+- **Hardcoded path in `audit_media.py`** replaced with `Path(__file__)
+  .resolve().parent / "scrape_audit_report.md"` so the report lands
+  next to the script regardless of where the project tree lives.
+- **Placeholder User-Agent strings** in `system_lookup.py` and
+  `controller_sync.py` updated to reference the real GitHub repo and
+  current version.
+- **Duplicate `Cache-Control: no-store`** removed from `_json()` —
+  was being sent twice (once explicitly, once by `end_headers()`).
+- **`Pillow>=10.1`** lower bound (was `>=10.0`) so users get the
+  CVE-2023-44271 / CVE-2023-50447 fixes by default.
+
+### Internals
+
+The streaming scaffold endpoints (`/api/scaffold-{all,defaults}/stream`)
+moved from GET (EventSource) to POST (`fetch()` + ReadableStream + manual
+SSE chunk parsing). Wire format unchanged. Frontend updated.
+
 ## [v0.1.1] — 2026-05-05
 
 First public release. (v0.1.0 was built and tested locally but never
@@ -226,5 +291,6 @@ controller-config fragility, packaged as a single Windows .exe.
 
 GPL-3.0 (see [LICENSE](LICENSE)).
 
+[v0.1.2]: https://github.com/ITViking-FIN/RetroControlMapper/releases/tag/v0.1.2
 [v0.1.1]: https://github.com/ITViking-FIN/RetroControlMapper/releases/tag/v0.1.1
 [v0.1.0]: https://github.com/ITViking-FIN/RetroControlMapper/blob/main/CHANGELOG.md#v010--2026-05-04

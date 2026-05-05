@@ -33,6 +33,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import sys
 import time
 import urllib.error
 import urllib.request
@@ -90,14 +91,23 @@ def _now_iso() -> str:
 
 
 def _parse_iso(s: str) -> float | None:
-    """Parse an ISO ``YYYY-MM-DDTHH:MM:SSZ`` to epoch seconds. None on failure."""
+    """Parse an ISO ``YYYY-MM-DDTHH:MM:SSZ`` to epoch seconds. None on failure.
+
+    Uses datetime.fromisoformat with explicit UTC tzinfo so the result
+    is unambiguously a UTC epoch — the previous time.mktime() path
+    interpreted the struct as local-time and double-corrected via
+    time.timezone, which was off by the DST offset in DST-observing
+    locales (audit finding M6).
+    """
     if not s:
         return None
     try:
-        # Strip trailing 'Z' and parse as naive UTC.
-        cleaned = s.rstrip("Z")
-        st = time.strptime(cleaned, "%Y-%m-%dT%H:%M:%S")
-        return time.mktime(st) - time.timezone
+        from datetime import datetime, timezone
+        cleaned = s.replace("Z", "+00:00")
+        dt = datetime.fromisoformat(cleaned)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.timestamp()
     except (ValueError, TypeError):
         return None
 

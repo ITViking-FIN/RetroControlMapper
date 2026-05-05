@@ -979,7 +979,8 @@
       fixBtn.disabled = true;
       fixBtn.textContent = 'Applying…';
       try {
-        const res = await fetchJson('GET', '/api/bezel-cutoffs?apply=true');
+        // H2 audit fix: write-mode endpoint moved to POST.
+        const res = await fetchJson('POST', '/api/bezel-cutoffs');
         const wrote = (res && Array.isArray(res.written)) ? res.written.length : 0;
         const skipped = (res && Array.isArray(res.skipped_existing)) ? res.skipped_existing.length : 0;
         const msg = skipped
@@ -1169,13 +1170,17 @@
       wrap.appendChild(progress);
     }
 
+    // H2 audit fix: streaming endpoints moved to POST. EventSource is
+    // GET-only by spec, so we use fetch() + ReadableStream and parse
+    // the SSE format manually. The wire protocol is identical
+    // (`data: <json>\n\n` per event); only the transport differs.
     const endpoint = state.scaffoldMode === 'defaults'
       ? '/api/scaffold-defaults/stream'
       : '/api/scaffold-all/stream';
-    const es = new EventSource(`${endpoint}?apply=true`);
     let total = 0;
     let written = 0;
     let skipped = 0;
+    let cancelled = false;
 
     function setProgress(done, current) {
       const fill = document.getElementById('rbcf-onb-progress-fill');
@@ -1190,9 +1195,7 @@
       if (cur && current) cur.textContent = current;
     }
 
-    es.onmessage = (msg) => {
-      let data;
-      try { data = JSON.parse(msg.data); } catch (e) { return; }
+    function handleEvent(data) {
       if (data.event === 'start') {
         total = data.total || 0;
         setProgress(0, '');
@@ -1201,7 +1204,7 @@
       } else if (data.event === 'skipped') {
         skipped++;
       } else if (data.event === 'finish') {
-        es.close();
+        cancelled = true;
         state.busy = false;
         written = (data.count || 0);
         const wrap2 = document.getElementById('rbcf-onb-preview');
@@ -1216,10 +1219,9 @@
         }
         lightToast(`Scaffolded ${written} profile${written === 1 ? '' : 's'}.`, 'success');
         markOnboarded();
-        // Brief pause so the user sees the success block before the overlay leaves.
         setTimeout(dismiss, 1200);
       } else if (data.event === 'error') {
-        es.close();
+        cancelled = true;
         state.busy = false;
         if (state.primaryEl) {
           state.primaryEl.disabled = false;
@@ -1227,19 +1229,47 @@
         }
         lightToast('Apply failed: ' + (data.error || 'stream error'), 'error');
       }
-    };
-    es.onerror = () => {
-      // EventSource auto-retries on transient errors; we close on hard
-      // failure so the caller can show a retry button.
-      if (es.readyState === EventSource.CLOSED) {
+    }
+
+    (async () => {
+      try {
+        const resp = await fetch(endpoint, { method: 'POST',
+                                              headers: { 'Accept': 'text/event-stream' } });
+        if (!resp.ok || !resp.body) {
+          throw new Error(`HTTP ${resp.status}`);
+        }
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = '';
+        while (!cancelled) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          // Each SSE event ends with \n\n. Process complete events.
+          let idx;
+          while ((idx = buf.indexOf('\n\n')) !== -1) {
+            const chunk = buf.slice(0, idx);
+            buf = buf.slice(idx + 2);
+            // SSE chunks may have multiple `data:` lines; join.
+            const dataLines = chunk.split('\n')
+              .filter(line => line.startsWith('data:'))
+              .map(line => line.slice(5).trimStart());
+            if (dataLines.length === 0) continue;
+            try {
+              handleEvent(JSON.parse(dataLines.join('\n')));
+            } catch (e) { /* skip malformed */ }
+          }
+        }
+      } catch (e) {
+        if (cancelled) return;
         state.busy = false;
         if (state.primaryEl) {
           state.primaryEl.disabled = false;
           state.primaryEl.textContent = 'Retry apply';
         }
-        lightToast('Apply stream closed unexpectedly.', 'error');
+        lightToast('Apply stream failed: ' + e.message, 'error');
       }
-    };
+    })();
   }
 
   // ----------------------------------------------------------------

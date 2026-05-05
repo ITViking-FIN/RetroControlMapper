@@ -90,6 +90,7 @@ from config import (
 from rbcf import load_profiles
 import system_lookup
 import update_check
+import xml_safe
 
 ROOT = Path(__file__).resolve().parent
 GUI_DIR = ROOT / "gui"
@@ -262,9 +263,12 @@ def _load_systems_from_retrobat() -> list[dict]:
     if RETROBAT_ROOT is None or not ES_SYSTEMS_CFG.exists():
         return []
     try:
-        tree = ET.parse(ES_SYSTEMS_CFG)
+        tree = xml_safe.safe_parse(ES_SYSTEMS_CFG)
     except ET.ParseError as e:
         print(f"[rbcf_gui] could not parse es_systems.cfg: {e}", file=sys.stderr)
+        return []
+    except xml_safe.XMLSecurityError as e:
+        print(f"[rbcf_gui] {e}", file=sys.stderr)
         return []
     out: list[dict] = []
     for sys_node in tree.getroot().findall("system"):
@@ -608,8 +612,8 @@ def system_extensions(system: str) -> set[str]:
     if not ES_SYSTEMS_CFG.exists():
         return set()
     try:
-        tree = ET.parse(ES_SYSTEMS_CFG)
-    except ET.ParseError:
+        tree = xml_safe.safe_parse(ES_SYSTEMS_CFG)
+    except (ET.ParseError, xml_safe.XMLSecurityError):
         return set()
     for node in tree.getroot().findall("system"):
         if (node.findtext("name") or "").strip() == system:
@@ -2101,16 +2105,81 @@ def _delete_controller_image(vid_raw: str, pid_raw: str) -> dict:
 
 # ------------------------------ HTTP layer ------------------------------
 
+# Audit finding H3: cap on JSON request bodies. The image upload
+# endpoint already had its own (much larger) cap; this catches every
+# OTHER POST endpoint that reads Content-Length blind.
+MAX_JSON_BODY_BYTES = 1_000_000  # 1 MB — well above any legitimate payload.
+
+# Audit finding H1: Origin / Host whitelist for state-changing requests.
+# DNS-rebinding turns localhost into a same-origin attack surface unless
+# we explicitly check who's calling. Allowed origins for write methods:
+#   - empty / missing Origin   (curl, native clients, our own SSE)
+#   - http://127.0.0.1:<port>
+#   - http://localhost:<port>
+# Anything else → 403.
+_ALLOWED_ORIGIN_HOSTS = ("127.0.0.1", "localhost", "[::1]")
+
+
+def _origin_ok(origin: str | None, port: int) -> bool:
+    """Return True if an Origin header value is acceptable for a
+    state-changing request. Empty/None passes (CLI/native callers)."""
+    if not origin:
+        return True  # no Origin header — not a browser request
+    o = origin.strip().lower()
+    # Accept http(s)://<allowed-host>(:<port>)?
+    for host in _ALLOWED_ORIGIN_HOSTS:
+        for proto in ("http://", "https://"):
+            base = proto + host
+            if o == base or o == f"{base}:{port}":
+                return True
+    return False
+
+
 class Handler(http.server.SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(GUI_DIR), **kwargs)
+
+    def _check_origin_or_403(self) -> bool:
+        """Reject the request with 403 if the Origin header is set and
+        doesn't match the local-server allowlist. Return True if the
+        caller can proceed.
+        """
+        origin = self.headers.get("Origin")
+        port = self.server.server_address[1] if self.server else 8765
+        if _origin_ok(origin, port):
+            return True
+        self._json(
+            {"ok": False,
+             "error": f"refusing cross-origin request from {origin!r}"},
+            status=403,
+        )
+        return False
+
+    def _read_capped_body(self) -> tuple[bytes | None, int]:
+        """Read the request body, refusing if Content-Length exceeds
+        MAX_JSON_BODY_BYTES. Returns (body_bytes, content_length).
+        On overflow returns (None, length) and emits a 413 response.
+        """
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            length = 0
+        if length > MAX_JSON_BODY_BYTES:
+            self._json(
+                {"ok": False,
+                 "error": f"body too large (max {MAX_JSON_BODY_BYTES} bytes)"},
+                status=413,
+            )
+            return None, length
+        return self.rfile.read(length) if length else b"", length
 
     def _json(self, data, status=200):
         body = json.dumps(data, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
+        # Note: Cache-Control: no-store is added by end_headers() — don't
+        # send it here too (audit LOW: dup header).
         self.end_headers()
         self.wfile.write(body)
 
@@ -2203,24 +2272,21 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 print(f"[scan] bezel sub-scan failed: {e}", file=sys.stderr)
                 payload["bezels_with_cutoffs"] = 0
             return self._json(payload)
+        # H2 audit fix: write-mode endpoints must use POST. GET only
+        # serves the preview / read-only response — `?apply=true` on
+        # GET is intentionally ignored to prevent CSRF via <img> tags.
         if u.path == "/api/scaffold-all":
-            q = self._query()
-            apply_flag = (q.get("apply", ["false"])[0] or "").strip().lower() in ("1", "true", "yes")
-            return self._json(_scaffold_all(apply=apply_flag))
+            return self._json(_scaffold_all(apply=False))
         if u.path == "/api/scaffold-defaults":
-            q = self._query()
-            apply_flag = (q.get("apply", ["false"])[0] or "").strip().lower() in ("1", "true", "yes")
-            return self._json(_scaffold_defaults(apply=apply_flag))
+            return self._json(_scaffold_defaults(apply=False))
         if u.path in ("/api/scaffold-all/stream", "/api/scaffold-defaults/stream"):
-            q = self._query()
-            apply_flag = (q.get("apply", ["false"])[0] or "").strip().lower() in ("1", "true", "yes")
-            if not apply_flag:
-                return self._json(
-                    {"ok": False, "error": "stream endpoint requires apply=true"},
-                    status=400,
-                )
-            mode = "all" if "scaffold-all" in u.path else "defaults"
-            return self._sse(_scaffold_stream_events(mode))
+            # Streaming endpoints WROTE files via GET — pure CSRF
+            # vector. Now POST-only.
+            return self._json(
+                {"ok": False,
+                 "error": "stream endpoint moved to POST (audit H2)"},
+                status=405,
+            )
         if u.path == "/api/scaffold-excludes":
             return self._json({"ok": True, "excludes": _load_excludes()})
         if u.path == "/api/system-subdirs":
@@ -2234,9 +2300,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._json({"ok": True, "system": sys_name,
                                "subdirs": _system_subdirs(sys_name)})
         if u.path == "/api/bezel-cutoffs":
-            q = self._query()
-            apply_flag = (q.get("apply", ["false"])[0] or "").strip().lower() in ("1", "true", "yes")
-            return self._json(_bezel_cutoffs(apply=apply_flag))
+            return self._json(_bezel_cutoffs(apply=False))
         if u.path == "/api/backup/list":
             return self._json(_backup_list())
         if u.path == "/api/update-check":
@@ -2248,6 +2312,11 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         return super().do_GET()
 
     def do_POST(self):
+        # H1 audit fix: every state-changing request must come from a
+        # same-origin caller (or have no Origin at all = CLI). Browsers
+        # cross-origin via DNS rebinding bounce off this gate.
+        if not self._check_origin_or_403():
+            return
         u = urllib.parse.urlparse(self.path)
 
         # The controller-image endpoint speaks multipart/form-data; handle
@@ -2281,10 +2350,12 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     status = 400
             return self._json(result, status=status)
 
+        # H3 audit fix: cap on JSON body size for every other POST.
+        body_bytes, _ = self._read_capped_body()
+        if body_bytes is None:
+            return  # 413 already sent
         try:
-            length = int(self.headers.get("Content-Length", "0"))
-            body = self.rfile.read(length).decode("utf-8") if length else ""
-            data = json.loads(body) if body else {}
+            data = json.loads(body_bytes.decode("utf-8")) if body_bytes else {}
         except (ValueError, json.JSONDecodeError) as e:
             return self._json({"ok": False, "error": f"bad request: {e}"}, status=400)
 
@@ -2312,6 +2383,17 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._json(_system_lookup_endpoint(data))
         if u.path == "/api/system-lookup/clear":
             return self._json(_system_lookup_clear(data))
+        # H2 audit fix: write-mode scaffold + bezel endpoints. POST
+        # required so they're not reachable via <img src=...> CSRF.
+        if u.path == "/api/scaffold-all":
+            return self._json(_scaffold_all(apply=True))
+        if u.path == "/api/scaffold-defaults":
+            return self._json(_scaffold_defaults(apply=True))
+        if u.path in ("/api/scaffold-all/stream", "/api/scaffold-defaults/stream"):
+            mode = "all" if "scaffold-all" in u.path else "defaults"
+            return self._sse(_scaffold_stream_events(mode))
+        if u.path == "/api/bezel-cutoffs":
+            return self._json(_bezel_cutoffs(apply=True))
         if u.path == "/api/scaffold-excludes":
             sys_name = (data.get("system") or "").strip()
             entries = data.get("excludes", [])
@@ -2353,6 +2435,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         return self._json({"ok": False, "error": "unknown endpoint"}, status=404)
 
     def do_DELETE(self):
+        if not self._check_origin_or_403():
+            return
         u = urllib.parse.urlparse(self.path)
         if u.path == "/api/controller-image":
             q = self._query()

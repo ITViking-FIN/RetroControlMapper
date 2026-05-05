@@ -47,7 +47,36 @@ from guid_aliases import (
 
 ROOT = Path(__file__).resolve().parent
 PROFILES_DIR = ROOT / "profiles"
-BACKUP_TAG = f".bak.rbcf.{datetime.now():%Y%m%d}"
+
+
+def _backup_tag() -> str:
+    """Today's `.bak.rbcf.<YYYYMMDD>` suffix, computed on every call.
+
+    Was a module-level constant frozen at import (audit finding M7) —
+    a tray app that ran past midnight stamped backups with yesterday's
+    date. Lazy evaluation keeps the date current.
+    """
+    return f".bak.rbcf.{datetime.now():%Y%m%d}"
+
+
+# Backwards-compat shim. Existing call sites do `path.suffix + BACKUP_TAG`
+# and `f"backups tagged: {BACKUP_TAG}"`. A custom object that defers to
+# _backup_tag() on string ops keeps those call sites unchanged while the
+# value is recomputed each access.
+class _BackupTag:
+    def __str__(self) -> str:
+        return _backup_tag()
+    def __repr__(self) -> str:
+        return _backup_tag()
+    def __radd__(self, other):
+        return other + _backup_tag()
+    def __add__(self, other):
+        return _backup_tag() + other
+    def __format__(self, spec):
+        return format(_backup_tag(), spec)
+
+
+BACKUP_TAG = _BackupTag()
 
 
 # ------------------------------ profile model ------------------------------
