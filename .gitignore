@@ -41,3 +41,6 @@ dist/
 
 # Stray pip --target output that lands in the project dir
 Lib/
+
+# Per-release notes file extracted from CHANGELOG for `gh release create`
+RELEASE_NOTES_v*.md
