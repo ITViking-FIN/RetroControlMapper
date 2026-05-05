@@ -4,12 +4,14 @@ All notable changes to RetroControlMapper. Format follows [Keep a
 Changelog](https://keepachangelog.com); versioning follows
 [SemVer](https://semver.org).
 
-## [Unreleased] — staged for v0.1.1
+## [v0.1.1] — 2026-05-05
 
-Five fixes and two features landed after the v0.1.0 setup .exe was first
-cut. Cumulatively addresses 4 bugs the user hit while exercising the
-fresh install plus the two scaffold-flow improvements requested for
-"work for tomorrow."
+First public release. (v0.1.0 was built and tested locally but never
+shipped — its commits are folded into v0.1.1 below.)
+
+Five fixes and two features landed after the initial v0.1.0 setup .exe
+was first cut. Cumulatively addresses 4 bugs the user hit while
+exercising the fresh install plus the two scaffold-flow improvements.
 
 ### Added
 
@@ -224,5 +226,5 @@ controller-config fragility, packaged as a single Windows .exe.
 
 GPL-3.0 (see [LICENSE](LICENSE)).
 
-[Unreleased]: https://github.com/ITViking-FIN/RetroControlMapper/compare/v0.1.0...HEAD
-[v0.1.0]: https://github.com/ITViking-FIN/RetroControlMapper/releases/tag/v0.1.0
+[v0.1.1]: https://github.com/ITViking-FIN/RetroControlMapper/releases/tag/v0.1.1
+[v0.1.0]: https://github.com/ITViking-FIN/RetroControlMapper/blob/main/CHANGELOG.md#v010--2026-05-04
