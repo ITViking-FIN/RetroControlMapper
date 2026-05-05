@@ -4,6 +4,74 @@ All notable changes to RetroControlMapper. Format follows [Keep a
 Changelog](https://keepachangelog.com); versioning follows
 [SemVer](https://semver.org).
 
+## [Unreleased] — staged for v0.1.1
+
+Five fixes and two features landed after the v0.1.0 setup .exe was first
+cut. Cumulatively addresses 4 bugs the user hit while exercising the
+fresh install plus the two scaffold-flow improvements requested for
+"work for tomorrow."
+
+### Added
+
+- **Scaffold progress bar.** Apply with hundreds of thousands of files
+  no longer looks frozen. Two new streaming endpoints
+  (`/api/scaffold-{all,defaults}/stream?apply=true`) emit Server-Sent
+  Events; the GUI renders a cyan→pink gradient progress bar with
+  percentage, done/total counters, and the currently-writing file
+  path. Existing non-streaming endpoints stay byte-identical.
+- **Per-directory scaffold exclusions.** Each system row in the Step 2
+  scan table has an "Exclude folders…" link. The modal lists the
+  system's immediate subdirectories with checkboxes; user picks which
+  to skip. Excludes persist to `%APPDATA%/RB-Controller_fix/scaffold-
+  excludes.json`. Power-user shortcut: drop a `.rbcf-ignore` file in
+  any directory and the scaffolder treats that whole tree as excluded
+  (gitignore-style). Two endpoints: `GET /api/scaffold-excludes`,
+  `POST /api/scaffold-excludes`, plus `GET /api/system-subdirs?
+  system=<id>` for the modal's data source.
+- **Per-row "(N)" pill** next to the Exclude folders link showing the
+  current exclude count for that system.
+
+### Fixed
+
+- **Installer crash on shortcut creation** (`IPersistFile::Save failed;
+  0x80070005`). The `[Icons]` section used `{commondesktop}` which
+  needs admin elevation, but the installer runs `PrivilegesRequired=
+  lowest`. Now `{autodesktop}` — routes to the user's Desktop in
+  unprivileged mode.
+- **Apply broken in the bundled .exe.** `run_apply()` was spawning a
+  subprocess against `rbcf.py`, but PyInstaller compiles .py source
+  into the PYZ archive — there's no `rbcf.py` file on disk in the
+  bundle. Refactored to call `rbcf.cmd_apply()` in-process via
+  `contextlib.redirect_stdout`. Side benefit: no subprocess spawn cost
+  per Apply.
+- **GUI opened in a browser tab** — was a placeholder during dev. Tray
+  menu "Show window" now launches Edge in `--app` mode (no browser
+  chrome, looks like a real desktop window). Falls back to the user's
+  default browser if Edge isn't found.
+- **Empty / non-real systems in the onboarding scan.** `/api/scan` was
+  returning entries for `amazon`, `2ship`, `aquarius`, etc. — RetroBat
+  systems with zero ROMs in the user's library. Now filtered out
+  (`rom_count == 0 && profiles_count == 0`).
+- **Stuck-disabled scaffold-defaults toggle.** When defaults were all
+  in place but per-game stubs were missing, the mode toggle defaulted
+  to "Defaults only (0)" with a disabled primary button — user could
+  only proceed by manually flipping to "Every ROM". Now auto-promotes
+  to the actionable mode.
+- **Mislabelled "Profiles" column in the scan table.** Counted only
+  per-game profiles (excluding `_default.yaml`) but read as if it
+  meant all YAMLs on disk. Renamed column header to "Per-game" and
+  the summary line clarifies "X with per-game profiles".
+- **Controller-image upload size cap status code.** Inner branch was
+  returning HTTP 200 with `{ok: false, error: "too large"}`; outer
+  envelope branch was returning 413. Now both 413 — consistent with
+  any downstream tooling that keys off HTTP status.
+
+### Changed
+
+- **HTTP status mapping for `/api/controller-image` errors.** "too
+  large" → 413; "missing file" / "unsupported" / "invalid VID" → 400;
+  success → 200 (was always 200 + JSON-error body before).
+
 ## [v0.1.0] — 2026-05-04
 
 First public release. The full toolset for fixing RetroBat's
@@ -156,4 +224,5 @@ controller-config fragility, packaged as a single Windows .exe.
 
 GPL-3.0 (see [LICENSE](LICENSE)).
 
+[Unreleased]: https://github.com/ITViking-FIN/RetroControlMapper/compare/v0.1.0...HEAD
 [v0.1.0]: https://github.com/ITViking-FIN/RetroControlMapper/releases/tag/v0.1.0
