@@ -44,3 +44,14 @@ Lib/
 
 # Per-release notes file extracted from CHANGELOG for `gh release create`
 RELEASE_NOTES_v*.md
+
+# Claude-internal scaffolding — orientation, decision ledger, agent
+# reports. Useful while building, must NOT be in the public source tree.
+# Per user rule 2026-05-05: only valid project files allowed in repo.
+CLAUDE.md
+DECISIONS.md
+OVERNIGHT_REPORT.md
+OVERNIGHT_QUESTIONS.md
+CLEANUP_REPORT.md
+docs/V010_QA_REPORT.md
+.claude/
