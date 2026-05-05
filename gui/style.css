@@ -3636,3 +3636,135 @@ button.secondary:hover,
 [data-theme="dark"] .rbcf-update-badge {
   box-shadow: 0 1px 8px rgba(167, 108, 255, 0.5);
 }
+
+/* ==========================================================================
+   v0.1.1 — scaffold progress bar (SSE) + per-system exclude modal
+   ========================================================================== */
+
+.rbcf-onb-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 16px 0;
+  padding: 16px;
+  background: var(--plate-fill, rgba(255,255,255,0.06));
+  border: 1px solid var(--bd-2, #2a313b);
+  border-top-color: var(--edge-top, rgba(255,255,255,0.08));
+  border-radius: 12px;
+  box-shadow: 0 1px 0 var(--edge-top, rgba(255,255,255,0.08)) inset;
+}
+.rbcf-onb-progress-label {
+  font-size: 13px;
+  color: var(--tx-1, #e6edf3);
+  font-variant-numeric: tabular-nums;
+}
+.rbcf-onb-progress-bar {
+  position: relative;
+  height: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 999px;
+  overflow: hidden;
+  border: 1px solid var(--bd-1, #1f242d);
+}
+.rbcf-onb-progress-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  height: 100%;
+  background: linear-gradient(90deg, var(--acc-cyan, #4ad8ff), var(--acc-pink, #ff6cb3));
+  border-radius: 999px;
+  transition: width 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.rbcf-onb-progress-current {
+  font-family: var(--mono, monospace);
+  font-size: 11px;
+  color: var(--tx-3, #8b949e);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  direction: rtl;   /* show the tail of long paths */
+  text-align: left;
+}
+
+/* Per-row "Exclude folders…" link in the scan systems table */
+.rbcf-onb-row-action-col { width: 1%; white-space: nowrap; text-align: right; }
+.rbcf-onb-row-action {
+  font-size: 12px;
+  color: var(--blue, #58a6ff);
+  text-decoration: none;
+  cursor: pointer;
+}
+.rbcf-onb-row-action:hover { text-decoration: underline; }
+.rbcf-onb-exclude-count {
+  font-size: 11px;
+  color: var(--tx-3, #8b949e);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Modal for picking which subdirs to exclude */
+.rbcf-onb-exclude-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(8, 10, 16, 0.55);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10500;  /* above the onboarding overlay (10000) */
+}
+.rbcf-onb-exclude-card {
+  width: min(540px, calc(100% - 32px));
+  max-height: calc(100vh - 64px);
+  background: var(--bg-1, #11161d);
+  border: 1px solid var(--bd-2, #2a313b);
+  border-top-color: var(--edge-top, rgba(255,255,255,0.10));
+  border-radius: 14px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+  display: flex;
+  flex-direction: column;
+}
+.rbcf-onb-exclude-title {
+  margin: 0;
+  padding: 14px 18px 10px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--tx-1, #e6edf3);
+  border-bottom: 1px solid var(--bd-1, #1f242d);
+}
+.rbcf-onb-exclude-body {
+  padding: 12px 18px;
+  overflow-y: auto;
+  flex: 1 1 auto;
+  min-height: 80px;
+}
+.rbcf-onb-exclude-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.rbcf-onb-exclude-row label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+.rbcf-onb-exclude-row label:hover { background: rgba(255, 255, 255, 0.04); }
+.rbcf-onb-exclude-row input[type="checkbox"] {
+  flex-shrink: 0;
+  margin: 0;
+  width: 16px;
+  height: 16px;
+  accent-color: var(--acc-violet, #7c5cff);
+}
+.rbcf-onb-exclude-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 18px 14px;
+  border-top: 1px solid var(--bd-1, #1f242d);
+}

@@ -684,17 +684,49 @@
         el('th', { class: 'rbcf-onb-num', text: 'ROMs' }),
         el('th', { class: 'rbcf-onb-num', text: 'Per-game' }),
         el('th', { class: 'rbcf-onb-num', text: 'Missing' }),
+        el('th', { class: 'rbcf-onb-row-action-col', text: '' }),
       ]),
     ]);
     const tbody = el('tbody');
+    // Per-system exclude counts so we can show "(N)" pills next to the link.
+    let excludesIndex = state.excludesIndex || {};
+    function refreshExcludesIndex() {
+      return fetch('/api/scaffold-excludes')
+        .then(r => r.json())
+        .then(j => { excludesIndex = j.excludes || {}; state.excludesIndex = excludesIndex; })
+        .catch(() => { /* keep last-known */ });
+    }
+    refreshExcludesIndex();  // fire and forget; rows render now and refresh in place
     for (const s of systems) {
       const missingCls = (s.missing > 0) ? 'rbcf-onb-num rbcf-onb-warn' : 'rbcf-onb-num';
+      const sysName = s.name || '?';
+      const excludeLink = el('a', {
+        href: '#',
+        class: 'rbcf-onb-row-action',
+        'data-system': sysName,
+      }, ['Exclude folders…']);
+      const excludeCount = el('span', { class: 'rbcf-onb-exclude-count' });
+      function refreshLinkBadge() {
+        const n = (excludesIndex[sysName] || []).length;
+        excludeCount.textContent = n > 0 ? ` (${n})` : '';
+      }
+      refreshLinkBadge();
+      excludeLink.addEventListener('click', (ev) => {
+        ev.preventDefault();
+        openExcludeModal(sysName, () => {
+          refreshExcludesIndex().then(refreshLinkBadge);
+        });
+      });
       const tr = el('tr', {}, [
-        el('td', { text: s.name || '?' }),
+        el('td', { text: sysName }),
         el('td', { class: 'rbcf-onb-num', text: String(s.rom_count ?? 0) }),
         el('td', { class: 'rbcf-onb-num', text: String(s.profiles_count ?? 0) }),
         el('td', { class: missingCls, text: String(s.missing ?? 0) }),
       ]);
+      const tdAction = el('td', { class: 'rbcf-onb-row-action-col' });
+      tdAction.appendChild(excludeLink);
+      tdAction.appendChild(excludeCount);
+      tr.appendChild(tdAction);
       tbody.appendChild(tr);
     }
     tbl.appendChild(thead);
@@ -1112,30 +1144,102 @@
     addSkipForNowFooter();
   }
 
-  async function onApply() {
+  function onApply() {
     if (state.busy) return;
     state.busy = true;
     if (state.primaryEl) {
       state.primaryEl.disabled = true;
       state.primaryEl.textContent = 'Applying…';
     }
-    try {
-      const endpoint = state.scaffoldMode === 'defaults' ? '/api/scaffold-defaults' : '/api/scaffold-all';
-      const data = await fetchJson('GET', `${endpoint}?apply=true`);
-      const written = (data && Array.isArray(data.written)) ? data.written.length : (data && data.count) || 0;
-      lightToast(`Scaffolded ${written} profile${written === 1 ? '' : 's'}.`, 'success');
-      markOnboarded();
-      dismiss();
-    } catch (e) {
-      if (state.primaryEl) {
-        state.primaryEl.disabled = false;
-        state.primaryEl.textContent = 'Retry apply';
-      }
-      paintPreviewError(e);
-      lightToast('Apply failed: ' + e.message, 'error');
-    } finally {
-      state.busy = false;
+    // Replace the preview body with a progress UI before opening the
+    // EventSource — the SSE stream may emit `start` immediately.
+    const wrap = document.getElementById('rbcf-onb-preview');
+    if (wrap) {
+      wrap.innerHTML = '';
+      const progress = el('div', { class: 'rbcf-onb-progress', id: 'rbcf-onb-progress' }, [
+        el('div', { class: 'rbcf-onb-progress-label', id: 'rbcf-onb-progress-label',
+                    text: 'Applying scaffolds…' }),
+        el('div', { class: 'rbcf-onb-progress-bar' }, [
+          el('div', { class: 'rbcf-onb-progress-fill', id: 'rbcf-onb-progress-fill',
+                      style: 'width: 0%' }),
+        ]),
+        el('div', { class: 'rbcf-onb-progress-current', id: 'rbcf-onb-progress-current',
+                    text: 'starting…' }),
+      ]);
+      wrap.appendChild(progress);
     }
+
+    const endpoint = state.scaffoldMode === 'defaults'
+      ? '/api/scaffold-defaults/stream'
+      : '/api/scaffold-all/stream';
+    const es = new EventSource(`${endpoint}?apply=true`);
+    let total = 0;
+    let written = 0;
+    let skipped = 0;
+
+    function setProgress(done, current) {
+      const fill = document.getElementById('rbcf-onb-progress-fill');
+      const label = document.getElementById('rbcf-onb-progress-label');
+      const cur = document.getElementById('rbcf-onb-progress-current');
+      const pct = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0;
+      if (fill) fill.style.width = pct + '%';
+      if (label) {
+        label.textContent =
+          `Applying scaffolds… ${pct}% — ${done.toLocaleString()} / ${total.toLocaleString()}`;
+      }
+      if (cur && current) cur.textContent = current;
+    }
+
+    es.onmessage = (msg) => {
+      let data;
+      try { data = JSON.parse(msg.data); } catch (e) { return; }
+      if (data.event === 'start') {
+        total = data.total || 0;
+        setProgress(0, '');
+      } else if (data.event === 'progress') {
+        setProgress(data.done || 0, data.current || '');
+      } else if (data.event === 'skipped') {
+        skipped++;
+      } else if (data.event === 'finish') {
+        es.close();
+        state.busy = false;
+        written = (data.count || 0);
+        const wrap2 = document.getElementById('rbcf-onb-preview');
+        if (wrap2) {
+          wrap2.innerHTML = '';
+          const skippedLine = skipped > 0
+            ? ` (skipped ${skipped} that already existed)` : '';
+          wrap2.appendChild(el('div', { class: 'rbcf-onb-status rbcf-onb-status-ok' }, [
+            el('strong', { text: `Wrote ${written.toLocaleString()} profile${written === 1 ? '' : 's'}.` }),
+            el('div', { class: 'rbcf-onb-muted', text: 'Onboarding complete' + skippedLine + '.' }),
+          ]));
+        }
+        lightToast(`Scaffolded ${written} profile${written === 1 ? '' : 's'}.`, 'success');
+        markOnboarded();
+        // Brief pause so the user sees the success block before the overlay leaves.
+        setTimeout(dismiss, 1200);
+      } else if (data.event === 'error') {
+        es.close();
+        state.busy = false;
+        if (state.primaryEl) {
+          state.primaryEl.disabled = false;
+          state.primaryEl.textContent = 'Retry apply';
+        }
+        lightToast('Apply failed: ' + (data.error || 'stream error'), 'error');
+      }
+    };
+    es.onerror = () => {
+      // EventSource auto-retries on transient errors; we close on hard
+      // failure so the caller can show a retry button.
+      if (es.readyState === EventSource.CLOSED) {
+        state.busy = false;
+        if (state.primaryEl) {
+          state.primaryEl.disabled = false;
+          state.primaryEl.textContent = 'Retry apply';
+        }
+        lightToast('Apply stream closed unexpectedly.', 'error');
+      }
+    };
   }
 
   // ----------------------------------------------------------------
@@ -1249,4 +1353,135 @@
     try { localStorage.removeItem(ONB_KEY); } catch (e) { /* ignore */ }
     console.info('[rbcf] onboarded flag cleared. Reload to see the welcome flow.');
   };
+
+  // ----------------------------------------------------------------
+  // Per-system "Exclude folders…" modal (v0.1.1)
+  // ----------------------------------------------------------------
+
+  function openExcludeModal(sysName, onSaved) {
+    // Build the modal shell.
+    const overlay = el('div', {
+      class: 'rbcf-onb-exclude-modal',
+      role: 'dialog',
+      'aria-modal': 'true',
+      'aria-labelledby': 'rbcf-onb-exclude-title',
+    });
+    const card = el('div', { class: 'rbcf-onb-exclude-card' });
+    const title = el('h3', {
+      id: 'rbcf-onb-exclude-title',
+      class: 'rbcf-onb-exclude-title',
+      text: `Exclude folders for ${sysName}`,
+    });
+    const body = el('div', { class: 'rbcf-onb-exclude-body', id: 'rbcf-onb-exclude-body' });
+    body.appendChild(el('div', { class: 'rbcf-onb-loading' }, [
+      el('span', { class: 'rbcf-onb-spinner' }),
+      el('span', { text: 'Loading subdirectories…' }),
+    ]));
+    const foot = el('div', { class: 'rbcf-onb-exclude-foot' });
+    const cancelBtn = el('button', {
+      type: 'button',
+      class: 'rbcf-onb-btn rbcf-onb-btn-secondary',
+      text: 'Cancel',
+    });
+    const saveBtn = el('button', {
+      type: 'button',
+      class: 'rbcf-onb-btn rbcf-onb-btn-primary',
+      text: 'Save',
+      disabled: 'true',
+    });
+    foot.appendChild(cancelBtn);
+    foot.appendChild(saveBtn);
+    card.appendChild(title);
+    card.appendChild(body);
+    card.appendChild(foot);
+    overlay.appendChild(card);
+    document.body.appendChild(overlay);
+
+    function close() {
+      try { document.body.removeChild(overlay); } catch (e) { /* ignore */ }
+    }
+    cancelBtn.addEventListener('click', close);
+    overlay.addEventListener('click', (ev) => {
+      if (ev.target === overlay) close();
+    });
+    function escHandler(ev) {
+      if (ev.key === 'Escape') {
+        close();
+        window.removeEventListener('keydown', escHandler, true);
+      }
+    }
+    window.addEventListener('keydown', escHandler, true);
+
+    fetch(`/api/system-subdirs?system=${encodeURIComponent(sysName)}`)
+      .then(r => r.json())
+      .then(data => {
+        body.innerHTML = '';
+        const subdirs = data.subdirs || [];
+        if (subdirs.length === 0) {
+          body.appendChild(el('div', {
+            class: 'rbcf-onb-empty',
+            text: 'This system has no subdirectories — ROMs sit at the top level. Nothing to exclude here.',
+          }));
+          saveBtn.disabled = true;
+          return;
+        }
+        const list = el('ul', { class: 'rbcf-onb-exclude-list' });
+        const checkboxes = [];
+        for (const s of subdirs) {
+          const id = `rbcf-onb-excl-${sysName}-${s.name}`.replace(/[^A-Za-z0-9_-]/g, '_');
+          const cb = el('input', { type: 'checkbox', id });
+          if (s.excluded) cb.checked = true;
+          checkboxes.push({ name: s.name, cb });
+          const lbl = el('label', { for: id }, [
+            cb,
+            el('span', { class: 'rbcf-onb-rom', text: s.name }),
+            el('span', { class: 'rbcf-onb-muted', text: ` (${s.rom_count} ROMs)` }),
+          ]);
+          if (s.has_rbcf_ignore) {
+            lbl.appendChild(el('span', {
+              class: 'rbcf-onb-pill',
+              text: '.rbcf-ignore',
+              title: 'A .rbcf-ignore file in this directory already excludes it.',
+            }));
+          }
+          list.appendChild(el('li', { class: 'rbcf-onb-exclude-row' }, [lbl]));
+        }
+        body.appendChild(list);
+        saveBtn.disabled = false;
+        saveBtn.addEventListener('click', () => {
+          const excludes = checkboxes.filter(c => c.cb.checked).map(c => c.name);
+          saveBtn.disabled = true;
+          saveBtn.textContent = 'Saving…';
+          fetch('/api/scaffold-excludes', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ system: sysName, excludes }),
+          })
+            .then(r => r.json())
+            .then(j => {
+              if (j.ok) {
+                lightToast(`Saved exclusions for ${sysName}.`, 'success');
+                close();
+                if (typeof onSaved === 'function') onSaved();
+              } else {
+                lightToast('Save failed: ' + (j.error || '?'), 'error');
+                saveBtn.disabled = false;
+                saveBtn.textContent = 'Save';
+              }
+            })
+            .catch(e => {
+              lightToast('Network error: ' + e.message, 'error');
+              saveBtn.disabled = false;
+              saveBtn.textContent = 'Save';
+            });
+        });
+      })
+      .catch(e => {
+        body.innerHTML = '';
+        body.appendChild(el('div', {
+          class: 'rbcf-onb-status rbcf-onb-status-error',
+          text: 'Could not load subdirectories: ' + e.message,
+        }));
+      });
+  }
 })();

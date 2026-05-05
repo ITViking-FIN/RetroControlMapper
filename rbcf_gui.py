@@ -781,13 +781,20 @@ def _retrobat_root_payload() -> dict:
     }
 
 
-def _count_roms_in_system(system_dir: Path) -> int:
+def _count_roms_in_system(system_dir: Path,
+                           sys_name: str | None = None,
+                           excludes: dict | None = None) -> int:
     """Count ROM files recursively under a system folder, skipping reserved
     asset subdirs and hidden / dotfiles. Used by /api/scan only — list_roms()
     above is the canonical per-system enumerator for the editor flow.
+
+    Honours per-user excludes when sys_name + excludes are provided.
     """
     if not system_dir.exists() or not system_dir.is_dir():
         return 0
+    excluded_names = set()
+    if sys_name and excludes:
+        excluded_names = {p.split("/")[0] for p in excludes.get(sys_name, [])}
     total = 0
     try:
         for entry in system_dir.iterdir():
@@ -797,7 +804,12 @@ def _count_roms_in_system(system_dir: Path) -> int:
             if entry.is_dir():
                 if name.lower() in ONBOARD_RESERVED_DIRS:
                     continue
+                if name in excluded_names:
+                    continue
+                if (entry / ".rbcf-ignore").is_file():
+                    continue
                 # Recurse into non-reserved subdir (rare: multi-disk folders, etc.)
+                # Don't pass excludes deeper — the JSON keys are top-level subdirs.
                 total += _count_roms_in_system(entry)
                 continue
             if entry.is_file():
@@ -807,11 +819,21 @@ def _count_roms_in_system(system_dir: Path) -> int:
     return total
 
 
-def _iter_rom_files(system_dir: Path):
+def _iter_rom_files(system_dir: Path,
+                     sys_name: str | None = None,
+                     excludes: dict | None = None):
     """Yield Path objects for every ROM file under a system dir, skipping
-    reserved asset subdirs, hidden entries, and dotfiles."""
+    reserved asset subdirs, hidden entries, and dotfiles.
+
+    When sys_name + excludes are provided, also skips any top-level
+    subdir whose name appears in the system's exclude list, plus any
+    subtree containing a `.rbcf-ignore` marker file.
+    """
     if not system_dir.exists() or not system_dir.is_dir():
         return
+    excluded_names: set[str] = set()
+    if sys_name and excludes:
+        excluded_names = {p.split("/")[0] for p in excludes.get(sys_name, [])}
     try:
         entries = list(system_dir.iterdir())
     except OSError:
@@ -823,7 +845,13 @@ def _iter_rom_files(system_dir: Path):
         if entry.is_dir():
             if name.lower() in ONBOARD_RESERVED_DIRS:
                 continue
-            # Recurse for any other subdir.
+            if name in excluded_names:
+                continue
+            if (entry / ".rbcf-ignore").is_file():
+                continue
+            # Recurse for any other subdir. Don't propagate excludes into
+            # the recursion — the JSON's keys are immediate children of
+            # the system dir, not arbitrary deep paths.
             yield from _iter_rom_files(entry)
             continue
         if entry.is_file():
@@ -909,6 +937,69 @@ def _scan_systems() -> dict:
     }
 
 
+# -------- per-user scaffold excludes (v0.1.1) --------
+#
+# Lives at %APPDATA%/RB-Controller_fix/scaffold-excludes.json with shape:
+#   {"<system_id>": ["Demos", "Other-subdir"], ...}
+# Entries are top-level subdirectory names under the system's ROM dir.
+# `.rbcf-ignore` drop-in files are also honoured by _iter_rom_files —
+# both mechanisms compose; the file is the power-user gitignore-style
+# escape hatch, the JSON is what the GUI manages via its modal.
+
+def _scaffold_excludes_path() -> Path:
+    appdata = os.environ.get("APPDATA")
+    if appdata:
+        return Path(appdata) / "RB-Controller_fix" / "scaffold-excludes.json"
+    return ROOT / ".scaffold-excludes.json"
+
+
+SCAFFOLD_EXCLUDES_PATH = _scaffold_excludes_path()
+
+
+def _load_excludes() -> dict[str, list[str]]:
+    """Returns {system_id: [relative_path_under_system_rom_dir]}."""
+    try:
+        if not SCAFFOLD_EXCLUDES_PATH.is_file():
+            return {}
+        data = json.loads(SCAFFOLD_EXCLUDES_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    # Defensive: only keep string keys mapping to list-of-string values.
+    out: dict[str, list[str]] = {}
+    for k, v in data.items():
+        if isinstance(k, str) and isinstance(v, list):
+            out[k] = [s for s in v if isinstance(s, str)]
+    return out
+
+
+def _save_excludes(excludes: dict[str, list[str]]) -> None:
+    """Persists; ensures parent dir exists; pretty-printed JSON."""
+    SCAFFOLD_EXCLUDES_PATH.parent.mkdir(parents=True, exist_ok=True)
+    SCAFFOLD_EXCLUDES_PATH.write_text(
+        json.dumps(excludes, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+
+
+def _validate_exclude_entry(entry: str) -> bool:
+    """Path-traversal guard. Reject anything that climbs out of the
+    system's ROM dir, names a drive, or is absolute. Each entry must be
+    a simple relative subdir name (or limited slash-joined relative path).
+    """
+    if not isinstance(entry, str) or not entry.strip():
+        return False
+    e = entry.strip().replace("\\", "/")
+    if e.startswith("/") or e.startswith("./") or e == "." or e == "..":
+        return False
+    if ".." in e.split("/"):
+        return False
+    if len(e) >= 2 and e[1] == ":":  # drive letter
+        return False
+    return True
+
+
 def _scaffold_all(apply: bool) -> dict:
     """Build the response for GET /api/scaffold-all (preview or apply).
 
@@ -931,6 +1022,7 @@ def _scaffold_all(apply: bool) -> dict:
     today = date.today().isoformat()
     preview: list[dict] = []
     write_targets: list[tuple[Path, dict]] = []
+    excludes = _load_excludes()
 
     try:
         sys_dirs = list(ROMS_ROOT.iterdir())
@@ -947,7 +1039,7 @@ def _scaffold_all(apply: bool) -> dict:
             continue
         if sys_name in existing_defaults:
             continue
-        rom_count = _count_roms_in_system(sys_dir)
+        rom_count = _count_roms_in_system(sys_dir, sys_name, excludes)
         if rom_count == 0:
             continue
         target = PROFILES_DIR / sys_name / "_default.yaml"
@@ -981,7 +1073,7 @@ def _scaffold_all(apply: bool) -> dict:
             continue
         if sys_name.lower() in ONBOARD_RESERVED_DIRS:
             continue
-        for rom_path in _iter_rom_files(sys_dir):
+        for rom_path in _iter_rom_files(sys_dir, sys_name, excludes):
             rom_name = rom_path.name
             if (sys_name, rom_name) in existing:
                 continue
@@ -1137,6 +1229,162 @@ def _scaffold_defaults(apply: bool) -> dict:
     result["applied"] = bool(written)
     result["written"] = written
     return result
+
+
+# -------- streaming scaffold (v0.1.1 progress bar) --------
+#
+# These build the same write-list as the non-streaming variants, then
+# yield SSE events as each file is written so the UI can show a progress
+# bar instead of a "frozen" spinner.
+
+def _scaffold_build_write_list(mode: str) -> list[tuple[Path, dict]]:
+    """Compute the (target_path, scaffold_dict) work list for the
+    given mode without writing anything. The non-streaming variants
+    inline this logic; the streaming variants call it then iterate.
+
+    `mode` must be 'all' or 'defaults'. We re-use the non-streaming
+    variant in preview mode (apply=False) and steal its result['preview']
+    structure to figure out what to write — but for cleanliness we
+    inline the build here so the work list is the source of truth.
+    """
+    # Cleanest path: call the non-streaming variant in preview mode and
+    # then rebuild write_targets from result['preview']. That keeps the
+    # write logic in one place. The cost is a second walk through the
+    # tree but it's identical work either way.
+    if mode == "all":
+        result = _scaffold_all(apply=False)
+    else:
+        result = _scaffold_defaults(apply=False)
+    today = date.today().isoformat()
+    write_list: list[tuple[Path, dict]] = []
+    for entry in result.get("preview", []):
+        sys_name = entry.get("system")
+        rom = entry.get("rom")
+        path_rel = entry.get("path", "")
+        # Reconstruct the target path under PROFILES_DIR.
+        target = PROFILES_DIR / sys_name / Path(path_rel).name
+        if rom:
+            scaffold = {
+                "system": sys_name, "rom": rom,
+                "title": Path(rom).stem,
+                "confidence": "T",
+                "notes": (
+                    f"Auto-scaffolded by /api/scaffold-{mode} on {today}.\n"
+                    f"Inherits from {sys_name}/_default.yaml. "
+                    f"Promote to V or K once verified.\n"
+                ),
+                "es_settings": {}, "core_options": {},
+            }
+        else:
+            scaffold = {
+                "system": sys_name,
+                "title": f"{sys_name} (system default)",
+                "confidence": "T",
+                "notes": (
+                    f"Auto-scaffolded by /api/scaffold-{mode} on {today}.\n"
+                    f"Empty placeholder — fill in es_settings / "
+                    f"core_options as you verify which keys survive "
+                    f"RetroBat regeneration.\n"
+                ),
+                "es_settings": {}, "core_options": {},
+            }
+        write_list.append((target, scaffold))
+    return write_list
+
+
+def _scaffold_stream_events(mode: str):
+    """Yield SSE event dicts for streaming scaffold-{all,defaults}/stream
+    with apply=true. Throttles 'progress' events to 1 per ~1% increment OR
+    every 50 files (whichever fires more often).
+    """
+    write_list = _scaffold_build_write_list(mode)
+    total = len(write_list)
+    yield {"event": "start", "total": total}
+
+    profiles_root = PROFILES_DIR.resolve()
+    written: list[str] = []
+    skipped_count = 0
+    last_progress_pct = -1
+    files_since_last = 0
+
+    for idx, (target, scaffold) in enumerate(write_list, 1):
+        rel_display = f"profiles/{target.parent.name}/{target.name}"
+        try:
+            resolved_parent = target.parent.resolve()
+        except OSError:
+            yield {"event": "skipped", "path": rel_display, "reason": "io-error"}
+            skipped_count += 1
+            continue
+        try:
+            resolved_parent.relative_to(profiles_root)
+        except ValueError:
+            yield {"event": "skipped", "path": rel_display, "reason": "outside-profiles"}
+            skipped_count += 1
+            continue
+        if target.exists():
+            yield {"event": "skipped", "path": rel_display, "reason": "exists"}
+            skipped_count += 1
+        else:
+            try:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(
+                    yaml.safe_dump(scaffold, sort_keys=False,
+                                   allow_unicode=True, width=120),
+                    encoding="utf-8",
+                )
+                written.append(rel_display)
+            except OSError as e:
+                yield {"event": "skipped", "path": rel_display,
+                       "reason": "io-error", "error": str(e)}
+                skipped_count += 1
+                continue
+
+        # Throttled progress: every 1% bucket OR every 50 files.
+        files_since_last += 1
+        cur_pct = (idx * 100 // total) if total else 100
+        if cur_pct != last_progress_pct or files_since_last >= 50:
+            yield {"event": "progress", "done": idx, "total": total,
+                   "current": rel_display}
+            last_progress_pct = cur_pct
+            files_since_last = 0
+
+    yield {"event": "finish", "applied": bool(written),
+           "count": len(written), "written": written,
+           "skipped": skipped_count}
+
+
+# -------- per-system subdir listing for the excludes UI --------
+
+def _system_subdirs(sys_name: str) -> list[dict]:
+    """Return the immediate subdirectories of <ROMS_ROOT>/<sys_name>/
+    along with each subdir's rom-count and current excluded state.
+    """
+    if RETROBAT_ROOT is None or not ROMS_ROOT.exists():
+        return []
+    sys_dir = ROMS_ROOT / sys_name
+    if not sys_dir.is_dir():
+        return []
+    excludes = _load_excludes()
+    excluded_names = {p.split("/")[0] for p in excludes.get(sys_name, [])}
+    out: list[dict] = []
+    try:
+        for entry in sorted(sys_dir.iterdir(), key=lambda p: p.name.lower()):
+            if not entry.is_dir():
+                continue
+            name = entry.name
+            if name.startswith("."):
+                continue
+            if name.lower() in ONBOARD_RESERVED_DIRS:
+                continue
+            out.append({
+                "name": name,
+                "rom_count": _count_roms_in_system(entry),
+                "excluded": name in excluded_names,
+                "has_rbcf_ignore": (entry / ".rbcf-ignore").is_file(),
+            })
+    except OSError:
+        pass
+    return out
 
 
 # ----- bezel cutoff detection -----
@@ -1866,6 +2114,33 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _sse(self, event_iter):
+        """Server-Sent Events writer. Iterates `event_iter`, encoding
+        each yielded dict as `data: <json>\\n\\n` and flushing.
+        """
+        try:
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("Connection", "keep-alive")
+            self.send_header("X-Accel-Buffering", "no")  # disables proxy buffering
+            self.end_headers()
+            for event in event_iter:
+                line = "data: " + json.dumps(event, ensure_ascii=False) + "\n\n"
+                self.wfile.write(line.encode("utf-8"))
+                self.wfile.flush()
+        except (BrokenPipeError, ConnectionResetError):
+            # Client closed the EventSource — expected, not an error.
+            return
+        except Exception as e:  # noqa: BLE001
+            # Any other failure: try to emit one error event then close.
+            try:
+                err = "data: " + json.dumps({"event": "error", "error": str(e)}) + "\n\n"
+                self.wfile.write(err.encode("utf-8"))
+                self.wfile.flush()
+            except Exception:
+                pass
+
     def end_headers(self):
         self.send_header("Cache-Control", "no-store")
         super().end_headers()
@@ -1936,6 +2211,28 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             q = self._query()
             apply_flag = (q.get("apply", ["false"])[0] or "").strip().lower() in ("1", "true", "yes")
             return self._json(_scaffold_defaults(apply=apply_flag))
+        if u.path in ("/api/scaffold-all/stream", "/api/scaffold-defaults/stream"):
+            q = self._query()
+            apply_flag = (q.get("apply", ["false"])[0] or "").strip().lower() in ("1", "true", "yes")
+            if not apply_flag:
+                return self._json(
+                    {"ok": False, "error": "stream endpoint requires apply=true"},
+                    status=400,
+                )
+            mode = "all" if "scaffold-all" in u.path else "defaults"
+            return self._sse(_scaffold_stream_events(mode))
+        if u.path == "/api/scaffold-excludes":
+            return self._json({"ok": True, "excludes": _load_excludes()})
+        if u.path == "/api/system-subdirs":
+            q = self._query()
+            sys_name = (q.get("system", [""])[0] or "").strip()
+            if not sys_name:
+                return self._json(
+                    {"ok": False, "error": "missing 'system' query param"},
+                    status=400,
+                )
+            return self._json({"ok": True, "system": sys_name,
+                               "subdirs": _system_subdirs(sys_name)})
         if u.path == "/api/bezel-cutoffs":
             q = self._query()
             apply_flag = (q.get("apply", ["false"])[0] or "").strip().lower() in ("1", "true", "yes")
@@ -2015,6 +2312,38 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._json(_system_lookup_endpoint(data))
         if u.path == "/api/system-lookup/clear":
             return self._json(_system_lookup_clear(data))
+        if u.path == "/api/scaffold-excludes":
+            sys_name = (data.get("system") or "").strip()
+            entries = data.get("excludes", [])
+            if not sys_name:
+                return self._json(
+                    {"ok": False, "error": "missing 'system'"},
+                    status=400,
+                )
+            if not isinstance(entries, list):
+                return self._json(
+                    {"ok": False, "error": "'excludes' must be an array"},
+                    status=400,
+                )
+            cleaned: list[str] = []
+            for e in entries:
+                if not _validate_exclude_entry(e):
+                    return self._json(
+                        {"ok": False, "error": f"invalid exclude entry: {e!r}"},
+                        status=400,
+                    )
+                cleaned.append(e.strip().replace("\\", "/"))
+            excludes = _load_excludes()
+            if cleaned:
+                excludes[sys_name] = sorted(set(cleaned))
+            else:
+                excludes.pop(sys_name, None)
+            try:
+                _save_excludes(excludes)
+            except OSError as ex:
+                return self._json({"ok": False, "error": str(ex)}, status=500)
+            return self._json({"ok": True, "system": sys_name,
+                               "excludes": excludes.get(sys_name, [])})
         if u.path == "/api/update-check":
             return self._json(_update_check_endpoint(data))
         if u.path == "/api/guid/watcher":
