@@ -18,10 +18,17 @@ RetroControlMapper fixes all three.
 
 - **200+ system dropdown** — every system from your local RetroBat install, automatically discovered.
 - **30+ pre-curated controller bindings** for popular systems out of the box: NES, SNES, Genesis / Mega Drive, Game Boy / GBA, N64, PSX, Saturn, Dreamcast, MAME, Neo Geo, CPS, C64, Amiga 500/1200/CD32, Atari ST, ZX Spectrum, and more.
+- **Side-by-side controller view** — your physical pad on the left, the target system's controller on the right, both lighting up live as you press buttons. Curated SVGs for the popular systems; **schematic auto-generated for the long tail** so you never see an empty pane no matter what system you pick.
 - **Per-game and per-system overrides** — set sensible defaults for a whole system, then override individual games where it matters.
+- **Profile templates per genre** — start a new game from a curated template (Menu-heavy C64, Joyport-1 Boulder Dash, CD32 default, mouse-driven Amiga, etc.) instead of a blank form.
+- **Press-to-bind keystrokes** — click the 🎯 listen icon on any binding row, tap the keyboard key you want, done. No more typing `RETROK_F1` by hand.
+- **Click-across binding** for systems where RetroBat's default mapping is unreliable — press a physical button to arm it, click any target button to write a per-game RetroArch input remap. The curated systems keep their verified defaults; you only customise where you need to.
+- **User-tunable accent** — swap the brand colour to whatever you like (blue / red / purple / mint / …) without changing the whole theme.
+- **Test-launch button** — save a profile, click Test, and the game launches in RetroBat with your bindings live. Iterate fast.
+- **Controller-image sharing** — `rbcf submit-controller` cleans up a photo, drops it in the catalog, and prints the PR-creation URL. Community grows the library.
+- **Community profile pull** — `rbcf pull-community` fetches curated profiles from the GitHub repo so you don't have to author from scratch for popular games.
 - **GUID alias detection** — fixes the "my controllers keep forgetting their settings" bug by recognising when the same physical pad has shown up under multiple SDL GUIDs (USB vs Bluetooth, port hop, dongle re-pair, driver swap) and folding all the aliases into a single mapping.
 - **Bezel viewport calibration** — recovers cropped game screens by rewriting the bezel `.info` sidecars with a stricter transparency threshold than RetroBat's auto-detect.
-- **Live controller-press visualisation** — your physical pad on the left, the target system's controller on the right, both lighting up in sync as you press buttons.
 - **Tray-resident** — closes to the system tray instead of quitting; tray menu controls Show/Hide and Quit, and an optional "run at Windows startup" toggle.
 - **Search-online lookup** for unknown systems' bindings — only fires after you click the button, no consent caching.
 - **Two-tier backups** — a permanent pre-install snapshot of your RetroBat config, plus rolling per-edit working snapshots; restore from any of them.

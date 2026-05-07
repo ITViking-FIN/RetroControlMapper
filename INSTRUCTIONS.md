@@ -75,16 +75,63 @@ If we have an image catalogued for your controller's VID:PID, it shows here. Oth
 
 ### Target pane (right)
 
-The system + game selectors live at the top. Below them, the target system's controller diagram (e.g. an SNES pad for SNES, a Competition Pro for C64). The buttons light up in sync with your physical pad, mapped through the active profile — so you can see what a press on your gamepad's "B" actually translates to on the target.
+The system + game selectors live at the top. Below them, the target system's controller diagram. **Three rendering tiers**, used in order:
 
-At the bottom, two action buttons:
+1. **Curated SVG art** — for the 11 most-supported systems we've drawn proper schematics: CD32 pad, Competition Pro 1-button joystick, ColecoVision pad, etc.
+2. **Generic-from-descriptor** — for ~15 popular systems we have a *shape* descriptor (face buttons / d-pad / sticks / shoulders / system buttons), the GUI auto-generates a clean schematic. Examples: NES (2-button row), SNES (4-button diamond), Genesis 6-button (2×3 grid), PSX (DualShock with △○✕□), N64 (single stick + 3 face + 4 shoulders), Saturn 6-button, etc.
+3. **Generic default fallback** — for any other system in your library (the long tail beyond curated + descriptor), a sensible 1-stick + d-pad + 4 buttons + L/R + Start/Select schema is shown. **Better than blank.** You can still bind via click-across — see below.
 
-- **Save Profile** — writes the YAML profile under `profiles/<system>/<rom>.yaml`.
+The buttons light up in sync with your physical pad, mapped through the active profile — so you can see what a press on your gamepad's "B" actually translates to on the target.
+
+At the bottom, three action buttons:
+
+- **Test** — launches the currently selected ROM in RetroBat (using your saved bindings) so you can verify the mapping live, then come back and tweak. Faster feedback loop than save → apply → manually open RetroBat → manually pick the game.
 - **Apply** — pushes saved profiles into RetroBat's config files. Preview by default.
+- **Save Profile** — writes the YAML profile under `profiles/<system>/<rom>.yaml`. With "One-Click Save & Apply" on (settings cog), this also runs Apply automatically.
 
 ### Mappings section
 
-For buttons the libretro core doesn't already handle (e.g. C64 keyboard keys mapped to a pad face button, MAME service buttons, Amiga F-key shortcuts), you'll see per-button text inputs here. The values are RetroArch keystroke codes like `RETROK_F1`, `RETROK_SPACE`, `RETROK_RETURN`. Common codes are auto-suggested.
+For buttons the libretro core doesn't already handle (e.g. C64 keyboard keys mapped to a pad face button, MAME service buttons, Amiga F-key shortcuts), you'll see per-button text inputs here. The values are RetroArch keystroke codes like `RETROK_F1`, `RETROK_SPACE`, `RETROK_RETURN`.
+
+**Three ways to fill a binding** (any of these works — pick whichever fits):
+
+1. **Press-to-bind keystroke (easiest).** Each row has a small 🎯 listen icon at the right edge. Click it → the row enters a violet pulsing state ("press a key…") → tap the keyboard key you want bound → the field auto-fills with the right `RETROK_*` constant. Escape cancels. Works for letters, digits, F-keys, space, return, tab, arrows, shift/ctrl/alt, all common punctuation. Layout-independent (uses `event.code` not `event.key`).
+2. **Click-across (advanced — see below).** Press a physical button on your gamepad → it arms with a violet pulse on the source SVG → click any target button on the right → a per-game RetroArch input remap is written. Only enabled for systems where RetroBat's default mapping is unreliable; the curated set keeps its verified defaults.
+3. **Manual typing.** Type `RETROK_F1` etc. directly. Tab moves to the next row.
+
+Live highlight feedback runs at 60Hz: pressing a button on your gamepad lights it up on both the source SVG (left) and — if there's a default route — the target SVG (right). Stick movement translates the analog knob.
+
+### Profile templates
+
+When you start a new profile or switch to a system that has curated templates, a **From template…** button appears next to the Game dropdown. Click it to see the available templates for the current system, each with a description:
+
+- **Menu-heavy C64** — F1/F3/F5/F7 mapped to face buttons (Boulder Dash etc.).
+- **Joystick + 1 fire (C64)** — pure 1-button arcade ports.
+- **C64 — Joystick on Port 1** — for the rare titles that read CIA-shared port 1.
+- **C64 — Keyboard adventure** — GameFocus + physical-keyboard pass-through ON (Last Ninja, Maniac Mansion).
+- **Amiga CD32 — CD32 Pad (default)** — system default with all 7 buttons distinct.
+- **Amiga CD32 — Mouse-driven** — Cannon Fodder / Lemmings / Beneath a Steel Sky.
+- **Amiga 500 — 1-button / CD32-Pad on Amiga / Mouse-driven** — three patterns covering most Amiga 500 games.
+
+Selecting a template **populates the form** with its values; you can then edit any field before saving. Existing values are replaced, so don't pick a template after you've filled in a custom mapping unless you want to start over.
+
+### Click-across binding (advanced)
+
+For systems where RetroBat's default RetroPad → core mapping is unreliable (most of the long tail beyond the 25-or-so curated systems), you can directly assign which physical button does which target action.
+
+**The flow:**
+1. Pick the system + game.
+2. **Press a physical button** on your gamepad — or click any button on the source SVG. It pulses violet ("ARMED").
+3. **Click any button on the target SVG** on the right. A toast confirms the binding (e.g. `Bound A → 1`).
+4. The target button gets a persistent violet outline (`has-binding` badge) so you can see what's already wired.
+
+**What's actually written:** a per-game RetroArch input remap at
+`emulators/retroarch/config/remaps/<core display name>/<rom>.rmp`
+with lines like `input_remap_id_1_btn_a = 0` (meaning: physical A button now produces what RetroPad B normally produces).
+
+**Cancel mid-bind:** press Escape, click outside the source/target panes, or click the same physical button again to disarm.
+
+**Reliable systems (CD32, SNES, Saturn, NeoGeo, etc.) keep their default mapping.** Click-across is intentionally OFF there — the verified default is plug-and-play, and v0.1.4 will add a "Customize" affordance for explicit overrides.
 
 ### Advanced game overrides section
 
@@ -371,6 +418,7 @@ The settings cog (top-right of the header) opens a popover with these rows:
 | Row | What it does | Persisted to |
 |-----|--------------|--------------|
 | Theme | Light / Dark / Auto | `localStorage['rbcf-theme']` |
+| **Accent colour** | Override the theme's primary accent (any colour). Resets to theme default via the Reset button. | `localStorage['rbcf-user-accent']` |
 | RetroBat install path | Override the auto-detected install location | `%APPDATA%\RB-Controller_fix\rbcfrc` |
 | Re-run onboarding | Reopens the first-run wizard | `localStorage['rbcf-onboarded']` |
 | One-Click Save & Apply | Skip preview, apply immediately on save | `localStorage['rbcf-one-click']` |
@@ -428,6 +476,27 @@ rbcf guid fold                      Preview folding all alias groups.
 rbcf guid fold --apply              Actually rewrite es_input.cfg with the fold.
 rbcf guid fold --id 2dc8:3106       Preview/fold only one VID:PID group.
 rbcf guid help                      Show help for guid subcommands.
+```
+
+### Community / sharing subcommands
+
+```
+rbcf submit-controller              Process a controller photo, drop it in the
+    --vid 2DC8 --pid 310B           catalog, and print the PR-creation URL.
+    --image path/to/photo.jpg       Auto-picks the cleanup mode based on the
+    [--mode auto|silhouette|        photo's background; pass --mode to override.
+           remove-bg|crop]
+    [--name "8BitDo Ultimate 2"]    Optional friendly name (defaults to existing
+                                    catalog entry's name or "Controller VID:PID").
+
+rbcf pull-community                 Fetch curated community profiles from the
+    [--repo OWNER/NAME]             GitHub repo's community/ folder via the
+    [--ref BRANCH]                  Contents API. Default repo is
+    [--token GITHUB_PAT]            ITViking-FIN/RetroControlMapper, default
+    [--dry-run]                     branch is main. Pass --token to lift the
+    [--prune]                       60req/hr unauthenticated rate limit.
+                                    --prune removes local community profiles
+                                    that no longer exist upstream.
 ```
 
 ### GUI server
