@@ -74,6 +74,18 @@
         <label for="sel-game">Game</label>
         <select id="sel-game"><option value="">(system default)</option></select>
       </div>
+      <div class="field field-templates">
+        <label>&nbsp;</label>
+        <button type="button" id="btn-from-template" class="secondary"
+                title="Start from a curated template (genre / pattern)"
+                hidden>
+          <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 2l1.5 4.5L18 8l-4.5 1.5L12 14l-1.5-4.5L6 8l4.5-1.5z"/>
+            <path d="M5 16l1 3 3 1-3 1-1 3-1-3-3-1 3-1z"/>
+          </svg>
+          From template…
+        </button>
+      </div>
     </div>
     <div class="ctrl-svg-host" id="tgt-host"></div>
     <p class="footnote" id="fixed-mapping-note-wrap" hidden>
@@ -83,6 +95,12 @@
     <div class="target-actions">
       <span id="status-line"></span>
       <span class="grow"></span>
+      <button id="btn-launch-test" class="secondary" title="Launch this game in RetroBat to test the mapping live">
+        <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polygon points="6 4 20 12 6 20 6 4"/>
+        </svg>
+        Test
+      </button>
       <button id="btn-apply" class="secondary" title="Push all saved profiles to RetroBat">
         <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
         Apply

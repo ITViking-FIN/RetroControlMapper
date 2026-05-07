@@ -1,0 +1,24 @@
+template: "C64 — Joystick on Port 1 (Boulder Dash style)"
+system: c64
+description: |
+  A small set of C64 games read joystick input from CIA-shared port 1
+  rather than the conventional port 2 (because the same CIA also
+  reads the keyboard, which is unusual to mix). Boulder Dash is the
+  most famous; a handful of others exist. Use this template when the
+  default joystick (port 2) doesn't move the player.
+es_settings:
+  vice_joyport: "1"
+  GameFocus: "1"
+  c64_model: "C64 PAL auto"
+core_options:
+  vice_mapper_y: RETROK_F1
+  vice_mapper_x: RETROK_F3
+  vice_mapper_b: RETROK_F5
+  vice_mapper_a: RETROK_F7
+  vice_physical_keyboard_pass_through: enabled
+button_semantics:
+  Y: "F1 — start / cycle"
+  X: "F3 — options"
+  B: "F5 — colour mode"
+  A: "F7 — level select"
+  Stick: "Joystick (port 1 — CIA-shared)"

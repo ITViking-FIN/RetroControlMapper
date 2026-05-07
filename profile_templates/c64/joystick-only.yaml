@@ -1,0 +1,15 @@
+template: "Joystick + 1 fire (C64)"
+system: c64
+description: |
+  Pure 1-button joystick game on C64. No special menu keys, no
+  physical-keyboard pass-through. Use for the bulk of C64 arcade
+  ports — IK+, Bruce Lee, Commando, Bionic Commando, etc.
+es_settings:
+  GameFocus: "0"
+  c64_model: "C64 PAL auto"
+core_options:
+  vice_physical_keyboard_pass_through: disabled
+button_semantics:
+  B: "Joystick fire"
+  A: "Joystick fire (alt)"
+  Stick: "Joystick (port 2 default)"

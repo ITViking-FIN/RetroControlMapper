@@ -1,0 +1,15 @@
+template: "Amiga 500 — CD32 Pad mapping (multi-button games)"
+system: amiga500
+description: |
+  Many Amiga 500 multi-button games (Lotus, Sensible Soccer,
+  Speedball 2) support the CD32 pad protocol over the joyport. Set
+  Player 1 controller type to CD32 Pad (517) so all four face
+  buttons + L/R/Start/Select reach the game.
+es_settings:
+  puae_controller1: "517"
+  GameFocus: "0"
+button_semantics:
+  B (Red):    "Primary action / fire"
+  A (Blue):   "Secondary / gear shift"
+  Y (Yellow): "Tertiary"
+  X (Green):  "Quaternary"

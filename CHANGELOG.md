@@ -4,6 +4,91 @@ All notable changes to RetroControlMapper. Format follows [Keep a
 Changelog](https://keepachangelog.com); versioning follows
 [SemVer](https://semver.org).
 
+## [v0.1.3] — 2026-05-07
+
+**Feature release.** End-to-end mapping flows: the user can now
+configure a controller for any system in their library — curated
+target SVGs for the popular set, generic schematics for the long
+tail. Plus templates, press-to-bind, click-across (partial), test-
+launch, accent picker, controller-image and community workflows.
+
+### Added
+
+- **Generic target SVG generator.** Any system without a curated
+  target controller now gets a clean schematic rendered from a
+  shape descriptor (face buttons, dpad, sticks, shoulders, system
+  buttons). 15 systems shipped with explicit `target_layout`
+  descriptors (NES, SNES, Genesis 3+6btn, MD, MS, GG, GB/GBC/GBA,
+  NDS, N64, PSX, DC, Saturn, PCE). Anything else falls back to a
+  generic 1-stick + 4-button + dpad + L/R + Start/Select default —
+  better than blank.
+- **Profile templates per genre.** `profile_templates/<system>/<id>.yaml`
+  define starter mappings (Menu-heavy C64, joystick-only, joyport-1
+  Boulder Dash style, keyboard-adventure, CD32 default,
+  mouse-driven, Amiga 1-button / 2-button / mouse-driven). New
+  "From template…" affordance in the toolbar; clicking populates
+  the form. 9 starter templates ship.
+- **Press-to-bind keystrokes.** Each map-row gets a 🎯 listen
+  button. Click → row enters listening state → next key pressed
+  on the keyboard is captured (via `event.code`, layout-independent),
+  converted to the right `RETROK_*` constant, written to the field.
+  Escape cancels. Covers all letters/digits/F-keys/specials/punct.
+- **Click-across binding (partial scope).** For systems lacking a
+  `fixed_mapping_note` (the long tail where RetroBat's
+  interpretation is often problematic): press a physical button →
+  source SVG arms (violet pulse, distinct from the blue live-press
+  highlight) → click any target SVG button → per-game `.rmp`
+  written under
+  `emulators/retroarch/config/remaps/<corename>/<rom>.rmp`.
+  Existing bindings reload as persistent badges on target buttons.
+  Curated systems (CD32 / SNES / Saturn / NeoGeo / etc.) keep
+  their default mapping; v0.1.4 adds an opt-in Customize button.
+- **Launch-test button.** Save profile → click Test → spawns
+  RetroBat with the selected ROM via `subprocess.Popen` with
+  `CREATE_NEW_PROCESS_GROUP` so the GUI stays responsive. Window-
+  docking via `ctypes`/`SetWindowPos` deferred to v0.1.4.
+- **User-tunable accent colour.** New row in the existing settings
+  cog: HTML5 colour picker overrides `--acc` (and a derived
+  `--acc-2` / `--acc-bg` / `--acc-bg-soft`) across whichever theme
+  is active. Persists via `localStorage`. Pre-applies before first
+  paint so no theme flash. "Reset" button restores the active
+  theme's default.
+- **Controller graphics sharing workflow.** New
+  `rbcf.py submit-controller --vid X --pid Y --image P` CLI
+  subcommand: auto-detects the cleanup mode (silhouette /
+  remove-bg / tight-crop) by sampling corners + centre, runs
+  `clean_controller_photo.py`, saves under
+  `gui/img/known/<VID>_<PID>.<ext>`, updates
+  `controller_catalog.yaml`. Plus `CONTRIBUTING.md` and a
+  `.github/PULL_REQUEST_TEMPLATE/controller-image.md` for the
+  community workflow.
+- **Community profile pull (lite).** New
+  `rbcf.py pull-community [--repo --ref --token --dry-run --prune]`
+  fetches profile YAMLs from a `community/` folder in this repo via
+  the GitHub Contents API, deduplicates with SHA comparison, drops
+  into `profiles/community/`. Sets up the social layer without a
+  custom backend.
+
+### Changed
+
+- Settings cog popover now hosts the accent picker between the
+  theme switcher and the One-Click toggle.
+- `setTargetSVG()` resolution is now: curated SVG → declared
+  `target_layout` → generic default. Always renders something.
+- Generator-emitted target buttons carry `data-retropad="N"`
+  attributes so the click-across binder knows which libretro
+  RetroPad index each face/dpad/shoulder/system button maps to.
+
+### Internals
+
+- `LIBRETRO_BUTTON_INDEX`, `core_for_system()`,
+  `core_display_name()` (reads `corename` from
+  `<core>_libretro.info`), `remap_path()`, `read_remap()`,
+  `write_remap()`. The `.rmp` writer preserves non-`btn_` lines
+  RetroArch may have written (analog_dpad_mode, device_p1, etc.).
+- New `/api/templates`, `/api/template`, `/api/launch-test`,
+  `/api/remap` (GET + POST) endpoints.
+
 ## [v0.1.2] — 2026-05-05
 
 **Security release.** A post-v0.1.1 audit found three HIGH-severity

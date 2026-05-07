@@ -655,6 +655,291 @@ commands' output.
 """.strip())
 
 
+# ------------------------------ pull-community ------------------------------
+
+def cmd_pull_community(args):
+    """Fetch community/ from the GitHub repo into profiles/community/.
+
+    Uses GitHub's Contents API to recursively traverse the community folder.
+    Writes profiles to profiles/community/<system>/<rom>.yaml so they sit
+    alongside (but separate from) the user's own authored profiles. The GUI
+    surfaces these with a [community] tag.
+
+    No auth required for public repos (60 req/hr unauthenticated, plenty for
+    a normal pull). Pass --token to lift the limit.
+    """
+    import urllib.request, urllib.error, urllib.parse
+
+    ROOT = Path(__file__).resolve().parent
+    PROFILES_DIR = ROOT / "profiles"
+    COMM_DIR = PROFILES_DIR / "community"
+    USER_AGENT = "RB-Controller_fix/0.1.3 pull-community"
+
+    repo = args.repo
+    ref = args.ref
+    token = args.token
+    api_base = f"https://api.github.com/repos/{repo}/contents"
+
+    def gh_get_json(path):
+        url = f"{api_base}/{urllib.parse.quote(path)}?ref={urllib.parse.quote(ref)}"
+        req = urllib.request.Request(url, headers={
+            "User-Agent": USER_AGENT,
+            "Accept": "application/vnd.github+json",
+            **({"Authorization": f"Bearer {token}"} if token else {}),
+        })
+        try:
+            with urllib.request.urlopen(req, timeout=15) as r:
+                return json.loads(r.read().decode("utf-8"))
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                return None  # path doesn't exist upstream
+            raise
+
+    def gh_get_raw(download_url):
+        req = urllib.request.Request(download_url, headers={"User-Agent": USER_AGENT})
+        with urllib.request.urlopen(req, timeout=15) as r:
+            return r.read()
+
+    print(f"Pulling community profiles from {repo}@{ref} ...")
+    if not args.token:
+        print("  (no --token given; subject to 60 requests/hr rate limit)")
+    root_listing = gh_get_json("community")
+    if root_listing is None:
+        print(f"[info] no community/ folder at {repo}@{ref} — nothing to pull")
+        return
+    if not isinstance(root_listing, list):
+        print(f"[fatal] expected directory listing at community/, got {type(root_listing).__name__}")
+        sys.exit(1)
+
+    # Recursively walk: returns list of (rel_path, download_url, sha)
+    def walk(listing, prefix):
+        items = []
+        for entry in listing:
+            ename = entry.get("name", "")
+            etype = entry.get("type", "")
+            epath = entry.get("path", "")
+            if etype == "dir":
+                sub = gh_get_json(epath)
+                if isinstance(sub, list):
+                    items.extend(walk(sub, prefix + (ename,)))
+            elif etype == "file" and ename.endswith(".yaml"):
+                items.append({
+                    "rel": "/".join(prefix + (ename,)),
+                    "url": entry.get("download_url"),
+                    "sha": entry.get("sha"),
+                    "size": entry.get("size", 0),
+                })
+        return items
+
+    upstream = walk(root_listing, ())
+    print(f"  Upstream: {len(upstream)} profile file(s)")
+    if not upstream:
+        return
+
+    # Sort for deterministic output
+    upstream.sort(key=lambda x: x["rel"])
+
+    written = 0
+    skipped = 0
+    failed = 0
+    upstream_rels = set(x["rel"] for x in upstream)
+    for entry in upstream:
+        local = COMM_DIR / entry["rel"]
+        if args.dry_run:
+            mark = "diff" if not local.exists() else "noop"
+            print(f"  [{mark:>4}] {entry['rel']}  ({entry['size']} bytes)")
+            continue
+        # Compare SHA to skip unchanged files (cheap optimisation)
+        if local.exists() and entry["sha"]:
+            try:
+                # GitHub blob SHA: sha1("blob <size>\0<content>")
+                import hashlib
+                content = local.read_bytes()
+                blob_sha = hashlib.sha1(
+                    f"blob {len(content)}\0".encode("utf-8") + content
+                ).hexdigest()
+                if blob_sha == entry["sha"]:
+                    skipped += 1
+                    continue
+            except OSError:
+                pass
+        try:
+            data = gh_get_raw(entry["url"])
+        except Exception as e:
+            print(f"  [fail] {entry['rel']} — {e}")
+            failed += 1
+            continue
+        local.parent.mkdir(parents=True, exist_ok=True)
+        local.write_bytes(data)
+        written += 1
+        print(f"  [done] {entry['rel']}  ({len(data)} bytes)")
+
+    # Optional: prune local files that are no longer upstream
+    pruned = 0
+    if args.prune and not args.dry_run and COMM_DIR.exists():
+        for local_yaml in COMM_DIR.rglob("*.yaml"):
+            rel = local_yaml.relative_to(COMM_DIR).as_posix()
+            if rel not in upstream_rels:
+                local_yaml.unlink()
+                pruned += 1
+                print(f"  [prune] {rel}")
+        # Clean up empty dirs
+        for d in sorted([p for p in COMM_DIR.rglob("*") if p.is_dir()],
+                        key=lambda p: -len(p.parts)):
+            try:
+                d.rmdir()
+            except OSError:
+                pass
+
+    if args.dry_run:
+        print(f"\nDry run summary: {len(upstream)} upstream file(s)")
+    else:
+        print(f"\nSummary: {written} written, {skipped} unchanged, "
+              f"{failed} failed, {pruned} pruned")
+        if written:
+            print(f"  Local: {COMM_DIR}")
+            print("  Run `py rbcf.py list` to see them; community profiles get a [community] badge.")
+
+
+# ------------------------------ submit-controller ------------------------------
+
+def cmd_submit_controller(args):
+    """Process a community-supplied controller photo and stage it for a PR.
+
+    Flow:
+      1. Validate VID/PID format (4-char hex, normalised uppercase).
+      2. Pick a cleanup mode (auto = inspect image, choose silhouette /
+         remove-bg / crop based on background lightness + uniformity).
+      3. Invoke clean_controller_photo.py via subprocess to produce
+         gui/img/known/<VID>_<PID>.<ext>.
+      4. Update controller_catalog.yaml — append a new entry or update
+         the existing one. Mark wiki_file: "" (community image, not
+         from Wikimedia, so the sync tool won't touch it).
+      5. Print git-add / commit / push / PR-URL hints.
+    """
+    import subprocess
+    from PIL import Image
+
+    ROOT = Path(__file__).resolve().parent
+    CATALOG = ROOT / "controller_catalog.yaml"
+    KNOWN_DIR = ROOT / "gui" / "img" / "known"
+    CLEAN_PY = ROOT / "clean_controller_photo.py"
+    GITHUB_REPO = "ITViking-FIN/RetroControlMapper"
+
+    # 1. VID/PID validation
+    vid = (args.vid or "").upper().strip()
+    pid = (args.pid or "").upper().strip()
+    if not re.fullmatch(r"[0-9A-F]{4}", vid):
+        print(f"[fatal] --vid must be 4 hex chars (got {vid!r})"); sys.exit(2)
+    if not re.fullmatch(r"[0-9A-F]{4}", pid):
+        print(f"[fatal] --pid must be 4 hex chars (got {pid!r})"); sys.exit(2)
+    key = f"{vid}:{pid}"
+
+    src = args.image
+    if not src.exists():
+        print(f"[fatal] image not found: {src}"); sys.exit(2)
+    if not CLEAN_PY.exists():
+        print(f"[fatal] clean_controller_photo.py missing: {CLEAN_PY}"); sys.exit(2)
+
+    # 2. Pick mode
+    mode = args.mode
+    if mode == "auto":
+        with Image.open(src) as im:
+            rgb = im.convert("RGB")
+            w, h = rgb.size
+            # Sample corners — same heuristic as clean_controller_photo
+            corners = [rgb.getpixel((0, 0)), rgb.getpixel((w-1, 0)),
+                       rgb.getpixel((0, h-1)), rgb.getpixel((w-1, h-1))]
+            avg = tuple(sum(c[i] for c in corners) // 4 for i in range(3))
+            bg_brightness = sum(avg) / 3
+            # Sample centre for object brightness
+            cx, cy = w // 2, h // 2
+            mid = rgb.getpixel((cx, cy))
+            obj_brightness = sum(mid) / 3
+        if bg_brightness > 200 and obj_brightness < 100:
+            mode = "silhouette"
+            print(f"[auto] dark-on-light photo (bg={bg_brightness:.0f} obj={obj_brightness:.0f}) -> silhouette mode")
+        elif bg_brightness > 200:
+            mode = "remove-bg"
+            print(f"[auto] uniform light bg (bg={bg_brightness:.0f}) -> remove-bg mode")
+        else:
+            mode = "crop"
+            print(f"[auto] heterogeneous bg (bg={bg_brightness:.0f}) -> tight-crop mode")
+
+    # 3. Invoke cleaner
+    out_ext = ".png" if mode == "silhouette" else ".jpg"
+    out_path = KNOWN_DIR / f"{vid}_{pid}{out_ext}"
+    cmd = [sys.executable, str(CLEAN_PY), str(src), "--out", str(out_path)]
+    if mode == "silhouette":
+        cmd.append("--silhouette")
+        cmd += ["--threshold", str(args.threshold)]
+        if args.no_keep_colors:
+            cmd.append("--no-keep-colors")
+    elif mode == "remove-bg":
+        cmd.append("--remove-bg")
+        cmd += ["--tolerance", str(args.tolerance)]
+    # else: tight crop (default behaviour, no flag)
+
+    print(f"[run] {' '.join(str(x) for x in cmd)}")
+    result = subprocess.run(cmd, cwd=str(ROOT))
+    if result.returncode != 0:
+        print(f"[fatal] cleaner exited rc={result.returncode}"); sys.exit(result.returncode)
+    if not out_path.exists():
+        print(f"[fatal] expected output not found: {out_path}"); sys.exit(1)
+
+    # 4. Update controller_catalog.yaml
+    if not CATALOG.exists():
+        print(f"[fatal] catalog missing: {CATALOG}"); sys.exit(1)
+    catalog = yaml.safe_load(CATALOG.read_text(encoding="utf-8")) or {}
+    entries = catalog.get("controllers") or []
+    matched = None
+    for e in entries:
+        if (e.get("vid", "").upper() == vid and e.get("pid", "").upper() == pid):
+            matched = e; break
+    name = args.name or (matched.get("name") if matched else f"Controller {key}")
+    if matched is None:
+        new_entry = {
+            "vid": vid,
+            "pid": pid,
+            "name": name,
+            "wiki_file": "",
+            "pc_support": args.pc_support,
+            "notes": "Community-supplied image (gui/img/known/). Not on Wikimedia.",
+        }
+        entries.append(new_entry)
+        catalog["controllers"] = entries
+        action = "added"
+    else:
+        if not matched.get("name"): matched["name"] = name
+        if not matched.get("pc_support"): matched["pc_support"] = args.pc_support
+        existing_notes = matched.get("notes", "")
+        if "community-supplied" not in existing_notes.lower():
+            matched["notes"] = (existing_notes + ("\n" if existing_notes else "")
+                                + "Community-supplied image (gui/img/known/).").strip()
+        action = "updated"
+
+    CATALOG.write_text(
+        yaml.safe_dump(catalog, sort_keys=False, allow_unicode=True, width=120),
+        encoding="utf-8",
+    )
+    print(f"[catalog] {action} entry for {key} ({name})")
+    print(f"[image]   wrote {out_path}")
+
+    # 5. Print next-step hints
+    rel_img = out_path.relative_to(ROOT).as_posix()
+    rel_cat = CATALOG.relative_to(ROOT).name
+    print()
+    print("Next steps:")
+    print(f"  1. Review the cleaned image:  start {out_path}")
+    print(f"  2. Stage:                     git add {rel_img} {rel_cat}")
+    print(f"  3. Commit:                    git commit -m \"controller: add {key} ({name})\"")
+    print(f"  4. Push:                      git push origin <your-branch>")
+    print(f"  5. Open PR using template:    https://github.com/{GITHUB_REPO}/pulls/new")
+    print()
+    print("If the cleanup looks off, re-run with a different --mode "
+          "(silhouette / remove-bg / crop) or tune --threshold / --tolerance.")
+
+
 def cmd_validate(profiles: list[Profile]):
     issues = 0
     for p in profiles:
@@ -706,6 +991,38 @@ def main():
                        help="Actually restore.")
     b_sub.add_parser("help", help="Show backup subcommand help")
 
+    pc = sub.add_parser("pull-community",
+                        help="Fetch community-curated profiles from the GitHub repo")
+    pc.add_argument("--repo", default="ITViking-FIN/RetroControlMapper",
+                    help="GitHub repo to pull from (owner/name)")
+    pc.add_argument("--ref", default="main",
+                    help="Branch / tag / commit to pull (default: main)")
+    pc.add_argument("--token",
+                    help="Optional GitHub PAT to lift the 60/hr rate limit")
+    pc.add_argument("--dry-run", action="store_true",
+                    help="List what would be fetched, don't write")
+    pc.add_argument("--prune", action="store_true",
+                    help="Remove local community profiles that no longer exist upstream")
+
+    sc = sub.add_parser("submit-controller",
+                        help="Process & catalog a community-supplied controller photo")
+    sc.add_argument("--vid", required=True, help="USB VID, 4-char hex (e.g. 2DC8)")
+    sc.add_argument("--pid", required=True, help="USB PID, 4-char hex (e.g. 310B)")
+    sc.add_argument("--image", required=True, type=Path,
+                    help="Path to the source image (will be cleaned + cached)")
+    sc.add_argument("--name", help="Friendly controller name (default: prompt or 'Controller VID:PID')")
+    sc.add_argument("--mode", choices=("auto", "silhouette", "remove-bg", "crop"),
+                    default="auto",
+                    help="Cleanup mode. 'auto' picks silhouette for dark-on-light, "
+                         "remove-bg for uniform light bg, crop otherwise.")
+    sc.add_argument("--threshold", type=int, default=200,
+                    help="--mode silhouette: pixels darker than this count as silhouette.")
+    sc.add_argument("--tolerance", type=int, default=18,
+                    help="--mode remove-bg: how close-to-bg counts as background.")
+    sc.add_argument("--no-keep-colors", action="store_true",
+                    help="--mode silhouette: drop the coloured-letter overlay.")
+    sc.add_argument("--pc-support", choices=("native", "shim"), default="native")
+
     g = sub.add_parser("guid", help="Manage SDL controller GUID aliases (es_input.cfg)")
     g_sub = g.add_subparsers(dest="guid_cmd", required=True)
     g_sub.add_parser("status", help="List alias groups in es_input.cfg")
@@ -733,6 +1050,16 @@ def main():
             cmd_backup_restore(args.id, dry=dry)
         else:  # help
             cmd_backup_help()
+        return
+
+    # `submit-controller` doesn't need profiles loaded — handle early.
+    if args.cmd == "submit-controller":
+        cmd_submit_controller(args)
+        return
+
+    # `pull-community` doesn't need local profiles loaded — handle early.
+    if args.cmd == "pull-community":
+        cmd_pull_community(args)
         return
 
     # `guid` commands don't need profiles loaded — handle early.

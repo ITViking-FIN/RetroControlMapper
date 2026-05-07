@@ -316,6 +316,111 @@ header h1 {
   margin-left: 4px;
 }
 
+/* ---------- Template popover (Task 2 — "Start from template") ---------- */
+
+.rbcf-tpl-popover {
+  background: var(--content-fill);
+  backdrop-filter: var(--blur-med);
+  -webkit-backdrop-filter: var(--blur-med);
+  border: 1px solid var(--edge-bottom);
+  border-radius: var(--radius-plate);
+  box-shadow: var(--shadow-deep);
+  padding: 14px 16px;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 70vh;
+  overflow: hidden;
+}
+.rbcf-tpl-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.rbcf-tpl-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--tx-primary);
+  letter-spacing: 0.02em;
+}
+.rbcf-tpl-close {
+  appearance: none;
+  background: transparent;
+  border: none;
+  font-size: 20px;
+  line-height: 1;
+  color: var(--tx-muted);
+  cursor: pointer;
+  padding: 0 4px;
+}
+.rbcf-tpl-close:hover { color: var(--tx-primary); }
+.rbcf-tpl-hint {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--tx-muted);
+}
+.rbcf-tpl-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-y: auto;
+}
+.rbcf-tpl-item {
+  appearance: none;
+  text-align: left;
+  background: var(--shell-fill);
+  border: 1px solid var(--edge-bottom);
+  border-radius: var(--radius-input);
+  padding: 10px 12px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  transition: border-color var(--dur-fast) var(--ease),
+              background var(--dur-fast) var(--ease);
+}
+.rbcf-tpl-item:hover {
+  border-color: var(--edge-inner);
+  background: var(--acc-bg-soft);
+}
+.rbcf-tpl-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--tx-primary);
+}
+.rbcf-tpl-desc {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--tx-muted);
+  white-space: pre-line;
+}
+
+/* ---------- Accent picker (inside .rbcf-apply-settings-popover) ---------- */
+
+.rbcf-acc-row .rbcf-acc-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.rbcf-acc-picker {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 36px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--edge-bottom);
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+}
+.rbcf-acc-picker::-webkit-color-swatch-wrapper { padding: 2px; }
+.rbcf-acc-picker::-webkit-color-swatch { border: none; border-radius: 4px; }
+.rbcf-acc-picker::-moz-color-swatch { border: none; border-radius: 4px; }
+
 /* Pad-list container — holds one .pad-pill per detected controller plus
    the standalone Rescan icon button (#btn-rescan-quick) at the right end. */
 .pad-list {
@@ -1120,6 +1225,48 @@ text.ctrl-caption {
 .src-btn.face.blue.pressed   circle, .tgt-btn.face.blue.pressed   circle { fill: #3b82f6; filter: drop-shadow(0 0 8px rgba(59, 130, 246, 0.75)); stroke: #93c5fd; }
 .src-btn.face.yellow.pressed circle, .tgt-btn.face.yellow.pressed circle { fill: #eab308; filter: drop-shadow(0 0 8px rgba(234, 179, 8, 0.75));  stroke: #fde047; }
 
+/* ---------- Click-across binding states (v0.1.3-stretch) ---------- */
+/* Distinct from .pressed (which is the live "physical-button-currently-down"
+   highlight). .armed = "this button is staged for binding, click a target
+   to commit". Pulses to differentiate from a held press. */
+.src-btn.armed rect, .src-btn.armed circle, .src-btn.armed polygon {
+  fill: var(--acc-violet);
+  stroke: var(--acc-violet-2);
+  stroke-width: 3;
+  filter: drop-shadow(0 0 10px rgba(149, 128, 255, 0.75));
+  animation: rbcf-arm-pulse 1.2s ease-in-out infinite;
+}
+.src-btn.armed text { fill: #fff; }
+@keyframes rbcf-arm-pulse {
+  0%, 100% { stroke-width: 3; filter: drop-shadow(0 0 6px rgba(149, 128, 255, 0.55)); }
+  50%      { stroke-width: 4; filter: drop-shadow(0 0 14px rgba(149, 128, 255, 0.95)); }
+}
+
+/* Target-side cursor + hover hint when click-across is active */
+.ctrl-svg-host.click-across-on .tgt-btn { cursor: crosshair; }
+.ctrl-svg-host.click-across-on .tgt-btn:hover rect,
+.ctrl-svg-host.click-across-on .tgt-btn:hover circle,
+.ctrl-svg-host.click-across-on .tgt-btn:hover polygon {
+  stroke: var(--acc-violet-2);
+  stroke-width: 2;
+}
+
+/* Persistent badge on target buttons that already have a binding */
+.tgt-btn.has-binding rect, .tgt-btn.has-binding circle, .tgt-btn.has-binding polygon {
+  stroke: var(--acc-violet);
+  stroke-width: 2;
+  filter: drop-shadow(0 0 4px rgba(149, 128, 255, 0.4));
+}
+
+/* Brief flash when a binding is committed */
+.tgt-btn.bind-flash rect, .tgt-btn.bind-flash circle, .tgt-btn.bind-flash polygon {
+  animation: rbcf-bind-flash 0.5s ease-out;
+}
+@keyframes rbcf-bind-flash {
+  0%   { fill: var(--acc-violet); filter: drop-shadow(0 0 16px rgba(149, 128, 255, 1)); }
+  100% { /* settles to whatever the regular state is */ }
+}
+
 /* ---------- Mapping table — region-grouped ---------- */
 
 .mappings-grid {
@@ -1159,7 +1306,7 @@ text.ctrl-caption {
 
 .map-row {
   display: grid;
-  grid-template-columns: 90px 1fr;
+  grid-template-columns: 90px 1fr auto;
   align-items: center;
   gap: 10px;
   padding: 10px 12px;
@@ -1203,6 +1350,74 @@ text.ctrl-caption {
 .map-row.face-green  .swatch { background: #22c55e; }
 .map-row.face-blue   .swatch { background: #3b82f6; }
 .map-row.face-yellow .swatch { background: #eab308; }
+
+/* ---------- Listen button + listening state (Task 3 — Press-to-bind) ---------- */
+
+.map-row .listen-btn {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  font-size: 11px;
+  font-family: var(--mono);
+  color: var(--tx-muted);
+  background: transparent;
+  border: 1px solid var(--edge-bottom);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease),
+              border-color var(--dur-fast) var(--ease),
+              background var(--dur-fast) var(--ease);
+}
+.map-row .listen-btn:hover {
+  color: var(--acc);
+  border-color: var(--edge-inner);
+  background: var(--acc-bg-soft);
+}
+.map-row .listen-btn:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: 2px;
+}
+.map-row .listen-btn svg {
+  flex-shrink: 0;
+  opacity: 0.7;
+  transition: opacity var(--dur-fast) var(--ease);
+}
+.map-row .listen-btn:hover svg { opacity: 1; }
+.map-row .listen-label {
+  white-space: nowrap;
+}
+
+/* Listening state — pulsing accent glow on the row, button stays
+   highlighted until the user presses a key or Escape. */
+.map-row.listening {
+  border-color: var(--acc);
+  background: var(--acc-bg);
+  box-shadow: 0 0 0 1px var(--edge-inner),
+              0 0 16px var(--acc-bg);
+  animation: rbcf-listen-pulse 1.4s ease-in-out infinite;
+}
+.map-row.listening .listen-btn {
+  color: var(--acc);
+  border-color: var(--acc);
+  background: var(--acc-bg);
+}
+.map-row.listening .listen-btn svg { opacity: 1; }
+.map-row.listening input {
+  border-color: var(--edge-inner);
+}
+
+@keyframes rbcf-listen-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 1px var(--edge-inner),
+                0 0 12px var(--acc-bg);
+  }
+  50% {
+    box-shadow: 0 0 0 2px var(--edge-inner),
+                0 0 24px var(--acc-bg);
+  }
+}
 
 .map-row input {
   font-family: var(--mono);

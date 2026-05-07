@@ -752,9 +752,232 @@ const TARGET_SVGS = {
   colecovision_pad: TGT_COLECOVISION_PAD,
 };
 
+// ============================================================
+// Generic target SVG generator
+// ------------------------------------------------------------
+// For systems we don't have a curated SVG for, render a clean
+// schematic from a system-shape descriptor. Descriptor schema:
+//   {
+//     face: { layout: 'diamond'|'row'|'grid'|'single'|'none',
+//             count: 0..6, labels?: [], colors?: [] },
+//     dpad:      true|false,
+//     sticks:    0..2,
+//     shoulders: 0|2|4,         // 2 = L+R; 4 = + L2+R2
+//     start:     true|false,
+//     select:    true|false,
+//     label:     "Display name",
+//   }
+//
+// Output IDs stay stable so app.js's existing binding wiring keeps
+// working: `tgt-btn-1` … `tgt-btn-N` for face buttons,
+// `tgt-btn-up/down/left/right` for D-pad, `tgt-btn-l/r/l2/r2` for
+// shoulders, `tgt-btn-start/select` for system buttons.
+// ============================================================
+
+function generateTargetSvg(layout) {
+  if (!layout) return '';
+  const W = 620, H = 280;
+  const face = layout.face || { layout: 'none', count: 0 };
+  const labels = face.labels || [];
+  const dpad = layout.dpad !== false;
+  const sticks = Number(layout.sticks || 0);
+  const shoulders = Number(layout.shoulders || 0);
+  const startBtn = layout.start !== false;
+  const selectBtn = layout.select !== false;
+  const labelText = layout.label || '';
+
+  const out = [];
+  out.push(`<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" class="ctrl-svg" aria-label="${escapeAttr(labelText || 'Target controller')}">`);
+  out.push(`<defs>
+    <linearGradient id="genBody" x1="0.5" y1="0" x2="0.5" y2="1">
+      <stop offset="0%"  stop-color="#5a5a5a"/>
+      <stop offset="55%" stop-color="#333"/>
+      <stop offset="100%" stop-color="#1a1a1a"/>
+    </linearGradient>
+    <linearGradient id="genHi" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%"  stop-color="rgba(255,255,255,0.12)"/>
+      <stop offset="50%" stop-color="rgba(255,255,255,0)"/>
+    </linearGradient>
+    <filter id="genShadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feGaussianBlur stdDeviation="3" in="SourceAlpha"/>
+      <feOffset dy="4" result="off"/>
+      <feComponentTransfer><feFuncA type="linear" slope="0.5"/></feComponentTransfer>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>`);
+
+  // Body
+  out.push(`<g filter="url(#genShadow)">
+    <path d="M 80 90 Q 80 50 130 50 L 490 50 Q 540 50 540 90 L 540 200 Q 540 240 490 240 L 130 240 Q 80 240 80 200 Z"
+          fill="url(#genBody)" stroke="#000" stroke-width="2"/>
+    <path d="M 90 80 Q 90 56 135 56 L 485 56 Q 530 56 530 80 Q 310 70 90 80 Z"
+          fill="url(#genHi)" opacity="0.85"/>
+  </g>`);
+
+  // Shoulders (top edge) — RetroPad: L=10, R=11, L2=12, R2=13
+  if (shoulders >= 2) {
+    out.push(`<g id="tgt-btn-l" class="tgt-btn" data-retropad="10">
+      <rect x="120" y="32" width="60" height="14" rx="6"/>
+      <text x="150" y="42" text-anchor="middle" class="tiny">L</text>
+    </g>`);
+    out.push(`<g id="tgt-btn-r" class="tgt-btn" data-retropad="11">
+      <rect x="440" y="32" width="60" height="14" rx="6"/>
+      <text x="470" y="42" text-anchor="middle" class="tiny">R</text>
+    </g>`);
+  }
+  if (shoulders >= 4) {
+    out.push(`<g id="tgt-btn-l2" class="tgt-btn" data-retropad="12">
+      <rect x="120" y="14" width="60" height="14" rx="6"/>
+      <text x="150" y="24" text-anchor="middle" class="tiny">L2</text>
+    </g>`);
+    out.push(`<g id="tgt-btn-r2" class="tgt-btn" data-retropad="13">
+      <rect x="440" y="14" width="60" height="14" rx="6"/>
+      <text x="470" y="24" text-anchor="middle" class="tiny">R2</text>
+    </g>`);
+  }
+
+  // D-pad (left cluster) — RetroPad: up=4, down=5, left=6, right=7
+  if (dpad) {
+    out.push(`<g class="dpad">
+      <g id="tgt-btn-up" class="tgt-btn dpad" data-retropad="4"><rect x="170" y="120" width="22" height="22" rx="3"/></g>
+      <g id="tgt-btn-down" class="tgt-btn dpad" data-retropad="5"><rect x="170" y="164" width="22" height="22" rx="3"/></g>
+      <g id="tgt-btn-left" class="tgt-btn dpad" data-retropad="6"><rect x="148" y="142" width="22" height="22" rx="3"/></g>
+      <g id="tgt-btn-right" class="tgt-btn dpad" data-retropad="7"><rect x="192" y="142" width="22" height="22" rx="3"/></g>
+      <rect x="170" y="142" width="22" height="22" fill="#0d1117"/>
+    </g>`);
+  }
+
+  // Stick(s)
+  if (sticks >= 1) {
+    out.push(`<g id="tgt-btn-l3" class="tgt-btn stick">
+      <circle cx="${dpad ? 248 : 200}" cy="200" r="20" class="stick-base" fill="#1c2128"/>
+      <circle cx="${dpad ? 248 : 200}" cy="200" r="13" class="stick-knob" fill="#2a2f36"/>
+    </g>`);
+  }
+  if (sticks >= 2) {
+    out.push(`<g id="tgt-btn-r3" class="tgt-btn stick">
+      <circle cx="380" cy="200" r="20" class="stick-base" fill="#1c2128"/>
+      <circle cx="380" cy="200" r="13" class="stick-knob" fill="#2a2f36"/>
+    </g>`);
+  }
+
+  // Select / Start (centre pills) — RetroPad: select=2, start=3
+  if (selectBtn) {
+    out.push(`<g id="tgt-btn-select" class="tgt-btn" data-retropad="2">
+      <rect x="252" y="92" width="46" height="13" rx="6"/>
+      <text x="275" y="102" text-anchor="middle" class="tiny">Select</text>
+    </g>`);
+  }
+  if (startBtn) {
+    out.push(`<g id="tgt-btn-start" class="tgt-btn" data-retropad="3">
+      <rect x="322" y="92" width="46" height="13" rx="6"/>
+      <text x="345" y="102" text-anchor="middle" class="tiny">Start</text>
+    </g>`);
+  }
+
+  // Face buttons (right cluster) — layout depends on count + style
+  const fc = Number(face.count || 0);
+  const fl = face.layout || (fc === 1 ? 'single' : fc === 2 ? 'row' : fc === 3 ? 'row' : fc === 4 ? 'diamond' : fc === 6 ? 'grid' : 'row');
+  const cx = 470, cy = 145;  // centre of face cluster
+  const r = 19;              // button radius
+  const positions = (() => {
+    switch (fl) {
+      case 'single': return [{x: cx, y: cy}];
+      case 'row':
+        if (fc === 2) return [{x: cx-22, y: cy}, {x: cx+22, y: cy}];
+        if (fc === 3) return [{x: cx-44, y: cy}, {x: cx, y: cy}, {x: cx+44, y: cy}];
+        if (fc === 4) return [{x: cx-66, y: cy}, {x: cx-22, y: cy}, {x: cx+22, y: cy}, {x: cx+66, y: cy}];
+        return [];
+      case 'diamond':
+        // Top, right, bottom, left — order matches our existing CD32 pad
+        return [{x: cx, y: cy-32}, {x: cx+32, y: cy}, {x: cx, y: cy+32}, {x: cx-32, y: cy}];
+      case 'grid':
+        // 2 rows x 3 cols (Genesis 6-btn / Saturn / fight-stick layout)
+        const dx = 30, dy = 28;
+        return [
+          {x: cx-dx, y: cy-dy/2}, {x: cx, y: cy-dy/2}, {x: cx+dx, y: cy-dy/2},
+          {x: cx-dx, y: cy+dy/2}, {x: cx, y: cy+dy/2}, {x: cx+dx, y: cy+dy/2},
+        ];
+      default: return [];
+    }
+  })();
+
+  // Per-position libretro RetroPad indices: prefer descriptor override,
+  // fall back to layout-derived default. Embedded as data-retropad on
+  // each face-button group so the click-across binder can read it.
+  const retropadFace = (face.retropad && Array.isArray(face.retropad))
+    ? face.retropad
+    : defaultRetropadForFace(fl, fc);
+
+  for (let i = 0; i < positions.length && i < fc; i++) {
+    const p = positions[i];
+    const lbl = labels[i] || String(i + 1);
+    const colorClass = face.colors && face.colors[i] ? ` face ${face.colors[i]}` : '';
+    const retropadIdx = retropadFace[i];
+    const retropadAttr = (typeof retropadIdx === 'number') ? ` data-retropad="${retropadIdx}"` : '';
+    out.push(`<g id="tgt-btn-${i + 1}" class="tgt-btn${colorClass}"${retropadAttr}>
+      <circle cx="${p.x}" cy="${p.y}" r="${r}"/>
+      <text x="${p.x}" y="${p.y + 5}" text-anchor="middle">${escapeAttr(lbl)}</text>
+    </g>`);
+  }
+
+  // Caption
+  if (labelText) {
+    out.push(`<text x="${W/2}" y="${H - 8}" text-anchor="middle" class="ctrl-caption">${escapeAttr(labelText)}</text>`);
+  }
+
+  out.push(`</svg>`);
+  return out.join('');
+}
+
+function escapeAttr(s) {
+  return String(s).replace(/[&<>"']/g, m => (
+    {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]
+  ));
+}
+
 // Standard gamepad button index → our naming
 const PAD_INDEX_TO_NAME = {
   0:'a', 1:'b', 2:'x', 3:'y', 4:'l', 5:'r', 6:'l2', 7:'r2',
   8:'select', 9:'start', 10:'l3', 11:'r3',
   12:'up', 13:'down', 14:'left', 15:'right'
 };
+
+// Source-button name → libretro RetroPad index (used to build .rmp keys
+// like `input_remap_id_1_btn_<src>` whose value is the destination index).
+const SRC_TO_RETROPAD_INDEX = {
+  a: 8, b: 0, x: 9, y: 1,
+  l: 10, r: 11, l2: 12, r2: 13, l3: 14, r3: 15,
+  select: 2, start: 3,
+  up: 4, down: 5, left: 6, right: 7,
+};
+
+// Default libretro index per face-button POSITION for the generic
+// descriptor's layouts. Diamond ordering is [top, right, bottom, left]
+// → matches SNES face order natively. Row/grid use a sensible
+// left-to-right / top-to-bottom convention.
+const FACE_DEFAULT_RETROPAD = {
+  // diamond → top=X(9), right=A(8), bottom=B(0), left=Y(1)
+  diamond: [9, 8, 0, 1],
+  // row(2) → [B(0), A(8)] ; row(3) → +[Y(1)]; row(4) → +[X(9)]
+  row2:    [0, 8],
+  row3:    [0, 8, 1],
+  row4:    [0, 8, 1, 9],
+  // grid 2x3 (Genesis 6-btn) → top L X R / bot B A Y
+  grid:    [10, 9, 11, 0, 8, 1],
+  // single → fire (B)
+  single:  [0],
+};
+
+function defaultRetropadForFace(layout, count) {
+  if (layout === 'diamond' && count === 4) return FACE_DEFAULT_RETROPAD.diamond;
+  if (layout === 'grid'    && count === 6) return FACE_DEFAULT_RETROPAD.grid;
+  if (layout === 'single'  && count === 1) return FACE_DEFAULT_RETROPAD.single;
+  if (layout === 'row') {
+    if (count === 2) return FACE_DEFAULT_RETROPAD.row2;
+    if (count === 3) return FACE_DEFAULT_RETROPAD.row3;
+    if (count === 4) return FACE_DEFAULT_RETROPAD.row4;
+  }
+  // Fallback: sequential B, A, Y, X, L, R
+  return [0, 8, 1, 9, 10, 11].slice(0, count);
+}

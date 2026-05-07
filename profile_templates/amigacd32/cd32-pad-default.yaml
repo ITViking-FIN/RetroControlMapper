@@ -1,0 +1,17 @@
+template: "Amiga CD32 — CD32 Pad (default)"
+system: amigacd32
+description: |
+  Standard CD32 pad mapping (device 517). All four colour buttons
+  distinct (Red/Yellow/Green/Blue), Play=Start, Reverse=Select,
+  Forward=R, Rewind=L. Already the system default — included as a
+  template so users can fork from it for game-specific variants.
+es_settings:
+  puae_controller1: "517"
+  GameFocus: "0"
+button_semantics:
+  B (Red):    "Primary action"
+  A (Blue):   "Secondary / cancel"
+  Y (Yellow): "Tertiary"
+  X (Green):  "Quaternary"
+  Start: "Pause / Play"
+  Select: "Reverse / Stop"

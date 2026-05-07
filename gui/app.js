@@ -83,18 +83,46 @@ function setSourceSVG() {
   srcHost.innerHTML = SRC_XINPUT;
 }
 
-function setTargetSVG(targetCtrl) {
+// Default descriptor for systems we know nothing specific about — gives
+// the user a generic XInput-shaped target with d-pad / 4 face buttons /
+// L+R / Start+Select. Better than an empty state because the
+// click-across binding flow still works, and the user can refine the
+// layout per-system later (Phase B in v0.1.4).
+const GENERIC_TARGET_LAYOUT = {
+  face: { layout: 'diamond', count: 4, labels: ['1', '2', '3', '4'] },
+  dpad: true,
+  sticks: 1,
+  shoulders: 2,
+  start: true,
+  select: true,
+  label: 'Generic — 1 stick + d-pad + 4 buttons + L/R',
+};
+
+function setTargetSVG(targetCtrl, layout) {
   currentTargetController = targetCtrl;
   const svg = TARGET_SVGS[targetCtrl];
   if (svg) {
     tgtHost.innerHTML = svg;
-  } else {
-    tgtHost.innerHTML = `
-      <div class="empty-state">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
-        <span>No target controller diagram for this system yet.</span>
-      </div>`;
+    return;
   }
+  // Fallback chain: explicit layout from system config → generic default.
+  // Either way, the user gets a working schematic, never an empty pane.
+  if (typeof generateTargetSvg === 'function') {
+    const desc = layout || GENERIC_TARGET_LAYOUT;
+    const generated = generateTargetSvg(desc);
+    if (generated) {
+      tgtHost.innerHTML = generated;
+      // Mark the wrapper so we can style/hint generic vs curated differently
+      tgtHost.classList.toggle('is-generic', !layout);
+      tgtHost.classList.toggle('is-layout-derived', !!layout);
+      return;
+    }
+  }
+  tgtHost.innerHTML = `
+    <div class="empty-state">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
+      <span>No target controller diagram for this system yet.</span>
+    </div>`;
 }
 
 // ============================================================
@@ -271,6 +299,11 @@ function onPadPillClick(pillEl, dev, idx) {
   }
 }
 
+// Track previous-frame button state so we can detect release→press
+// transitions (for click-across arm-on-press, which should fire once
+// per discrete button press, not every frame the button is held).
+let _prevButtonState = {};
+
 function updateGamepad() {
   const pad = pickGamepad();
 
@@ -279,6 +312,7 @@ function updateGamepad() {
     // events, not by this 60Hz polling loop. Just clear the source-pane label.
     padName.textContent = '—';
     $$('.src-btn.pressed, .tgt-btn.pressed, .map-row.pressed').forEach(el => el.classList.remove('pressed'));
+    _prevButtonState = {};
     // Keep the live-counts line in any open popover fresh (it reads from pad).
     refreshPopoverLiveCounts();
     return;
@@ -293,9 +327,18 @@ function updateGamepad() {
   $$('.src-btn.pressed, .tgt-btn.pressed, .map-row.pressed').forEach(el => el.classList.remove('pressed'));
 
   // Buttons
+  const newState = {};
   for (let i = 0; i < pad.buttons.length; i++) {
     const btn = pad.buttons[i];
-    if (!btn || !btn.pressed) continue;
+    const isPressed = !!(btn && btn.pressed);
+    newState[i] = isPressed;
+    // Click-across arm-on-press: fire only on release→press transition,
+    // and only when click-across is active for this system.
+    if (_clickAcrossEnabled && isPressed && !_prevButtonState[i]) {
+      const name = PAD_INDEX_TO_NAME[i];
+      if (name) armSource(name);
+    }
+    if (!isPressed) continue;
     const name = PAD_INDEX_TO_NAME[i];
     if (!name) continue;
     // Source SVG
@@ -317,6 +360,8 @@ function updateGamepad() {
   const stickThreshold = 0.4;
   handleStick('l3', 'src-l3-knob', pad.axes[0] || 0, pad.axes[1] || 0, stickThreshold, tgtMap);
   handleStick('r3', 'src-r3-knob', pad.axes[2] || 0, pad.axes[3] || 0, stickThreshold, tgtMap);
+
+  _prevButtonState = newState;
 }
 
 function handleStick(srcId, knobId, ax, ay, threshold, tgtMap) {
@@ -440,7 +485,7 @@ function setTargetForSystem(systemId) {
     fixedNote.textContent = '';
     if (fixedNoteWrap) fixedNoteWrap.hidden = true;
   }
-  setTargetSVG(sys.target_controller);
+  setTargetSVG(sys.target_controller, sys.target_layout);
 
   // If the system has no curated metadata at all, offer an online lookup.
   // The lookup endpoint is gated on user consent (POST with allow_online:true);
@@ -736,6 +781,20 @@ function buildMappingRows() {
       row.innerHTML = `
         <span class="btn-name">${swatch}${label}</span>
         <input type="text" data-map-btn="${btn}" placeholder="e.g. RETROK_F1, RETROK_SPACE, --- to clear">
+        <button type="button" class="listen-btn" data-listen-for="${btn}"
+                title="Click then press a key to bind it">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none"
+               stroke="currentColor" stroke-width="2" stroke-linecap="round"
+               stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="3"/>
+            <circle cx="12" cy="12" r="8"/>
+            <line x1="12" y1="2" x2="12" y2="5"/>
+            <line x1="12" y1="19" x2="12" y2="22"/>
+            <line x1="2" y1="12" x2="5" y2="12"/>
+            <line x1="19" y1="12" x2="22" y2="12"/>
+          </svg>
+          <span class="listen-label">listen</span>
+        </button>
       `;
       rows.appendChild(row);
     }
@@ -1447,6 +1506,20 @@ function showSettingsPopover() {
           ${themeBtn('auto',  'Auto',  ICON_AUTO)}
         </div>
       </div>
+      <div class="rbcf-apply-settings-row rbcf-acc-row">
+        <span class="rbcf-apply-settings-label">
+          <span class="rbcf-apply-settings-label-main">Accent colour</span>
+          <span class="rbcf-apply-settings-label-help">Override the theme's primary accent. Affects buttons and active states across all themes.</span>
+        </span>
+        <span class="rbcf-acc-controls">
+          <input type="color" id="rbcf-acc-picker" class="rbcf-acc-picker"
+                 aria-label="Accent colour"
+                 value="${(localStorage.getItem('rbcf-user-accent') || '').match(/^#[0-9a-fA-F]{6}$/) ? localStorage.getItem('rbcf-user-accent') : '#7c5cff'}">
+          <button type="button" id="rbcf-acc-reset"
+                  class="rbcf-apply-btn rbcf-apply-btn-secondary"
+                  title="Reset to theme default">Reset</button>
+        </span>
+      </div>
       <label class="rbcf-apply-settings-row">
         <input type="checkbox" id="rbcf-apply-one-click-toggle" ${isOneClickApplyEnabled() ? 'checked' : ''}>
         <span class="rbcf-apply-settings-label">
@@ -1517,6 +1590,35 @@ function showSettingsPopover() {
       'info', 2000);
   });
   pop.querySelector('[data-act="close"]').addEventListener('click', dismissSettingsPopover);
+
+  // Accent picker + reset (cross-theme override)
+  const accPicker = pop.querySelector('#rbcf-acc-picker');
+  const accReset  = pop.querySelector('#rbcf-acc-reset');
+  if (accPicker) {
+    // If no override is stored, sync the picker swatch to the live --acc
+    // value so the user sees what's currently in effect.
+    if (!localStorage.getItem('rbcf-user-accent')) {
+      const cur = getComputedStyle(document.documentElement)
+                    .getPropertyValue('--acc').trim();
+      if (/^#[0-9a-fA-F]{6}$/.test(cur)) accPicker.value = cur;
+    }
+    accPicker.addEventListener('input', (e) => {
+      const v = e.target.value;
+      localStorage.setItem('rbcf-user-accent', v);
+      applyUserAccent(v);
+    });
+  }
+  if (accReset) {
+    accReset.addEventListener('click', () => {
+      localStorage.removeItem('rbcf-user-accent');
+      applyUserAccent(null);
+      // Re-sync picker to whatever the theme reverted to
+      const cur = getComputedStyle(document.documentElement)
+                    .getPropertyValue('--acc').trim();
+      if (accPicker && /^#[0-9a-fA-F]{6}$/.test(cur)) accPicker.value = cur;
+      showToast('Accent reset to theme default.', 'info', 1800);
+    });
+  }
 
   const manageBtn = pop.querySelector('#rbcf-cimg-manage-btn');
   if (manageBtn) {
@@ -2256,6 +2358,466 @@ async function onApply() {
 // Wiring
 // ============================================================
 
+// ============================================================
+// Click-across binding (v0.1.3-stretch — partial scope)
+// Only enabled for systems WITHOUT fixed_mapping_note (the long tail
+// where RetroBat's interpretation is unreliable). Curated systems
+// keep their default mapping; v0.1.4 will ship a Customize option.
+//
+// Flow:
+//   1. User clicks a source SVG button (or presses one) → ARMED
+//   2. User clicks a target SVG button → POST /api/remap, .rmp written
+//   3. Toast confirms; both sides flash; armed clears
+//   4. Escape / outside click disarms
+// ============================================================
+
+let _armedSourceBtn = null;     // string like 'a' / 'b' / 'l2' / 'up'
+let _clickAcrossEnabled = false;
+
+function isClickAcrossEnabledForSystem(systemId) {
+  const sys = (SYSTEMS || []).find(s => s.id === systemId);
+  if (!sys) return false;
+  // "Reliable" = has fixed_mapping_note. Click-across stays off there
+  // until v0.1.4's Customize flow ships.
+  return !sys.fixed_mapping_note;
+}
+
+function disarmSource() {
+  if (!_armedSourceBtn) return;
+  const el = document.getElementById(`src-btn-${_armedSourceBtn}`);
+  if (el) el.classList.remove('armed');
+  _armedSourceBtn = null;
+}
+
+function armSource(name) {
+  if (!_clickAcrossEnabled) return;
+  if (_armedSourceBtn === name) {
+    disarmSource();
+    return;
+  }
+  disarmSource();
+  const el = document.getElementById(`src-btn-${name}`);
+  if (!el) return;
+  _armedSourceBtn = name;
+  el.classList.add('armed');
+}
+
+async function bindArmedToTarget(targetEl) {
+  if (!_armedSourceBtn) return;
+  if (!_clickAcrossEnabled) return;
+  const idxStr = targetEl.getAttribute('data-retropad');
+  if (idxStr === null) {
+    showToast('That target button has no libretro mapping defined.', 'error');
+    return;
+  }
+  const targetIdx = parseInt(idxStr, 10);
+  const sysId = selSystem.value;
+  const rom = selGame.value;
+  if (!rom) {
+    showToast('Pick a game first — remaps are per-game.', 'error');
+    disarmSource();
+    return;
+  }
+  const source = _armedSourceBtn;
+  // Optimistic visual: brief flash on the target
+  targetEl.classList.add('bind-flash');
+  setTimeout(() => targetEl.classList.remove('bind-flash'), 500);
+
+  try {
+    const r = await api('POST', '/api/remap', {
+      system: sysId,
+      rom,
+      source,
+      target_index: targetIdx,
+    });
+    if (r.ok) {
+      const labelNode = targetEl.querySelector('text');
+      const targetLabel = labelNode ? labelNode.textContent : `idx${targetIdx}`;
+      showToast(`Bound ${source.toUpperCase()} → ${targetLabel}`, 'success', 2400);
+      // Mark target as "has-binding" persistently
+      targetEl.classList.add('has-binding');
+    } else {
+      showToast('Remap failed: ' + (r.error || 'unknown'), 'error', 4000);
+    }
+  } catch (e) {
+    showToast('Remap error: ' + e.message, 'error', 4000);
+  }
+  disarmSource();
+}
+
+function setupClickAcross() {
+  // Click delegation on the source SVG host — manual arm via mouse
+  if (srcHost) {
+    srcHost.addEventListener('click', (e) => {
+      if (!_clickAcrossEnabled) return;
+      const g = e.target.closest('[id^="src-btn-"]');
+      if (!g) return;
+      const id = g.id.replace(/^src-btn-/, '');
+      armSource(id);
+    });
+  }
+  // Click delegation on the target SVG host — bind when armed
+  if (tgtHost) {
+    tgtHost.addEventListener('click', (e) => {
+      if (!_clickAcrossEnabled) return;
+      if (!_armedSourceBtn) {
+        showToast('Press or click a source button to arm a binding first.', 'info', 2400);
+        return;
+      }
+      const g = e.target.closest('[id^="tgt-btn-"]');
+      if (!g) return;
+      bindArmedToTarget(g);
+    });
+  }
+  // Escape disarms; outside-click disarms
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && _armedSourceBtn) {
+      e.preventDefault();
+      disarmSource();
+      showToast('Binding cancelled.', 'info', 1500);
+    }
+  });
+  document.addEventListener('mousedown', (e) => {
+    if (!_armedSourceBtn) return;
+    const inSource = srcHost && srcHost.contains(e.target);
+    const inTarget = tgtHost && tgtHost.contains(e.target);
+    if (!inSource && !inTarget) disarmSource();
+  }, true);
+}
+
+async function refreshClickAcrossForSystem(systemId, rom) {
+  _clickAcrossEnabled = isClickAcrossEnabledForSystem(systemId);
+  // Mark the target host so CSS can dim/customize visuals if click-across
+  // is off (e.g. fade out hover states).
+  if (tgtHost) {
+    tgtHost.classList.toggle('click-across-on',  _clickAcrossEnabled);
+    tgtHost.classList.toggle('click-across-off', !_clickAcrossEnabled);
+  }
+  // Clear any "has-binding" badges; we'll re-fetch and re-apply
+  if (tgtHost) {
+    tgtHost.querySelectorAll('.has-binding').forEach(el => el.classList.remove('has-binding'));
+  }
+  if (!_clickAcrossEnabled || !rom) {
+    disarmSource();
+    return;
+  }
+  // Fetch current remap and badge target buttons that have bindings
+  try {
+    const data = await api('GET',
+      `/api/remap?system=${encodeURIComponent(systemId)}&rom=${encodeURIComponent(rom)}`);
+    const bindings = (data && data.bindings) || {};
+    if (!Object.keys(bindings).length) return;
+    // For each source bound, find the target with that retropad index and
+    // mark it. Multiple sources can map to the same target — that's fine.
+    const usedIndices = new Set(Object.values(bindings));
+    tgtHost.querySelectorAll('[data-retropad]').forEach(el => {
+      const idx = parseInt(el.getAttribute('data-retropad'), 10);
+      if (usedIndices.has(idx)) el.classList.add('has-binding');
+    });
+  } catch (_) { /* missing .rmp is fine — nothing to badge */ }
+}
+
+
+// ============================================================
+// Press-to-bind (Task 3 — Mapping UX Level 2)
+// Click the listen icon on any map-row → row enters listening state →
+// next keydown is captured, converted to RETROK_*, written into the
+// row's input. Escape cancels. Click outside cancels.
+// ============================================================
+
+let _listeningRow = null;
+let _listeningKeyHandler = null;
+let _listeningOutsideHandler = null;
+
+// event.code → RETROK_* mapping. Uses event.code (physical key) so layout
+// shifts (AZERTY etc.) don't garble the mnemonic. Fallback to event.key.
+const CODE_TO_RETROK = (() => {
+  const m = {};
+  // Letters
+  for (let c = 65; c <= 90; c++) {
+    const ch = String.fromCharCode(c);
+    m['Key' + ch] = 'RETROK_' + ch.toLowerCase();
+  }
+  // Number row
+  for (let n = 0; n <= 9; n++) {
+    m['Digit' + n] = 'RETROK_' + n;
+  }
+  // Numpad digits
+  for (let n = 0; n <= 9; n++) {
+    m['Numpad' + n] = 'RETROK_KP' + n;
+  }
+  // F-keys
+  for (let n = 1; n <= 15; n++) {
+    m['F' + n] = 'RETROK_F' + n;
+  }
+  // Specials
+  Object.assign(m, {
+    'Space':        'RETROK_SPACE',
+    'Enter':        'RETROK_RETURN',
+    'NumpadEnter':  'RETROK_KP_ENTER',
+    'Tab':          'RETROK_TAB',
+    'Backspace':    'RETROK_BACKSPACE',
+    'Delete':       'RETROK_DELETE',
+    'Insert':       'RETROK_INSERT',
+    'Home':         'RETROK_HOME',
+    'End':          'RETROK_END',
+    'PageUp':       'RETROK_PAGEUP',
+    'PageDown':     'RETROK_PAGEDOWN',
+    'ArrowUp':      'RETROK_UP',
+    'ArrowDown':    'RETROK_DOWN',
+    'ArrowLeft':    'RETROK_LEFT',
+    'ArrowRight':   'RETROK_RIGHT',
+    'ShiftLeft':    'RETROK_LSHIFT',
+    'ShiftRight':   'RETROK_RSHIFT',
+    'ControlLeft':  'RETROK_LCTRL',
+    'ControlRight': 'RETROK_RCTRL',
+    'AltLeft':      'RETROK_LALT',
+    'AltRight':     'RETROK_RALT',
+    'MetaLeft':     'RETROK_LMETA',
+    'MetaRight':    'RETROK_RMETA',
+    'CapsLock':     'RETROK_CAPSLOCK',
+    'NumLock':      'RETROK_NUMLOCK',
+    'ScrollLock':   'RETROK_SCROLLOCK',
+    'Pause':        'RETROK_PAUSE',
+    'PrintScreen':  'RETROK_PRINT',
+    // Punctuation (US layout — fallback uses event.key for non-US)
+    'Minus':        'RETROK_MINUS',
+    'Equal':        'RETROK_EQUALS',
+    'BracketLeft':  'RETROK_LEFTBRACKET',
+    'BracketRight': 'RETROK_RIGHTBRACKET',
+    'Backslash':    'RETROK_BACKSLASH',
+    'Semicolon':    'RETROK_SEMICOLON',
+    'Quote':        'RETROK_QUOTE',
+    'Backquote':    'RETROK_BACKQUOTE',
+    'Comma':        'RETROK_COMMA',
+    'Period':       'RETROK_PERIOD',
+    'Slash':        'RETROK_SLASH',
+    'NumpadAdd':       'RETROK_KP_PLUS',
+    'NumpadSubtract':  'RETROK_KP_MINUS',
+    'NumpadMultiply':  'RETROK_KP_MULTIPLY',
+    'NumpadDivide':    'RETROK_KP_DIVIDE',
+    'NumpadDecimal':   'RETROK_KP_PERIOD',
+  });
+  return m;
+})();
+
+function keyEventToRetrok(e) {
+  if (CODE_TO_RETROK[e.code]) return CODE_TO_RETROK[e.code];
+  // Fallback: try a sensible guess from event.key
+  const k = e.key;
+  if (k && k.length === 1) {
+    if (/[a-zA-Z]/.test(k)) return 'RETROK_' + k.toLowerCase();
+    if (/[0-9]/.test(k))    return 'RETROK_' + k;
+  }
+  return null;
+}
+
+function stopListening(commit) {
+  if (!_listeningRow) return;
+  _listeningRow.classList.remove('listening');
+  const lbl = _listeningRow.querySelector('.listen-label');
+  if (lbl) lbl.textContent = 'listen';
+  if (_listeningKeyHandler) {
+    document.removeEventListener('keydown', _listeningKeyHandler, true);
+    _listeningKeyHandler = null;
+  }
+  if (_listeningOutsideHandler) {
+    document.removeEventListener('mousedown', _listeningOutsideHandler, true);
+    _listeningOutsideHandler = null;
+  }
+  _listeningRow = null;
+}
+
+function startListening(row) {
+  if (_listeningRow === row) { stopListening(false); return; }
+  if (_listeningRow) stopListening(false);
+  _listeningRow = row;
+  row.classList.add('listening');
+  const lbl = row.querySelector('.listen-label');
+  if (lbl) lbl.textContent = 'press a key…';
+
+  _listeningKeyHandler = (e) => {
+    if (e.key === 'Escape') {
+      e.preventDefault(); e.stopPropagation();
+      stopListening(false);
+      showToast('Binding cancelled.', 'info', 1500);
+      return;
+    }
+    // Don't let the key reach the input (we'll write the value ourselves)
+    e.preventDefault();
+    e.stopPropagation();
+    const retrok = keyEventToRetrok(e);
+    if (!retrok) {
+      showToast(`Unrecognised key (event.code "${e.code}"). Try another.`, 'error', 2400);
+      return;  // keep listening
+    }
+    const inp = row.querySelector('input[data-map-btn]');
+    if (inp) {
+      inp.value = retrok;
+      inp.dispatchEvent(new Event('input', { bubbles: true }));
+      inp.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    stopListening(true);
+    const padBtn = row.dataset.padBtn || '';
+    showToast(`Bound ${padBtn.toUpperCase()} → ${retrok}`, 'success', 2200);
+  };
+  _listeningOutsideHandler = (e) => {
+    if (!row.contains(e.target)) stopListening(false);
+  };
+
+  // Defer attaching the outside handler so the click that started us
+  // doesn't immediately stop us
+  setTimeout(() => {
+    document.addEventListener('keydown', _listeningKeyHandler, true);
+    document.addEventListener('mousedown', _listeningOutsideHandler, true);
+  }, 0);
+}
+
+// Event delegation — buildMappingRows() rebuilds rows; using delegation
+// avoids re-binding click handlers each time.
+mapGrid.addEventListener('click', (e) => {
+  const btn = e.target.closest('.listen-btn');
+  if (!btn) return;
+  const row = btn.closest('.map-row');
+  if (!row) return;
+  e.stopPropagation();
+  startListening(row);
+});
+
+
+// ============================================================
+// Profile templates (Task 2 — "Start from template" affordance)
+// ============================================================
+
+let _availableTemplates = [];
+let _templatePopover = null;
+
+async function refreshTemplateButton(systemId) {
+  const btn = document.getElementById('btn-from-template');
+  if (!btn) return;
+  _availableTemplates = [];
+  try {
+    const data = await api('GET', `/api/templates?system=${encodeURIComponent(systemId)}`);
+    _availableTemplates = data.templates || [];
+  } catch (e) {
+    console.warn('templates fetch failed:', e);
+  }
+  btn.hidden = _availableTemplates.length === 0;
+}
+
+function dismissTemplatePopover() {
+  if (_templatePopover) {
+    _templatePopover.remove();
+    _templatePopover = null;
+    document.removeEventListener('mousedown', onTemplateOutsideClick, true);
+    document.removeEventListener('keydown', onTemplateKey, true);
+  }
+}
+
+function onTemplateOutsideClick(e) {
+  if (!_templatePopover) return;
+  if (!_templatePopover.contains(e.target) &&
+      !document.getElementById('btn-from-template').contains(e.target)) {
+    dismissTemplatePopover();
+  }
+}
+function onTemplateKey(e) {
+  if (e.key === 'Escape') dismissTemplatePopover();
+}
+
+function showTemplatePopover() {
+  dismissTemplatePopover();
+  if (!_availableTemplates.length) return;
+  const btn = document.getElementById('btn-from-template');
+  if (!btn) return;
+
+  const pop = document.createElement('div');
+  pop.id = 'rbcf-tpl-popover';
+  pop.className = 'rbcf-tpl-popover';
+  pop.setAttribute('role', 'dialog');
+  pop.setAttribute('aria-label', 'Start from template');
+
+  const items = _availableTemplates.map(t => `
+    <button type="button" class="rbcf-tpl-item" data-tpl-id="${escapeHtml(t.id)}">
+      <span class="rbcf-tpl-name">${escapeHtml(t.name)}</span>
+      ${t.description ? `<span class="rbcf-tpl-desc">${escapeHtml(t.description)}</span>` : ''}
+    </button>
+  `).join('');
+
+  pop.innerHTML = `
+    <div class="rbcf-tpl-head">
+      <h3 class="rbcf-tpl-title">Start from template</h3>
+      <button type="button" class="rbcf-tpl-close" data-act="close" aria-label="Close">×</button>
+    </div>
+    <p class="rbcf-tpl-hint">
+      Pick a template to populate the form. You can still customise
+      every field before saving. Existing values will be replaced.
+    </p>
+    <div class="rbcf-tpl-list">${items}</div>
+  `;
+  document.body.appendChild(pop);
+  _templatePopover = pop;
+
+  // Position under the button, right-aligned
+  const r = btn.getBoundingClientRect();
+  const popW = 360;
+  let left = r.right - popW;
+  if (left < 8) left = 8;
+  pop.style.position = 'fixed';
+  pop.style.top = (r.bottom + 6) + 'px';
+  pop.style.left = left + 'px';
+  pop.style.width = popW + 'px';
+
+  pop.querySelector('[data-act="close"]').addEventListener('click', dismissTemplatePopover);
+  pop.querySelectorAll('.rbcf-tpl-item').forEach(item => {
+    item.addEventListener('click', async () => {
+      const id = item.dataset.tplId;
+      await applyTemplate(selSystem.value, id);
+      dismissTemplatePopover();
+    });
+  });
+
+  // Close on outside click / Escape
+  setTimeout(() => {
+    document.addEventListener('mousedown', onTemplateOutsideClick, true);
+    document.addEventListener('keydown', onTemplateKey, true);
+  }, 0);
+}
+
+async function applyTemplate(systemId, templateId) {
+  try {
+    const data = await api('GET',
+      `/api/template?system=${encodeURIComponent(systemId)}&id=${encodeURIComponent(templateId)}`);
+    const tpl = data.template || {};
+    if (tpl._error) {
+      showToast('Template error: ' + tpl._error, 'error');
+      return;
+    }
+    // Reuse the form populator — it accepts the same shape
+    populateForm(tpl);
+    const tplName = tpl.template || templateId;
+    showToast(`Loaded: ${tplName}`, 'success', 2200);
+  } catch (e) {
+    showToast('Failed to load template: ' + e.message, 'error');
+  }
+}
+
+// (escapeHtml is already defined elsewhere in this file — reusing it)
+
+// Hook the button click — the button itself is in the markup, hidden
+// until refreshTemplateButton() finds templates for the selected system.
+document.addEventListener('DOMContentLoaded', () => {
+  const btn = document.getElementById('btn-from-template');
+  if (btn) {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (_templatePopover) dismissTemplatePopover();
+      else showTemplatePopover();
+    });
+  }
+});
+
+
 selSystem.addEventListener('change', async () => {
   const id = selSystem.value;
   setTargetForSystem(id);
@@ -2263,10 +2825,13 @@ selSystem.addEventListener('change', async () => {
   await loadGames(id);
   selGame.value = '';
   clearForm();
+  await refreshTemplateButton(id);
+  await refreshClickAcrossForSystem(id, '');
 });
 
 selGame.addEventListener('change', async () => {
   await loadProfile(selSystem.value, selGame.value);
+  await refreshClickAcrossForSystem(selSystem.value, selGame.value);
 });
 
 // Flow 4 — silently downgrade V/K profiles to T when the user edits any
@@ -2293,6 +2858,31 @@ document.addEventListener('change', (e) => {
 
 $('btn-save').addEventListener('click', onSave);
 $('btn-apply').addEventListener('click', onApply);
+
+// Task 4 — Launch-test button: spawn RetroBat with the selected ROM
+// for live mapping verification.
+async function onLaunchTest() {
+  const sysId = selSystem.value;
+  const rom = selGame.value;
+  if (!sysId) { showToast('Pick a system first.', 'error'); return; }
+  if (!rom)   { showToast('Pick a game first — Test launches the selected ROM.', 'error'); return; }
+  const btn = $('btn-launch-test');
+  if (btn) btn.disabled = true;
+  try {
+    const r = await api('POST', '/api/launch-test', { system: sysId, rom });
+    if (r.ok) {
+      showToast(`Launching ${rom} in RetroBat (pid ${r.pid})…`, 'success', 3000);
+    } else {
+      showToast('Launch failed: ' + (r.error || 'unknown'), 'error', 4000);
+    }
+  } catch (e) {
+    showToast('Launch error: ' + e.message, 'error', 4000);
+  } finally {
+    if (btn) setTimeout(() => { btn.disabled = false; }, 1500);
+  }
+}
+const btnLaunchTest = $('btn-launch-test');
+if (btnLaunchTest) btnLaunchTest.addEventListener('click', onLaunchTest);
 
 // Pad-list pill clicks are wired per-pill inside renderPadList(); the
 // standalone Rescan icon button is wired there too. Nothing to wire here.
@@ -2670,6 +3260,67 @@ function setSectionCollapsed(section, collapsed) {
   if (chev) chev.textContent = collapsed ? '▸' : '▾';
 }
 
+// ============================================================
+// User-tunable accent (cross-theme)
+// Persists via localStorage 'rbcf-user-accent'; overrides --acc
+// (and a derived --acc-2) on document.documentElement at runtime.
+// Reset clears the override and falls back to whatever the active
+// theme defines.
+// ============================================================
+
+const USER_ACCENT_KEY = 'rbcf-user-accent';
+
+function applyUserAccent(value) {
+  const root = document.documentElement;
+  if (value) {
+    root.style.setProperty('--acc', value);
+    // Derive a brighter --acc-2 by blending toward white in HSL space
+    root.style.setProperty('--acc-2', deriveLighter(value, 0.18));
+    // Update the gradient + the picker swatch
+    root.style.setProperty('--acc-bg',      hexToRgba(value, 0.18));
+    root.style.setProperty('--acc-bg-soft', hexToRgba(value, 0.10));
+  } else {
+    // Clear all overrides — fall back to theme-defined values
+    for (const k of ['--acc', '--acc-2', '--acc-bg', '--acc-bg-soft']) {
+      root.style.removeProperty(k);
+    }
+  }
+}
+
+function hexToRgba(hex, alpha) {
+  const m = hex.match(/^#?([0-9a-fA-F]{6})$/);
+  if (!m) return hex;
+  const v = parseInt(m[1], 16);
+  return `rgba(${(v>>16)&255}, ${(v>>8)&255}, ${v&255}, ${alpha})`;
+}
+
+function deriveLighter(hex, mix) {
+  // Blend `hex` toward white by `mix` (0..1)
+  const m = hex.match(/^#?([0-9a-fA-F]{6})$/);
+  if (!m) return hex;
+  const v = parseInt(m[1], 16);
+  const r = (v>>16)&255, g = (v>>8)&255, b = v&255;
+  const lr = Math.round(r + (255 - r) * mix);
+  const lg = Math.round(g + (255 - g) * mix);
+  const lb = Math.round(b + (255 - b) * mix);
+  return '#' + ((1<<24) | (lr<<16) | (lg<<8) | lb).toString(16).slice(1);
+}
+
+// The picker + reset live INSIDE the existing settings popover render —
+// see showSettingsPopover() above. They're wired there, not via a
+// separate setup function, because the popover is dynamically rendered
+// each time it opens.
+
+// Apply persisted accent BEFORE first paint — same pattern as the
+// theme switcher does for `[data-theme]`. Avoids a flash of wrong colour.
+(function preApplyAccent() {
+  try {
+    const v = localStorage.getItem(USER_ACCENT_KEY);
+    if (v) applyUserAccent(v);
+  } catch (_) {}
+})();
+
+
 function setupCollapsibles() {
   const sections = $$('section.collapsible');
   const stored = readCollapsedState();
@@ -2701,6 +3352,12 @@ function setupCollapsibles() {
   }
   setupCollapsibles();
   injectSettingsCog();
+  setupClickAcross();
+  // Initial templates pass for the default system (after loadSystems set it)
+  if (selSystem.value) {
+    await refreshTemplateButton(selSystem.value);
+    await refreshClickAcrossForSystem(selSystem.value, selGame.value || '');
+  }
   // Render the placeholder pad-list before the probe lands.
   renderPadList();
   loadDevices();  // fire & forget — drives the pad-list + popover body

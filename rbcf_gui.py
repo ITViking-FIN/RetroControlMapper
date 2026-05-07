@@ -95,6 +95,7 @@ import xml_safe
 ROOT = Path(__file__).resolve().parent
 GUI_DIR = ROOT / "gui"
 PROFILES_DIR = ROOT / "profiles"
+TEMPLATES_DIR = ROOT / "profile_templates"
 RBCF_PY = ROOT / "rbcf.py"
 SYNC_PY = ROOT / "controller_sync.py"
 CATALOG_YAML = ROOT / "controller_catalog.yaml"
@@ -138,34 +139,81 @@ HARDCODED_SYSTEMS = [
     # community-confirmed conventions. RetroPad is the canonical "PS3 with
     # SNES face buttons" layout (B=south, A=east, Y=west, X=north).
     {"id": "nes",          "name": "Nintendo Entertainment System", "target_controller": None,
+     "target_layout": {"face": {"layout": "row", "count": 2, "labels": ["B", "A"], "colors": ["red", "red"]},
+                       "dpad": True, "sticks": 0, "shoulders": 0, "start": True, "select": True,
+                       "label": "NES — D-pad + 2 buttons"},
      "fixed_mapping_note": "RetroPad → NES: B=B · A=A (south=B, east=A — matches NES face order) · Select=Select · Start=Start · D-pad=D-pad"},
     {"id": "snes",         "name": "Super Nintendo Entertainment System", "target_controller": None,
+     "target_layout": {"face": {"layout": "diamond", "count": 4, "labels": ["X", "A", "B", "Y"],
+                                 "colors": ["blue", "red", "yellow", "green"]},
+                       "dpad": True, "sticks": 0, "shoulders": 2, "start": True, "select": True,
+                       "label": "SNES — D-pad + 4 face + L/R"},
      "fixed_mapping_note": "RetroPad → SNES: B=B · A=A · Y=Y · X=X · L=L · R=R · Select=Select · Start=Start (RetroPad layout matches SNES diamond — no swap)"},
     {"id": "megadrive",    "name": "Sega Mega Drive / Genesis", "target_controller": None,
+     "target_layout": {"face": {"layout": "grid", "count": 6, "labels": ["X", "Y", "Z", "A", "B", "C"]},
+                       "dpad": True, "sticks": 0, "shoulders": 0, "start": True, "select": False,
+                       "label": "Mega Drive — D-pad + 6 face (3-btn ignores X/Y/Z)"},
      "fixed_mapping_note": "RetroPad → Genesis 3-button: B=A · A=B · Y=C · Start=Start · Select=Mode. 6-button adds: X=Y · L=X · R=Z (genesis_plus_gx default)"},
     {"id": "genesis",      "name": "Sega Genesis", "target_controller": None,
+     "target_layout": {"face": {"layout": "grid", "count": 6, "labels": ["X", "Y", "Z", "A", "B", "C"]},
+                       "dpad": True, "sticks": 0, "shoulders": 0, "start": True, "select": False,
+                       "label": "Genesis — D-pad + 6 face"},
      "fixed_mapping_note": "RetroPad → Genesis 3-button: B=A · A=B · Y=C · Start=Start · Select=Mode. 6-button adds: X=Y · L=X · R=Z"},
     {"id": "mastersystem", "name": "Sega Master System", "target_controller": None,
+     "target_layout": {"face": {"layout": "row", "count": 2, "labels": ["1", "2"]},
+                       "dpad": True, "sticks": 0, "shoulders": 0, "start": True, "select": False,
+                       "label": "Master System — D-pad + 2 buttons"},
      "fixed_mapping_note": "RetroPad → SMS: B=Button 1 · A=Button 2 · Start=Pause/Start · D-pad=D-pad (genesis_plus_gx)"},
     {"id": "gamegear",     "name": "Sega Game Gear", "target_controller": None,
+     "target_layout": {"face": {"layout": "row", "count": 2, "labels": ["1", "2"]},
+                       "dpad": True, "sticks": 0, "shoulders": 0, "start": True, "select": False,
+                       "label": "Game Gear — D-pad + 2 buttons"},
      "fixed_mapping_note": "RetroPad → Game Gear: B=Button 1 · A=Button 2 · Start=Start · D-pad=D-pad (genesis_plus_gx)"},
     {"id": "gb",           "name": "Nintendo Game Boy", "target_controller": None,
+     "target_layout": {"face": {"layout": "row", "count": 2, "labels": ["B", "A"]},
+                       "dpad": True, "sticks": 0, "shoulders": 0, "start": True, "select": True,
+                       "label": "Game Boy — D-pad + 2 buttons"},
      "fixed_mapping_note": "RetroPad → GB: B=B · A=A · Select=Select · Start=Start · D-pad=D-pad (gambatte/sameboy)"},
     {"id": "gbc",          "name": "Nintendo Game Boy Color", "target_controller": None,
+     "target_layout": {"face": {"layout": "row", "count": 2, "labels": ["B", "A"]},
+                       "dpad": True, "sticks": 0, "shoulders": 0, "start": True, "select": True,
+                       "label": "Game Boy Color — D-pad + 2 buttons"},
      "fixed_mapping_note": "RetroPad → GBC: B=B · A=A · Select=Select · Start=Start · D-pad=D-pad (gambatte/sameboy)"},
     {"id": "gba",          "name": "Nintendo Game Boy Advance", "target_controller": None,
-     "fixed_mapping_note": "RetroPad → GBA: B=B · A=A · L=L · R=R · Select=Select · Start=Start · D-pad=D-pad (mGBA)"},
+     "target_layout": {"face": {"layout": "row", "count": 2, "labels": ["B", "A"]},
+                       "dpad": True, "sticks": 0, "shoulders": 2, "start": True, "select": True,
+                       "label": "GBA — D-pad + 2 face + L/R"},
+     "fixed_mapping_note": "RetroPad → GBA: B=B · A=A · L=L · R=R · Select=Select · Start=Start (mGBA)"},
     {"id": "nds",          "name": "Nintendo DS", "target_controller": None,
+     "target_layout": {"face": {"layout": "diamond", "count": 4, "labels": ["X", "A", "B", "Y"]},
+                       "dpad": True, "sticks": 0, "shoulders": 2, "start": True, "select": True,
+                       "label": "NDS — D-pad + 4 face + L/R + touch (R-stick)"},
      "fixed_mapping_note": "RetroPad → NDS: B=B · A=A · Y=Y · X=X · L=L · R=R · Select=Select · Start=Start · R-stick=touch pointer (desmume default; melonDS similar)"},
     {"id": "n64",          "name": "Nintendo 64", "target_controller": None,
+     "target_layout": {"face": {"layout": "row", "count": 3, "labels": ["B", "A", "Z"]},
+                       "dpad": True, "sticks": 1, "shoulders": 4, "start": True, "select": False,
+                       "label": "N64 — Stick + D-pad + 3 face + L/R/Z (C via R-stick)"},
      "fixed_mapping_note": "RetroPad → N64: B=A (south=N64-A) · Y=B · R2=Z · L=L · R=R · Start=Start · R-stick=C-buttons (mupen64plus_next default; HOLD R2 to access C via face buttons)"},
     {"id": "psx",          "name": "Sony PlayStation", "target_controller": None,
+     "target_layout": {"face": {"layout": "diamond", "count": 4, "labels": ["△", "○", "✕", "□"],
+                                 "colors": ["green", "red", "blue", "yellow"]},
+                       "dpad": True, "sticks": 2, "shoulders": 4, "start": True, "select": True,
+                       "label": "PlayStation — DualShock layout"},
      "fixed_mapping_note": "RetroPad → PSX: B=Cross · A=Circle · Y=Square · X=Triangle · L/R/L2/R2 same · Select=Select · Start=Start (Beetle PSX / DuckStation / SwanStation — matches PS3 layout natively)"},
     {"id": "dreamcast",    "name": "Sega Dreamcast", "target_controller": None,
+     "target_layout": {"face": {"layout": "diamond", "count": 4, "labels": ["Y", "X", "A", "B"]},
+                       "dpad": True, "sticks": 1, "shoulders": 2, "start": True, "select": False,
+                       "label": "Dreamcast — Stick + D-pad + 4 face + L/R triggers"},
      "fixed_mapping_note": "RetroPad → DC: B=A · A=B · Y=X · X=Y (note swap — DC face uses opposite cardinal positions to RetroPad) · L2=L-trigger · R2=R-trigger · Start=Start (Flycast default)"},
     {"id": "saturn",       "name": "Sega Saturn", "target_controller": None,
+     "target_layout": {"face": {"layout": "grid", "count": 6, "labels": ["X", "Y", "Z", "A", "B", "C"]},
+                       "dpad": True, "sticks": 0, "shoulders": 2, "start": True, "select": False,
+                       "label": "Saturn — D-pad + 6 face + L/R"},
      "fixed_mapping_note": "RetroPad → Saturn: B=A · A=B · Y=X · X=Y · L=L · R=R · L2=Z · R2=C · Start=Start (Beetle Saturn / Kronos / YabaSanshiro — RetroPad mapped onto Saturn's 6-button face)"},
     {"id": "pcengine",     "name": "PC Engine / TurboGrafx-16", "target_controller": None,
+     "target_layout": {"face": {"layout": "row", "count": 2, "labels": ["II", "I"]},
+                       "dpad": True, "sticks": 0, "shoulders": 0, "start": True, "select": True,
+                       "label": "PC Engine — D-pad + 2 (Run/Sel)"},
      "fixed_mapping_note": "RetroPad → PCE: B=II · Y=I (BY-style — Beetle PCE default, NOT BA) · Start=Run · Select=Select. 6-button adds: A=III · X=IV · L=V · R=VI"},
 
     # --- Tier 2: popular arcade / specialty ---
@@ -306,13 +354,17 @@ def _merge_systems() -> list[dict]:
     for entry in discovered:
         ov = overlay.get(entry["id"])
         if ov is not None:
-            merged.append({
+            merged_entry = {
                 "id": entry["id"],
                 "name": ov["name"],
                 "target_controller": ov["target_controller"],
                 "fixed_mapping_note": ov["fixed_mapping_note"],
                 "extensions": entry["extensions"],
-            })
+            }
+            # Optional: target_layout descriptor for generic SVG generation
+            if "target_layout" in ov:
+                merged_entry["target_layout"] = ov["target_layout"]
+            merged.append(merged_entry)
         else:
             merged.append(entry)
     # If a hardcoded entry has no matching <system> in es_systems.cfg
@@ -684,6 +736,293 @@ def load_system_default(system: str) -> dict:
         return {"_error": f"YAML parse error: {e}"}
 
 
+# ============================================================
+# Click-across remap (Task 4 of v0.1.3-stretch — partial scope)
+# ------------------------------------------------------------
+# Per-game RetroArch input remaps written to:
+#   <RetroBat>/emulators/retroarch/config/remaps/<core display>/<rom>.rmp
+#
+# Each line has the form:
+#   input_remap_id_1_btn_<source> = <libretro_index>
+#
+# i.e. "physical RetroPad <source> button now produces what RetroPad
+# <libretro_index> normally produces". Values 0..15 are the standard
+# libretro RetroPad indices (B=0, Y=1, Select=2, Start=3, U/D/L/R=4..7,
+# A=8, X=9, L=10, R=11, L2=12, R2=13, L3=14, R3=15).
+#
+# In v0.1.3 we only enable click-across for systems lacking
+# `fixed_mapping_note` — the curated set keeps RetroBat's defaults.
+# ============================================================
+
+# Common defaults so users get *something* even on systems where
+# es_settings.cfg hasn't been touched. Subset — extends naturally as we
+# learn more.
+DEFAULT_CORE_FOR_SYSTEM = {
+    "snes":         "snes9x",
+    "sfc":          "snes9x",
+    "nes":          "fceumm",
+    "fds":          "fceumm",
+    "megadrive":    "genesis_plus_gx",
+    "genesis":      "genesis_plus_gx",
+    "mastersystem": "genesis_plus_gx",
+    "gamegear":     "genesis_plus_gx",
+    "sega32x":      "picodrive",
+    "segacd":       "genesis_plus_gx",
+    "gb":           "gambatte",
+    "gbc":          "gambatte",
+    "gba":          "mgba",
+    "n64":          "mupen64plus_next",
+    "psx":          "swanstation",
+    "saturn":       "kronos",
+    "dreamcast":    "flycast",
+    "pcengine":     "mednafen_pce",
+    "pcenginecd":   "mednafen_pce",
+    "supergrafx":   "mednafen_supergrafx",
+    "ngp":          "mednafen_ngp",
+    "ngpc":         "mednafen_ngp",
+    "lynx":         "handy",
+    "wonderswan":   "mednafen_wswan",
+    "wswan":        "mednafen_wswan",
+    "atari2600":    "stella",
+    "atari7800":    "prosystem",
+    "neogeo":       "fbneo",
+    "neogeocd":     "neocd",
+    "mame":         "mame",
+    "fbneo":        "fbneo",
+    "cps1":         "fbalpha2012_cps1",
+    "cps2":         "fbalpha2012_cps2",
+    "cps3":         "fbalpha2012_cps3",
+    "amstradcpc":   "cap32",
+    "zxspectrum":   "fuse",
+    "msx":          "bluemsx",
+    "msx2":         "bluemsx",
+    "atarist":      "hatari",
+    "thomson":      "theodore",
+    "c64":          "vice_x64",
+}
+
+
+def core_for_system(system_id: str) -> str | None:
+    """Find the libretro core_id RetroBat uses for a system.
+
+    Reads `<system>.core` from es_settings.cfg first (user override),
+    falls back to DEFAULT_CORE_FOR_SYSTEM. Returns None if neither
+    knows; callers should error out.
+    """
+    if not system_id:
+        return None
+    # Prefer user override from es_settings.cfg
+    try:
+        es_path = RETROBAT_ROOT / "emulationstation" / ".emulationstation" / "es_settings.cfg"
+        if es_path.exists():
+            text = es_path.read_text(encoding="utf-8", errors="ignore")
+            m = re.search(rf'<string name="{re.escape(system_id)}\.core" value="([^"]+)"',
+                          text)
+            if m:
+                return m.group(1)
+    except (OSError, AttributeError):
+        pass
+    return DEFAULT_CORE_FOR_SYSTEM.get(system_id)
+
+
+def core_display_name(core_id: str) -> str | None:
+    """Read the libretro info file to find the FOLDER name RetroArch uses
+    under config/remaps/. That's the `corename` field (short, e.g.
+    "Snes9x" / "VICE x64") — NOT `display_name` which is longer
+    ("Nintendo - SNES / SFC (Snes9x)"). Falls back to display_name only
+    if corename is missing."""
+    if not core_id or RETROBAT_ROOT is None:
+        return None
+    info_path = RETROBAT_ROOT / "emulators" / "retroarch" / "info" / f"{core_id}_libretro.info"
+    if not info_path.exists():
+        return None
+    corename = None
+    display = None
+    try:
+        for line in info_path.read_text(encoding="utf-8", errors="ignore").splitlines():
+            m = re.match(r'\s*corename\s*=\s*"([^"]+)"', line)
+            if m: corename = m.group(1).strip(); continue
+            m = re.match(r'\s*display_name\s*=\s*"([^"]+)"', line)
+            if m: display = m.group(1).strip()
+    except OSError:
+        pass
+    return corename or display
+
+
+def remap_path(system_id: str, rom: str) -> Path | None:
+    """Resolve the per-game .rmp path for a (system, rom) pair, or None
+    if any lookup along the chain fails."""
+    if RETROBAT_ROOT is None:
+        return None
+    cid = core_for_system(system_id)
+    if not cid:
+        return None
+    disp = core_display_name(cid)
+    if not disp:
+        return None
+    # Strip any extension off the rom basename for the .rmp filename
+    rom_stem = Path(rom).stem
+    return (RETROBAT_ROOT / "emulators" / "retroarch" / "config" / "remaps"
+            / disp / f"{rom_stem}.rmp")
+
+
+# Standard libretro RetroPad button indices. Values 0..15.
+LIBRETRO_BUTTON_INDEX = {
+    "b": 0, "y": 1, "select": 2, "start": 3,
+    "up": 4, "down": 5, "left": 6, "right": 7,
+    "a": 8, "x": 9, "l": 10, "r": 11,
+    "l2": 12, "r2": 13, "l3": 14, "r3": 15,
+}
+
+
+def read_remap(system: str, rom: str) -> dict:
+    """Return current per-source remap values from the .rmp, plus the
+    resolved path so the UI can show whether persistence is wired up."""
+    out = {"path": None, "core": None, "display": None, "bindings": {}, "exists": False}
+    p = remap_path(system, rom)
+    cid = core_for_system(system)
+    out["core"] = cid
+    if cid:
+        out["display"] = core_display_name(cid)
+    if p is None:
+        return out
+    out["path"] = str(p).replace("\\", "/")
+    if not p.exists():
+        return out
+    out["exists"] = True
+    pat = re.compile(r'^input_remap_id_1_btn_([a-z0-9]+)\s*=\s*"?(-?\d+)"?\s*$')
+    try:
+        for line in p.read_text(encoding="utf-8", errors="ignore").splitlines():
+            m = pat.match(line.strip())
+            if not m:
+                continue
+            src, idx = m.group(1), int(m.group(2))
+            out["bindings"][src] = idx
+    except OSError:
+        pass
+    return out
+
+
+def write_remap(data: dict) -> dict:
+    """Write a single physical-source → libretro-index binding into the
+    per-game .rmp. Body schema:
+        {system, rom, source: "a", target_index: 0}
+        — or —
+        {system, rom, bindings: {a:0, b:8, ...}, replace: false}
+    Replace=false (default) merges with existing bindings; replace=true
+    rewrites the file from scratch.
+    """
+    system = (data.get("system") or "").strip()
+    rom = (data.get("rom") or "").strip()
+    if not system or not rom:
+        return {"ok": False, "error": "missing 'system' or 'rom'"}
+    p = remap_path(system, rom)
+    if p is None:
+        return {"ok": False, "error": "could not resolve core for this system "
+                "(missing es_settings.cfg / core not in DEFAULT_CORE_FOR_SYSTEM)"}
+
+    # Compose desired binding set
+    target = {}
+    if isinstance(data.get("bindings"), dict):
+        for k, v in data["bindings"].items():
+            if k in LIBRETRO_BUTTON_INDEX and isinstance(v, int) and 0 <= v <= 15:
+                target[k] = v
+    elif "source" in data and "target_index" in data:
+        src = str(data["source"]).strip().lower()
+        idx = int(data["target_index"])
+        if src not in LIBRETRO_BUTTON_INDEX:
+            return {"ok": False, "error": f"unknown source button '{src}'"}
+        if not (0 <= idx <= 15):
+            return {"ok": False, "error": f"target_index out of range: {idx}"}
+        target[src] = idx
+    else:
+        return {"ok": False, "error": "no bindings supplied"}
+
+    # Merge with existing unless replace=true
+    existing_lines = []
+    existing_bindings = {}
+    if p.exists():
+        try:
+            existing_lines = p.read_text(encoding="utf-8", errors="ignore").splitlines()
+            pat = re.compile(r'^input_remap_id_1_btn_([a-z0-9]+)\s*=\s*"?(-?\d+)"?\s*$')
+            for line in existing_lines:
+                m = pat.match(line.strip())
+                if m:
+                    existing_bindings[m.group(1)] = int(m.group(2))
+        except OSError:
+            pass
+
+    if data.get("replace"):
+        merged = target
+    else:
+        merged = {**existing_bindings, **target}
+        # Allow explicit-clear via target_index = -1
+        merged = {k: v for k, v in merged.items() if v >= 0}
+
+    # Write — preserve any non-`btn_` lines RetroArch may have written
+    # (analog dpad mode, device type, turbo etc.). Only replace our keys.
+    p.parent.mkdir(parents=True, exist_ok=True)
+    out_lines = []
+    keys_seen = set()
+    for line in existing_lines:
+        m = re.match(r'^(input_remap_id_1_btn_)([a-z0-9]+)\s*=', line.strip())
+        if m:
+            keys_seen.add(m.group(2))
+            if m.group(2) in merged:
+                out_lines.append(f'input_remap_id_1_btn_{m.group(2)} = "{merged[m.group(2)]}"')
+            # else: drop the line (key cleared)
+        else:
+            if line.strip():
+                out_lines.append(line)
+    # New keys that didn't exist yet
+    for src, idx in merged.items():
+        if src not in keys_seen:
+            out_lines.append(f'input_remap_id_1_btn_{src} = "{idx}"')
+    p.write_text("\n".join(out_lines) + "\n", encoding="utf-8")
+    return {"ok": True, "path": str(p).replace("\\", "/"), "bindings": merged}
+
+
+def list_templates(system: str) -> list[dict]:
+    """List profile templates available for a given system.
+
+    Templates live in profile_templates/<system>/<name>.yaml — they're
+    profile YAMLs without a `rom:` field but WITH a `template:` field that
+    names them for the picker UI. Returns metadata only; the GUI fetches
+    the full YAML via /api/template?system=X&id=Y when the user selects
+    one.
+    """
+    out = []
+    if not system:
+        return out
+    sys_dir = TEMPLATES_DIR / system
+    if not sys_dir.is_dir():
+        return out
+    for yml in sorted(sys_dir.glob("*.yaml")):
+        try:
+            data = yaml.safe_load(yml.read_text(encoding="utf-8")) or {}
+        except yaml.YAMLError:
+            continue
+        out.append({
+            "id": yml.stem,                              # filename sans .yaml
+            "name": data.get("template") or yml.stem,
+            "description": (data.get("description") or "").strip(),
+        })
+    return out
+
+
+def load_template(system: str, template_id: str) -> dict:
+    if not system or not template_id:
+        return {}
+    safe_id = re.sub(r"[^A-Za-z0-9_\-]", "", template_id)
+    p = TEMPLATES_DIR / system / f"{safe_id}.yaml"
+    if not p.exists():
+        return {}
+    try:
+        return yaml.safe_load(p.read_text(encoding="utf-8")) or {}
+    except yaml.YAMLError as e:
+        return {"_error": f"YAML parse error: {e}"}
+
+
 def save_profile(data: dict) -> dict:
     system = data.get("system")
     rom = data.get("rom")
@@ -712,6 +1051,53 @@ def save_profile(data: dict) -> dict:
         encoding="utf-8",
     )
     return {"ok": True, "path": str(out)}
+
+
+def launch_test(data: dict) -> dict:
+    """Launch RetroBat with a specific ROM for live mapping testing.
+
+    Phase A (v0.1.3): spawn RetroBat.exe with -system / -rom args. Don't
+    wait for it; user can close it whenever and the GUI stays responsive.
+    Window-docking via ctypes/SetWindowPos is parked for v0.1.3-stretch
+    or v0.1.4 — see v0.1.3-PLAN.md Task 4 notes.
+    """
+    system = (data.get("system") or "").strip()
+    rom = (data.get("rom") or "").strip()
+    if not system or not rom:
+        return {"ok": False, "error": "missing 'system' or 'rom'"}
+    if RETROBAT_ROOT is None:
+        return {"ok": False, "error": "RetroBat root not configured"}
+    rom_path = ROMS_ROOT / system / rom
+    if not rom_path.exists():
+        return {"ok": False, "error": f"ROM not found: {rom_path}"}
+    retrobat_exe = RETROBAT_ROOT / "RetroBat.exe"
+    if not retrobat_exe.exists():
+        return {"ok": False, "error": f"RetroBat.exe not found at {retrobat_exe}"}
+
+    # Conservative arg set — `-rom` alone tells RetroBat to launch into the
+    # ROM via its own launch pipeline (es_systems.cfg + emulatorLauncher).
+    # If RetroBat ignores -rom in some configurations we can fall back to
+    # spawning emulatorLauncher.exe directly with full argv.
+    cmd = [str(retrobat_exe), "-system", system, "-rom", str(rom_path)]
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            cwd=str(RETROBAT_ROOT),
+            # CREATE_NEW_PROCESS_GROUP so closing our server doesn't kill
+            # the emulator. Windows-only flag.
+            creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0),
+        )
+    except OSError as e:
+        return {"ok": False, "error": f"spawn failed: {e}"}
+
+    return {
+        "ok": True,
+        "pid": proc.pid,
+        "system": system,
+        "rom": rom,
+        "rom_path": str(rom_path).replace("\\", "/"),
+        "cmd": " ".join(cmd),
+    }
 
 
 def run_apply() -> dict:
@@ -2258,6 +2644,24 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             q = self._query()
             sys_id = (q.get("system", [""])[0] or "").strip()
             return self._json({"system": sys_id, "profile": load_system_default(sys_id)})
+        if u.path == "/api/templates":
+            q = self._query()
+            sys_id = (q.get("system", [""])[0] or "").strip()
+            return self._json({"system": sys_id, "templates": list_templates(sys_id)})
+        if u.path == "/api/template":
+            q = self._query()
+            sys_id = (q.get("system", [""])[0] or "").strip()
+            tpl_id = (q.get("id", [""])[0] or "").strip()
+            return self._json({
+                "system": sys_id,
+                "id": tpl_id,
+                "template": load_template(sys_id, tpl_id),
+            })
+        if u.path == "/api/remap":
+            q = self._query()
+            sys_id = (q.get("system", [""])[0] or "").strip()
+            rom = (q.get("rom", [""])[0] or "").strip()
+            return self._json(read_remap(sys_id, rom))
         if u.path == "/api/retrobat-root":
             return self._json(_retrobat_root_payload())
         if u.path == "/api/scan":
@@ -2366,6 +2770,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._json(result)
         if u.path == "/api/apply":
             return self._json(run_apply())
+        if u.path == "/api/launch-test":
+            return self._json(launch_test(data))
+        if u.path == "/api/remap":
+            return self._json(write_remap(data))
         if u.path == "/api/sync":
             result = run_sync_now(dry=bool(data.get("dry_run")))
             refresh_catalog()

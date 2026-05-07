@@ -1,0 +1,22 @@
+template: "Menu-heavy C64"
+system: c64
+description: |
+  For C64 games whose pre-game menus rely on F1 / F3 / F5 / F7 (and
+  often RUN/STOP). Maps Y/X/B/A face buttons to F1/F3/F5/F7 so the
+  user can navigate menus without touching the keyboard. Boulder Dash
+  is the canonical example.
+es_settings:
+  GameFocus: "1"
+  c64_model: "C64 PAL auto"
+core_options:
+  vice_mapper_y: RETROK_F1
+  vice_mapper_x: RETROK_F3
+  vice_mapper_b: RETROK_F5
+  vice_mapper_a: RETROK_F7
+  vice_physical_keyboard_pass_through: enabled
+button_semantics:
+  Y: "F1 — start / cycle"
+  X: "F3 — options"
+  B: "F5 — colour mode"
+  A: "F7 — level select"
+  Stick: "Joystick (port 2 default)"

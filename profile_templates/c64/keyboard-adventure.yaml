@@ -1,0 +1,16 @@
+template: "C64 — Keyboard adventure / inventory game"
+system: c64
+description: |
+  C64 games that lean heavily on the physical keyboard for inventory,
+  verbs, or text input — Last Ninja, Maniac Mansion, Bards Tale, etc.
+  GameFocus + physical-keyboard-pass-through ON so all keystrokes
+  reach the emulator.
+es_settings:
+  GameFocus: "1"
+  c64_model: "C64 PAL auto"
+core_options:
+  vice_physical_keyboard_pass_through: enabled
+button_semantics:
+  B: "Joystick fire"
+  Y: "(unmapped — use keyboard for inventory)"
+  Stick: "Joystick (port 2 default)"

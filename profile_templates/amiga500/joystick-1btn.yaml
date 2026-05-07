@@ -1,0 +1,10 @@
+template: "Amiga 500 — 1-button joystick"
+system: amiga500
+description: |
+  Default Amiga RetroPad behaviour for the bulk of single-fire-button
+  Amiga arcade games. No mouse, no special mapping.
+es_settings:
+  GameFocus: "0"
+button_semantics:
+  B: "Joystick fire"
+  Stick: "Joystick directional"

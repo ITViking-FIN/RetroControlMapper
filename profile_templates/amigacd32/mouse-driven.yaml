@@ -1,0 +1,13 @@
+template: "Amiga CD32 — Mouse-driven (Cannon Fodder, Lemmings, etc.)"
+system: amigacd32
+description: |
+  CD32 games that use the controller as mouse-emulation — left stick
+  = pointer, Red = left-click, Blue = right-click. Cannon Fodder,
+  Lemmings, Beneath a Steel Sky, Theme Park.
+es_settings:
+  puae_controller1: "517"
+  GameFocus: "0"
+button_semantics:
+  Stick: "Mouse pointer"
+  B (Red):  "Left click — move / select"
+  A (Blue): "Right click — fire / context"

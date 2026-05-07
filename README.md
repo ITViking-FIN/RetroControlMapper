@@ -31,9 +31,9 @@ RetroControlMapper fixes all three.
 
 ## Install
 
-> **Current version: v0.1.2** ([changelog](CHANGELOG.md)).
+> **Current version: v0.1.3** ([changelog](CHANGELOG.md)).
 
-1. Download `RetroControlMapper_0.1.2_setup.exe` from the [latest release](https://github.com/ITViking-FIN/RetroControlMapper/releases/latest).
+1. Download `RetroControlMapper_0.1.3_setup.exe` from the [latest release](https://github.com/ITViking-FIN/RetroControlMapper/releases/latest).
 2. Run the installer. The setup wizard will offer to back up your current RetroBat settings — **leave this on, it's free insurance**.
 3. Optionally let the installer add a "Run at Windows startup" entry so the GUID watcher can keep your controller mappings stable in the background.
 
@@ -55,7 +55,7 @@ RetroControlMapper fixes all three.
 ## Quick links
 
 - **[Full instruction manual](INSTRUCTIONS.md)** — every screen, every setting, plus troubleshooting and an FAQ.
-- **[Report a bug](https://github.com/ITViking-FIN/RetroControlMapper/issues)** — please include the version (`0.1.2`), your Windows version, and a description of what you expected versus what happened.
+- **[Report a bug](https://github.com/ITViking-FIN/RetroControlMapper/issues)** — please include the version (`0.1.3`), your Windows version, and a description of what you expected versus what happened.
 - **[Latest release](https://github.com/ITViking-FIN/RetroControlMapper/releases/latest)** — installers and release notes.
 
 ---

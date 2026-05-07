@@ -1,0 +1,12 @@
+template: "Amiga 500 — Mouse-driven (point-click, strategy)"
+system: amiga500
+description: |
+  Mouse-required Amiga games — point-click adventures (Lucasfilm /
+  Sierra ports, Beneath a Steel Sky), tycoon games, Workbench tools,
+  the original Lemmings. Stick → pointer, B → left click, A → right.
+es_settings:
+  GameFocus: "0"
+button_semantics:
+  Stick: "Mouse pointer"
+  B: "Left click"
+  A: "Right click"
