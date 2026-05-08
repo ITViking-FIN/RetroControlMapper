@@ -17,6 +17,12 @@ env/
 controller_sync.log
 sync_manifest.json
 
+# Arcade controls cache — fetched from yo1dog/controls-dat-json on
+# first arcade-system lookup, ~5MB total. Regenerable; not source.
+data/arcade_controls.json
+data/controls_buttons.json
+data/arcade_controls.meta.json
+
 # Local Claude Code settings (project agents are tracked; personal overrides aren't)
 .claude/settings.local.json
 

@@ -1535,6 +1535,19 @@ function showSettingsPopover() {
         <button type="button" class="rbcf-apply-btn rbcf-apply-btn-secondary rbcf-cimg-manage-btn"
                 id="rbcf-cimg-manage-btn">Manage…</button>
       </div>
+      <div class="rbcf-apply-settings-row rbcf-backup-settings-row">
+        <span class="rbcf-apply-settings-label">
+          <span class="rbcf-apply-settings-label-main">User settings backup</span>
+          <span class="rbcf-apply-settings-label-help">Export your in-app preferences (theme, accent, toggles, active-pad selection) to a JSON file. Import on another machine or after a reset.</span>
+        </span>
+        <span class="rbcf-backup-actions">
+          <button type="button" class="rbcf-apply-btn rbcf-apply-btn-secondary"
+                  id="rbcf-settings-export">Export…</button>
+          <button type="button" class="rbcf-apply-btn rbcf-apply-btn-secondary"
+                  id="rbcf-settings-import">Import…</button>
+          <input type="file" id="rbcf-settings-import-file" accept="application/json,.json" hidden>
+        </span>
+      </div>
       <div class="rbcf-apply-settings-row rbcf-update-row" id="rbcf-update-row">
         <span class="rbcf-apply-settings-label">
           <span class="rbcf-apply-settings-label-main">
@@ -1629,6 +1642,29 @@ function showSettingsPopover() {
       // half-hidden behind it.
       dismissSettingsPopover();
       showControllerImagesModal();
+    });
+  }
+
+  // User settings backup — export / import via localStorage round-trip.
+  const exportBtn = pop.querySelector('#rbcf-settings-export');
+  if (exportBtn) {
+    exportBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      exportUserSettings();
+    });
+  }
+  const importBtn = pop.querySelector('#rbcf-settings-import');
+  const importFileInput = pop.querySelector('#rbcf-settings-import-file');
+  if (importBtn && importFileInput) {
+    importBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      importFileInput.click();
+    });
+    importFileInput.addEventListener('change', (e) => {
+      const f = e.target.files && e.target.files[0];
+      if (f) importUserSettings(f);
+      // Allow re-selecting the same file later
+      importFileInput.value = '';
     });
   }
 
@@ -3310,6 +3346,127 @@ function deriveLighter(hex, mix) {
 // see showSettingsPopover() above. They're wired there, not via a
 // separate setup function, because the popover is dynamically rendered
 // each time it opens.
+
+// ============================================================
+// User settings backup (v0.1.4 — export / import localStorage)
+// ============================================================
+//
+// All in-app preferences live in localStorage under keys prefixed
+// `rbcf-`. Plus a couple of `data-theme` HTML attributes (theme +
+// any future similar). This pair of helpers serialises the lot to
+// a JSON blob the user can save off-machine, and restores from one.
+//
+// The .rmp / profile / catalog state on the RetroBat side is NOT
+// included here — that's covered by the `rbcf backup` snapshot
+// system, which is a separate (much heavier) thing. This is just
+// the GUI-side preferences. Lightweight, fast, single click.
+
+const SETTINGS_BACKUP_VERSION = 1;
+const SETTINGS_BACKUP_PREFIX  = 'rbcf-';
+
+function collectUserSettings() {
+  const out = {};
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && k.startsWith(SETTINGS_BACKUP_PREFIX)) {
+      out[k] = localStorage.getItem(k);
+    }
+  }
+  return out;
+}
+
+function exportUserSettings() {
+  try {
+    const payload = {
+      schema:    SETTINGS_BACKUP_VERSION,
+      app:       'RB-Controller_fix',
+      app_version: (typeof rbcfUpdateLocalVersion === 'function')
+                     ? rbcfUpdateLocalVersion() : 'unknown',
+      exported:  new Date().toISOString(),
+      data_theme: document.documentElement.getAttribute('data-theme') || null,
+      localStorage: collectUserSettings(),
+    };
+    const stamp = payload.exported.replace(/[:T]/g, '-').slice(0, 16);
+    const fname = `rbcf-settings-${stamp}.json`;
+    const blob = new Blob([JSON.stringify(payload, null, 2)],
+                          { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = fname;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, 0);
+    const count = Object.keys(payload.localStorage).length;
+    showToast(`Exported ${count} setting(s) → ${fname}`, 'success', 2400);
+  } catch (e) {
+    showToast('Export failed: ' + e.message, 'error', 4000);
+  }
+}
+
+function importUserSettings(file) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const payload = JSON.parse(e.target.result);
+      if (!payload || typeof payload !== 'object') {
+        throw new Error('not a JSON object');
+      }
+      if (payload.app !== 'RB-Controller_fix') {
+        if (!confirm(
+          'This file does not look like an RB-Controller_fix settings backup '
+          + `(app field = ${JSON.stringify(payload.app)}). Import anyway?`)) {
+          return;
+        }
+      }
+      if (payload.schema !== SETTINGS_BACKUP_VERSION) {
+        if (!confirm(
+          `Schema version mismatch (file=${payload.schema}, expected `
+          + `${SETTINGS_BACKUP_VERSION}). The file may be from a newer or `
+          + `older release. Import anyway?`)) {
+          return;
+        }
+      }
+      const settings = payload.localStorage || {};
+      const keys = Object.keys(settings).filter(k => k.startsWith(SETTINGS_BACKUP_PREFIX));
+      if (!keys.length) {
+        showToast('No rbcf-* settings found in that file.', 'error', 3200);
+        return;
+      }
+      if (!confirm(
+        `Import ${keys.length} setting(s) from this backup? Your current `
+        + `in-app preferences will be replaced.`)) {
+        return;
+      }
+      // Apply
+      for (const k of keys) {
+        localStorage.setItem(k, settings[k]);
+      }
+      // data-theme attribute (theme switcher applies it before first paint
+      // normally — set it now so the change is visible immediately)
+      if (payload.data_theme) {
+        document.documentElement.setAttribute('data-theme', payload.data_theme);
+      }
+      // Re-apply accent live (since the picker isn't re-rendered until popover reopen)
+      try {
+        const accVal = localStorage.getItem('rbcf-user-accent');
+        if (accVal && typeof applyUserAccent === 'function') applyUserAccent(accVal);
+        else if (typeof applyUserAccent === 'function') applyUserAccent(null);
+      } catch (_) {}
+      showToast(
+        `Imported ${keys.length} setting(s). Reload the page to apply all changes.`,
+        'success', 4000);
+    } catch (err) {
+      showToast('Import failed: ' + err.message, 'error', 4500);
+    }
+  };
+  reader.onerror = () => {
+    showToast('Could not read the file.', 'error', 3200);
+  };
+  reader.readAsText(file);
+}
 
 // Apply persisted accent BEFORE first paint — same pattern as the
 // theme switcher does for `[data-theme]`. Avoids a flash of wrong colour.

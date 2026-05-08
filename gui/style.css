@@ -399,6 +399,14 @@ header h1 {
   white-space: pre-line;
 }
 
+/* ---------- User settings backup row (inside .rbcf-apply-settings-popover) ---------- */
+
+.rbcf-backup-settings-row .rbcf-backup-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 /* ---------- Accent picker (inside .rbcf-apply-settings-popover) ---------- */
 
 .rbcf-acc-row .rbcf-acc-controls {
