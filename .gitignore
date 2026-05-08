@@ -20,8 +20,24 @@ sync_manifest.json
 # Arcade controls cache — fetched from yo1dog/controls-dat-json on
 # first arcade-system lookup, ~5MB total. Regenerable; not source.
 data/arcade_controls.json
+data/controls.json
 data/controls_buttons.json
 data/arcade_controls.meta.json
+
+# Manual ingestion artifacts (v0.1.4 manual-research pipeline) —
+# all regenerable from the user's local Manual_Package.7z and from
+# Flaresolverr-routed online lookups. Some files are large (~5MB JSON
+# index, multi-GB cached PDF tree).
+data/manual_archive_index.json
+data/manual_archive_index.raw.txt
+data/manuals/
+data/manuals_online/
+data/manuals_online_cache.json
+
+# Per-machine path to the user's Manual_Package.7z. Contains a single
+# absolute path; resolved by manual_local.py at runtime. Different on
+# every install, never source.
+data/manual_archive_path.txt
 
 # Local Claude Code settings (project agents are tracked; personal overrides aren't)
 .claude/settings.local.json
