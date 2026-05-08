@@ -319,51 +319,71 @@ class VimmManualSite(ManualSite):
         return None
 
 
-# ----- gamesdatabase.org (TODO) -----
+# ----- gamesdatabase.org (deferred — JS-driven pagination) -----
 
 class GamesDatabaseSite(ManualSite):
-    """https://www.gamesdatabase.org/all_manuals — has a search box and
-    per-system catalogues. Manuals link to `/manuals/<system>/<rom>.pdf`
-    or similar (varies — needs HTML inspection).
+    """https://www.gamesdatabase.org
 
-    TODO:
-    - Inspect search-result HTML structure (Flaresolverr GET on a known
-      query, save HTML, identify the result list selector).
-    - Implement search() to return candidates.
-    - Implement find_pdf_url() to extract the actual download link.
+    **Status: deferred**. Live HTML inspection (2026-05) showed the
+    `/all_manuals` index uses ASP.NET WebForms postbacks (`__doPostBack`
+    JavaScript) for pagination. Static GET responses contain no game
+    links — every page transition requires a stateful POST with
+    `__VIEWSTATE` + `__EVENTVALIDATION` form fields, then parsing the
+    rendered result HTML.
+
+    Scraping this site needs one of:
+      A. Drive Flaresolverr's underlying headless Chrome via
+         `request.post` cmd with `postData` and replay the postback
+         exchange (multi-roundtrip per query, brittle to ASP.NET state)
+      B. Site-internal site-search / RSS endpoint if one exists
+         (haven't found one)
+
+    Both worth a focused session in v0.1.5+. For v0.1.4 we ship Vimm
+    + the local archive's ~10k pre-extracted bindings DB, which covers
+    the majority of the corpus this site would have served anyway.
     """
     name = "gamesdatabase"
     base_url = "https://www.gamesdatabase.org"
 
     def search(self, system_id: str, rom_name: str) -> list[dict]:
-        # TODO: implement
         return []
 
     def find_pdf_url(self, candidate: dict) -> str | None:
-        # TODO: implement
         return None
 
 
-# ----- replacementdocs.com (TODO) -----
+# ----- replacementdocs.com (deferred — login-gated downloads) -----
 
 class ReplacementDocsSite(ManualSite):
-    """https://replacementdocs.com — search returns a list of doc entries;
-    each has a `download.php?id=N` URL that serves the PDF directly.
+    """https://replacementdocs.com
 
-    TODO:
-    - Implement search() — site uses /search.php?advsearch=on&search_query=<terms>
-      with system filter via GET param.
-    - Implement find_pdf_url() — the result links use download.php with an id.
+    **Status: deferred**. Live HTML inspection (2026-05) confirmed:
+      - search.php?q=<query>&t=downloads&r=0&s=Search returns a clean
+        result list of `<a class="visit" href="download.php?view.NNNN">
+        SYSTEM | TITLE</a>` entries
+      - download.php?view.NNNN renders the metadata page but contains
+        NO direct PDF link
+      - request.php?<id> renders another HTML page with no file URL
+        either — actual download is gated behind account login
+
+    Scraping this site requires:
+      A. An account (free signup) and Flaresolverr session-managed
+         cookie persistence across the login form, search, view, request
+         flow (4-5 round-trips per manual)
+      B. Or a "raw" mirror — file path discovery via patterns like
+         /e107_files/files/N.pdf isn't present; the binary delivery
+         appears to be PHP-streamed with auth check
+
+    Worth pursuing in v0.1.5+ once we have a clear policy around
+    automated account creation. For v0.1.4 we ship Vimm only.
     """
     name = "replacementdocs"
     base_url = "https://replacementdocs.com"
 
     def search(self, system_id: str, rom_name: str) -> list[dict]:
-        # TODO: implement
         return []
 
     def find_pdf_url(self, candidate: dict) -> str | None:
-        # TODO: implement
         return None
 
 

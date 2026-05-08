@@ -45,6 +45,15 @@ data/manual_archive_path.txt
 # extraction state and shouldn't go into source.
 data/bindings_db/
 
+# Per-user customised bindings + community-submission queue. Local
+# state, never source. The submit flow (when wired) will push these
+# through the existing community-submission plumbing.
+data/bindings_user/
+data/bindings_user_submission_queue/
+
+# build log
+data/build_bindings_db.log
+
 # Local Claude Code settings (project agents are tracked; personal overrides aren't)
 .claude/settings.local.json
 

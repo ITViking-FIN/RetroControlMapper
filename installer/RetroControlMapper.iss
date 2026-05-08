@@ -23,7 +23,7 @@
 ; ============================================================================
 
 #define AppName        "RetroControlMapper"
-#define AppVersion     "0.1.3"
+#define AppVersion     "0.1.4"
 #define AppPublisher   "ITViking-FIN"
 #define AppURL         "https://github.com/ITViking-FIN/RetroControlMapper"
 #define AppExeName     "RetroControlMapper.exe"
@@ -87,6 +87,19 @@ Source: "..\gui\img\icon\RetroControlMapper_512.png";  DestDir: "{app}\icon";  F
 Source: "..\gui\img\icon\RetroControlMapper_1024.png"; DestDir: "{app}\icon";  Flags: ignoreversion skipifsourcedoesntexist
 Source: "..\gui\img\icon\RetroControlMapper.svg";      DestDir: "{app}\icon";  Flags: ignoreversion skipifsourcedoesntexist
 
+; The bindings DB (release\bindings_db\*.json) is staged to {tmp} during
+; install and then copied per-file by the Pascal CurStepChanged
+; (ssPostInstall) handler, which surfaces a Replace/Skip/Cancel +
+; Apply-to-all dialog on each file conflict. See CopyBindingsDbWithConflictPrompt
+; in the [Code] section.
+;
+; The wildcard skipifsourcedoesntexist makes this safe to ship even
+; before the bindings DB build artifact lands — the bindings_db task is
+; checked by default but the post-install loop simply finds nothing to
+; copy and logs a message.
+Source: "..\release\bindings_db\*.json"; DestDir: "{tmp}\bindings_db_payload"; \
+    Tasks: bindings_db; Flags: deleteafterinstall skipifsourcedoesntexist
+
 [Icons]
 Name: "{group}\{#AppName}";              Filename: "{app}\{#AppExeName}";  IconFilename: "{app}\{#AppExeName}"
 Name: "{group}\Instructions";            Filename: "{app}\INSTRUCTIONS.md"
@@ -104,6 +117,11 @@ Name: "desktopicon";        Description: "Create a desktop shortcut";           
 Name: "autostart";          Description: "Run {#AppName} at Windows startup (recommended)";              GroupDescription: "Startup:";        Flags: checkedonce
 Name: "backupretrobat";     Description: "Back up current RetroBat settings now (recommended)";          GroupDescription: "Pre-install:"
 Name: "enableupdatecheck";  Description: "Check for updates on startup";                                 GroupDescription: "Network:"
+; bindings_db: optional component. When checked, the post-install hook
+; copies release\bindings_db\*.json into {app}\bindings_db\, prompting
+; the user (Replace / Skip / Cancel with Apply-to-all) for any per-file
+; conflict with an existing copy.
+Name: "bindings_db";        Description: "Install pre-extracted game control bindings (recommended)";    GroupDescription: "Game data:";      Flags: checkedonce
 
 [Registry]
 ; Autostart Run key — written conditionally by the autostart task. Removed
@@ -157,11 +175,20 @@ const
   // Uninstall registry path (Inno Setup convention: <AppId>_is1).
   UninstallRegPath = 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{8E3A9F2C-7B41-4D6E-9F58-2C1A0B5D8E47}_is1';
 
+type
+  // Conflict resolution outcome for the bindings-DB install loop.
+  TConflictAction = (caUnset, caReplace, caSkip, caCancel);
+
 var
   MaintenancePage:    TWizardPage;
   RepairRadio:        TNewRadioButton;
   UninstallRadio:     TNewRadioButton;
   IsMaintenanceMode:  Boolean;
+
+  // State remembered across files when the user clicks an "Apply to all"
+  // option in the conflict dialog. Reset before each install loop.
+  ConflictDefault:    TConflictAction;
+  ConflictApplyAll:   Boolean;
 
 { ----------------- helper: detect existing install ----------------- }
 
@@ -256,6 +283,172 @@ begin
   Result := False;
 end;
 
+{ ----------------- conflict-resolution dialog ----------------- }
+{
+  Builds a modal form with Replace / Skip / Cancel buttons + an
+  "Apply to all remaining files" checkbox. Returns the user's choice.
+
+  Behaviour mirrors the Windows file-copy dialog the user specified:
+    - "Replace"  alone  → replace just this file, ask again next conflict
+    - "Replace" + ALL   → replace this and all subsequent without asking
+    - "Skip"     alone  → skip this one, ask again next conflict
+    - "Skip"    + ALL   → skip this and all subsequent
+    - "Cancel"          → abort the entire install loop
+}
+function PromptConflict(filename, destDir: String): TConflictAction;
+var
+  form:           TSetupForm;
+  msgLabel:       TNewStaticText;
+  applyAllCheck:  TNewCheckBox;
+  btnReplace:     TNewButton;
+  btnSkip:        TNewButton;
+  btnCancel:      TNewButton;
+  result:         Integer;
+begin
+  // Default if dialog is dismissed without a clear choice.
+  Result := caSkip;
+
+  form := CreateCustomForm();
+  try
+    form.Caption := 'File already exists';
+    form.ClientWidth  := ScaleX(500);
+    form.ClientHeight := ScaleY(180);
+    form.Position := poOwnerFormCenter;
+
+    msgLabel := TNewStaticText.Create(form);
+    msgLabel.Parent := form;
+    msgLabel.Left := ScaleX(16);
+    msgLabel.Top  := ScaleY(16);
+    msgLabel.Width  := ScaleX(468);
+    msgLabel.Height := ScaleY(60);
+    msgLabel.AutoSize := False;
+    msgLabel.WordWrap := True;
+    msgLabel.Caption :=
+      'A file you (or a previous install) created already exists at' + #13#10 +
+      destDir + '\' + filename + #13#10 + #13#10 +
+      'Replace it with the bundled copy, skip this file, or cancel?';
+
+    applyAllCheck := TNewCheckBox.Create(form);
+    applyAllCheck.Parent := form;
+    applyAllCheck.Left := ScaleX(16);
+    applyAllCheck.Top  := ScaleY(90);
+    applyAllCheck.Width  := ScaleX(468);
+    applyAllCheck.Height := ScaleY(20);
+    applyAllCheck.Caption := 'Apply this choice to all remaining conflicts';
+
+    btnReplace := TNewButton.Create(form);
+    btnReplace.Parent := form;
+    btnReplace.Left   := ScaleX(140);
+    btnReplace.Top    := ScaleY(130);
+    btnReplace.Width  := ScaleX(100);
+    btnReplace.Height := ScaleY(28);
+    btnReplace.Caption := '&Replace';
+    btnReplace.ModalResult := mrYes;
+
+    btnSkip := TNewButton.Create(form);
+    btnSkip.Parent := form;
+    btnSkip.Left   := ScaleX(250);
+    btnSkip.Top    := ScaleY(130);
+    btnSkip.Width  := ScaleX(100);
+    btnSkip.Height := ScaleY(28);
+    btnSkip.Caption := '&Skip';
+    btnSkip.ModalResult := mrNo;
+
+    btnCancel := TNewButton.Create(form);
+    btnCancel.Parent := form;
+    btnCancel.Left   := ScaleX(360);
+    btnCancel.Top    := ScaleY(130);
+    btnCancel.Width  := ScaleX(100);
+    btnCancel.Height := ScaleY(28);
+    btnCancel.Caption := '&Cancel';
+    btnCancel.ModalResult := mrCancel;
+
+    form.ActiveControl := btnReplace;
+
+    result := form.ShowModal();
+
+    if result = mrYes then
+      Result := caReplace
+    else if result = mrNo then
+      Result := caSkip
+    else
+      Result := caCancel;
+
+    // Apply-to-all latches the choice for the rest of this run.
+    if applyAllCheck.Checked and (Result <> caCancel) then begin
+      ConflictDefault  := Result;
+      ConflictApplyAll := True;
+    end;
+  finally
+    form.Free();
+  end;
+end;
+
+{ ----------------- bindings DB install loop ----------------- }
+{
+  Walks release\bindings_db\*.json (shipped via {tmp}\bindings_db_payload\
+  by the [Files] section's preCompile hook OR by a separate ZIP unpack —
+  TODO: wire when the release artifact is finalised), prompting the user
+  on any conflict with files already in {app}\bindings_db\.
+
+  For now this routine is invoked at ssPostInstall when the bindings_db
+  task is selected. Source files come from {tmp} where the [Files]
+  section pre-extracted them (added separately).
+}
+procedure CopyBindingsDbWithConflictPrompt();
+var
+  srcDir, destDir: String;
+  findRec:  TFindRec;
+  action:   TConflictAction;
+  destPath, srcPath: String;
+begin
+  ConflictDefault  := caUnset;
+  ConflictApplyAll := False;
+
+  srcDir  := ExpandConstant('{tmp}\bindings_db_payload');
+  destDir := ExpandConstant('{app}\bindings_db');
+
+  if not DirExists(srcDir) then begin
+    Log('[bindings_db] no payload at ' + srcDir + ' — nothing to install.');
+    Exit;
+  end;
+
+  if not ForceDirectories(destDir) then begin
+    Log('[bindings_db] could not create ' + destDir);
+    Exit;
+  end;
+
+  if FindFirst(srcDir + '\*.json', findRec) then try
+    repeat
+      srcPath  := srcDir  + '\' + findRec.Name;
+      destPath := destDir + '\' + findRec.Name;
+
+      if not FileExists(destPath) then begin
+        // No conflict — install.
+        FileCopy(srcPath, destPath, False);
+        Continue;
+      end;
+
+      if ConflictApplyAll then begin
+        action := ConflictDefault;
+      end else begin
+        action := PromptConflict(findRec.Name, destDir);
+      end;
+
+      case action of
+        caReplace: FileCopy(srcPath, destPath, False);
+        caSkip:    ; // intentional no-op
+        caCancel:  begin
+                     Log('[bindings_db] user cancelled at ' + findRec.Name);
+                     Break;
+                   end;
+      end;
+    until not FindNext(findRec);
+  finally
+    FindClose(findRec);
+  end;
+end;
+
 { ----------------- post-install: hand off settings to the .exe ----------------- }
 
 procedure CurStepChanged(CurStep: TSetupStep);
@@ -306,6 +499,12 @@ begin
     //    radio for off / detect / auto-fold.
     Exec(exePath, '--set-watcher-mode detect', '', SW_HIDE,
          ewWaitUntilTerminated, resultCode);
+
+    // 5. Bindings DB install — prompts the user (Replace/Skip/Cancel
+    //    + Apply to all) for any per-file conflicts in {app}\bindings_db\.
+    if WizardIsTaskSelected('bindings_db') then begin
+      CopyBindingsDbWithConflictPrompt();
+    end;
   end;
 end;
 
