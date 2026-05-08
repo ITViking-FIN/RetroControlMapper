@@ -54,7 +54,9 @@ line parser.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import io
+import json
 import os
 import shutil
 import subprocess
@@ -64,6 +66,12 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 DATA_DIR = ROOT / "data"
+
+# Per-PDF, per-PSM cache of OCR'd text. Multi-pass extraction would
+# otherwise re-tesseract the same PDF for every pass — at 1-2 sec/page,
+# that's hours wasted across the archive. Cache key is the SHA1 of the
+# absolute PDF path + the PSM mode (since output differs per PSM).
+OCR_CACHE_DIR = DATA_DIR / ".ocr_cache"
 
 TESSERACT_ENV = "RBCF_TESSERACT_EXE"
 DEFAULT_TESSERACT = Path(r"C:/Program Files/Tesseract-OCR/tesseract.exe")
@@ -159,11 +167,46 @@ def _ocr_image(image, tess_exe: Path, lang: str = "eng",
         return ""
 
 
+def _cache_key(pdf_path: Path, psm: int, lang: str, dpi: int) -> str:
+    """Stable cache key: hash absolute path + the parameters that change
+    OCR output. NB: doesn't fingerprint the PDF contents — if the same
+    path holds different bytes between runs the cache will lie. Fine
+    for our use case (cached PDFs in our own extract dir don't change
+    once produced from the archive)."""
+    h = hashlib.sha1()
+    h.update(str(pdf_path.resolve()).encode("utf-8"))
+    h.update(f"|psm={psm}|lang={lang}|dpi={dpi}".encode("utf-8"))
+    return h.hexdigest()[:16]
+
+
+def _cache_load(key: str) -> tuple[list[str], dict] | None:
+    p = OCR_CACHE_DIR / f"{key}.json"
+    if not p.exists(): return None
+    try:
+        d = json.loads(p.read_text(encoding="utf-8"))
+        return d["lines"], d["info"]
+    except (json.JSONDecodeError, OSError, KeyError):
+        return None
+
+
+def _cache_save(key: str, lines: list[str], info: dict):
+    OCR_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    p = OCR_CACHE_DIR / f"{key}.json"
+    try:
+        p.write_text(json.dumps({"lines": lines, "info": info},
+                                ensure_ascii=False),
+                     encoding="utf-8")
+    except OSError:
+        pass
+
+
 def ocr_pdf_pages(pdf_path: Path,
                   max_pages: int = DEFAULT_MAX_PAGES,
                   dpi: int = RENDER_DPI,
                   lang: str = "eng",
+                  psm: int = 3,
                   early_stop: bool = True,
+                  use_cache: bool = True,
                   verbose: bool = False) -> tuple[list[str], dict]:
     """OCR a PDF page-by-page, returning (lines, info_dict).
 
@@ -177,6 +220,11 @@ def ocr_pdf_pages(pdf_path: Path,
     page, stop OCR'ing further pages — saves a lot of time on long
     multi-language manuals where the controls live in the first 5-10
     pages and the rest is just other-language repeats / story.
+
+    use_cache=True: read/write a JSON cache keyed by (path, psm, lang,
+    dpi). Multi-pass extraction reuses identical-PSM OCR output across
+    pass 1 (default) and pass 3 (broader headers, same PSM); pass 2
+    re-OCRs at a different PSM but caches its output in turn.
     """
     import time
     info = {
@@ -185,7 +233,19 @@ def ocr_pdf_pages(pdf_path: Path,
         "characters":    0,
         "time_s":        0.0,
         "early_stopped": False,
+        "psm":           psm,
+        "from_cache":    False,
     }
+
+    # Cache short-circuit. Saves tesseract time on multi-pass runs.
+    if use_cache:
+        key = _cache_key(pdf_path, psm, lang, dpi)
+        cached = _cache_load(key)
+        if cached is not None:
+            lines, cached_info = cached
+            cached_info["from_cache"] = True
+            return lines, cached_info
+
     tess_exe = find_tesseract()
     if tess_exe is None:
         raise RuntimeError(
@@ -212,7 +272,7 @@ def ocr_pdf_pages(pdf_path: Path,
                 img = _render_page(pdf, i, dpi=dpi)
             except Exception:
                 continue
-            text = _ocr_image(img, tess_exe, lang=lang)
+            text = _ocr_image(img, tess_exe, lang=lang, psm=psm)
             info["pages_ocrd"] += 1
             info["characters"] += len(text)
 
@@ -243,6 +303,8 @@ def ocr_pdf_pages(pdf_path: Path,
             except Exception: pass
 
     info["time_s"] = round(time.time() - t0, 2)
+    if use_cache:
+        _cache_save(_cache_key(pdf_path, psm, lang, dpi), lines, info)
     return lines, info
 
 

@@ -156,13 +156,19 @@ def process_game(system_id: str, normalised_name: str, hit: dict,
             "note":          result["error"],
         }
 
+    bindings = result.get("bindings") or []
     record = {
-        "title":         hit.get("filename", normalised_name),
-        "filename":      hit.get("filename"),
-        "section_found": bool(result.get("section_found")),
-        "pages_scanned": int(result.get("pages_scanned") or 0),
-        "text_source":   result.get("text_source", "empty"),
-        "bindings":      result.get("bindings") or [],
+        "title":             hit.get("filename", normalised_name),
+        "filename":          hit.get("filename"),
+        "section_found":     bool(result.get("section_found")),
+        "pages_scanned":     int(result.get("pages_scanned") or 0),
+        "text_source":       result.get("text_source", "empty"),
+        "bindings":          bindings,
+        # Cascade telemetry — the multi-pass orchestrator
+        # (build_bindings_db_passes.py) reads these to decide whether
+        # to retry a title. pass1_default is always the producer here.
+        "passes_attempted":  ["pass1_default"],
+        "pass_succeeded":    "pass1_default" if bindings else None,
     }
     if result.get("note"):
         record["note"] = result["note"]

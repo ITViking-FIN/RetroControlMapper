@@ -54,6 +54,10 @@ data/bindings_user_submission_queue/
 # build log
 data/build_bindings_db.log
 
+# OCR text cache — keyed by (pdf path, PSM, lang, DPI). Avoids re-running
+# tesseract across multi-pass extraction. Per-machine, regenerable.
+data/.ocr_cache/
+
 # Local Claude Code settings (project agents are tracked; personal overrides aren't)
 .claude/settings.local.json
 

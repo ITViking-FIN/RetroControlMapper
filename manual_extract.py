@@ -51,9 +51,30 @@ import argparse
 import json
 import re
 import sys
+from dataclasses import dataclass, field
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
+
+
+# ============================================================
+# Parser config — drives the multi-pass cascade
+# ============================================================
+
+@dataclass
+class ParserConfig:
+    """Tunable knobs for one pass over a PDF. Multi-pass extraction
+    runs each named config in sequence over titles where the previous
+    pass yielded zero bindings, climbing the yield curve from the
+    high-precision default toward looser, broader heuristics."""
+    name: str
+    psm: int = 3                            # tesseract page-segmentation mode
+    extra_section_headers: list[str] = field(default_factory=list)
+    looser_action_filter: bool = False       # reduce letter_ratio / length thresholds
+    extra_line_patterns: list[tuple] = field(default_factory=list)
+    accept_global_scan: bool = True          # whether the no-section-found fallback runs
+    max_section_lines: int = 80
+    confidence_floor: str = "medium"         # passes 3+ tag results as "low" by default
 
 # ============================================================
 # Section detection
@@ -282,7 +303,8 @@ def _resplit_words(text: str) -> str:
 
 
 def _read_pdf_text(pdf_path: Path,
-                   ocr: bool = False) -> tuple[list[str], int, str]:
+                   ocr: bool = False,
+                   psm: int = 3) -> tuple[list[str], int, str]:
     """Return (lines, page_count, source). Source is one of:
       - "pdfplumber"   — extracted clean text (best path)
       - "pypdf"        — extracted text + heuristic resplit fallback
@@ -293,6 +315,11 @@ def _read_pdf_text(pdf_path: Path,
     do pdfplumber + pypdf. With `ocr=True` (build-time path on the dev
     box), we additionally run tesseract OCR if the text extractors come
     up dry — turning scanned bitmap manuals into usable text.
+
+    `psm` chooses tesseract's page-segmentation mode for the OCR fallback.
+    Different PSMs read different layouts well: 3 (auto) handles
+    multi-column NES manuals; 6 (single block) handles dense mid-90s
+    booklets; 4 (column) handles rigid two-column layouts.
     """
     # Try pdfplumber first — it preserves word boundaries that pypdf
     # drops on positionally-encoded PDFs.
@@ -352,7 +379,7 @@ def _read_pdf_text(pdf_path: Path,
         if not is_available():
             return [], page_count, "empty"
         try:
-            ocr_lines, info = ocr_pdf_pages(pdf_path)
+            ocr_lines, info = ocr_pdf_pages(pdf_path, psm=psm)
             if not page_count:
                 page_count = info.get("pages_total", 0)
             return ocr_lines, page_count, "ocr"
@@ -362,42 +389,50 @@ def _read_pdf_text(pdf_path: Path,
     return [], page_count, "empty"
 
 
-def _find_section(lines: list[str]) -> tuple[int, int] | None:
+def _find_section(lines: list[str],
+                  extra_headers: list[str] | None = None,
+                  max_section_lines: int = 80) -> tuple[int, int] | None:
     """Locate the controls section in the line list. Returns
     (start_idx, end_idx) inclusive, or None if no header matched.
 
     Two-tier detection: prefer a clean isolated header line
     ("CONTROLS" alone), but fall back to a header phrase appearing
     inside a longer line (common in OCR-ed PDFs where headers get
-    glued to neighbouring content)."""
+    glued to neighbouring content).
+
+    `extra_headers` adds to the base SECTION_HEADERS — used by pass 3
+    to surface genre-specific headings (BATTLE COMMANDS, OFFENSE,
+    SPECIAL MOVES, etc.) that don't belong in the default set."""
     n = len(lines)
+    headers = SECTION_HEADERS + (extra_headers or [])
     # Tier 1: header is the entire line (or close to it). This is the
     # high-confidence match and stops the search early.
     for i, ln in enumerate(lines):
         norm = re.sub(r"\s+", " ", ln.strip().lower())
         if len(norm) > 60: continue
-        for hdr in SECTION_HEADERS:
+        for hdr in headers:
             if hdr in norm and len(hdr) >= len(norm) - 8:
-                return (i, _section_end(lines, i, n))
+                return (i, _section_end(lines, i, n, max_section_lines))
     # Tier 2: header phrase appears anywhere in a line. Lower confidence;
     # only triggers if Tier 1 found nothing. We require a match on one
     # of the more specific phrases (skip generic "controls" alone), and
     # bias toward the FIRST match in the document.
-    SPECIFIC_HEADERS = [h for h in SECTION_HEADERS
+    specific_headers = [h for h in headers
                         if h not in ("controls", "operation")]
     for i, ln in enumerate(lines):
         norm = re.sub(r"\s+", " ", ln.strip().lower())
         if len(norm) < 6 or len(norm) > 200: continue
-        for hdr in SPECIFIC_HEADERS:
+        for hdr in specific_headers:
             if hdr in norm:
-                return (i, _section_end(lines, i, n))
+                return (i, _section_end(lines, i, n, max_section_lines))
     return None
 
 
-def _section_end(lines: list[str], start: int, n: int) -> int:
+def _section_end(lines: list[str], start: int, n: int,
+                 max_section_lines: int = 80) -> int:
     """Walk forward from a found header until a terminator or the
     section length cap."""
-    end = min(start + MAX_SECTION_LINES, n - 1)
+    end = min(start + max_section_lines, n - 1)
     for j in range(start + 1, end + 1):
         jnorm = re.sub(r"\s+", " ", lines[j].strip().lower())
         if any(t in jnorm and len(jnorm) < 40
@@ -465,47 +500,64 @@ def _coalesce_header_followed_by_action(lines: list[str]) -> list[str]:
     return out
 
 
-def _parse_line(line: str) -> dict | None:
+def _parse_line(line: str,
+                extra_patterns: list[tuple] | None = None,
+                looser: bool = False,
+                confidence_floor: str = "medium") -> dict | None:
     """Try each line pattern against the cleaned line. Return a binding
-    dict or None. Pre-cleans OCR garbage prefixes/suffixes."""
+    dict or None. Pre-cleans OCR garbage prefixes/suffixes.
+
+    `extra_patterns` are appended to LINE_PATTERNS (a pass can add new
+    shapes without editing the global list).
+
+    `looser=True` relaxes the noise-rejection thresholds — more
+    bindings get through, more noise too. Pass 4 uses this and tags
+    everything as "low" confidence so the GUI can colour them
+    differently.
+
+    `confidence_floor` caps the confidence: passes 3+ shouldn't claim
+    "high" even if the regex would, since the broader heuristics are
+    by definition lower-precision than pass 1's tight match."""
     cleaned = _clean_ocr_line(line)
     if not cleaned: return None
-    for pname, pat, conf in LINE_PATTERNS:
+
+    patterns = LINE_PATTERNS + list(extra_patterns or [])
+
+    # Threshold parameters: stricter by default, relaxed under looser=True
+    if looser:
+        min_action_len, letter_ratio_floor, upper_cap, button_token_cap = 3, 0.40, 0.60, 3
+    else:
+        min_action_len, letter_ratio_floor, upper_cap, button_token_cap = 4, 0.55, 0.50, 2
+
+    rank = {"high": 2, "medium": 1, "low": 0}
+
+    for pname, pat, conf in patterns:
         m = pat.match(cleaned)
         if not m: continue
         btn_raw, action = m.group(1), m.group(2)
         btn = _canonical_button(btn_raw)
         if not btn: continue
         action = re.sub(r"\s+", " ", action).strip().rstrip(".,;")
-        # Strip trailing OCR noise like asterisks
         action = re.sub(r"[\s*\-—–•·�]+$", "", action).strip()
-        if not action or len(action) > 80 or len(action) < 4: continue
-        # Reject pure-noise actions (mostly non-letter chars from OCR)
+        if not action or len(action) > 80 or len(action) < min_action_len:
+            continue
         letter_ratio = sum(1 for c in action if c.isalpha()) / len(action)
-        if letter_ratio < 0.55: continue
-        # Require at least one common English-y word of 3+ lowercase
-        # letters — this cheaply rules out OCR-garbage actions like
-        # "EEE +i a" or "i� ee Sl".
+        if letter_ratio < letter_ratio_floor: continue
         if not re.search(r"\b[a-z]{3,}\b", action.lower()):
             continue
-        # Reject if the action is mostly UPPERCASE — that's almost
-        # always OCR misreading bullet glyphs as letters or section
-        # headers leaking through.
         upper_count = sum(1 for c in action if c.isupper())
-        if upper_count > len(action) * 0.5: continue
-        # Reject when the "action" itself is a button-name fragment —
-        # cross-contamination from columnar OCR where two adjacent
-        # button blocks merge. Examples we DON'T want to keep:
-        #   start -> "Press B button to..." → maps to B not start
-        #   dpad -> "START buttor"          → noise
+        if upper_count > len(action) * upper_cap: continue
         action_lower = action.lower()
         button_token_count = sum(1 for tok in
             ("button", "trigger", "buttor", "buttn", "button.")
             if tok in action_lower)
-        if button_token_count >= 2: continue
-        # Reject if the action begins with a numbered list marker —
-        # almost always a table of contents bleeding in.
+        if button_token_count >= button_token_cap: continue
         if re.match(r"^\d+[\)\.\s]+[A-Z]", action): continue
+
+        # Cap confidence at the floor (e.g. pass 3 floors at "low")
+        if rank.get(conf, 0) > rank.get(confidence_floor, 1):
+            conf = confidence_floor
+
         return {
             "button":     btn,
             "action":     action,
@@ -516,55 +568,62 @@ def _parse_line(line: str) -> dict | None:
     return None
 
 
-def extract_bindings_from_pdf(pdf_path: Path, ocr: bool = False) -> dict:
-    """Top-level entry point.
+DEFAULT_CONFIG = ParserConfig(name="pass1_default", psm=3,
+                              looser_action_filter=False,
+                              confidence_floor="high")
 
-    `ocr=True` enables the OCR fallback for image-only PDFs. Use this
-    on the dev box where tesseract is installed and you're building
-    the shippable bindings DB. End-user runtime path leaves it False.
 
-    Returns:
-    {
-      pdf_path:        str,
-      pages_scanned:   int,
-      text_source:     "pdfplumber" | "pypdf" | "ocr" | "empty",
-      section_found:   bool,
-      section_text:    str | None,
-      section_lines:   [int, int] | None,
-      bindings:        [{button, action, confidence, raw, matched_by}, ...],
-      note:            str (optional; explains degraded extraction)
-    }"""
+def extract_with_config(pdf_path: Path, config: ParserConfig,
+                        ocr: bool = False) -> dict:
+    """Run one extraction pass with the given parser config. Returns
+    the same result schema as extract_bindings_from_pdf, plus a
+    `pass_name` field for telemetry."""
     pdf_path = Path(pdf_path)
     if not pdf_path.exists():
         return {"pdf_path": str(pdf_path), "error": "PDF not found",
                 "section_found": False, "bindings": [],
-                "text_source": "empty"}
+                "text_source": "empty", "pass_name": config.name}
 
-    lines, page_count, source = _read_pdf_text(pdf_path, ocr=ocr)
+    lines, page_count, source = _read_pdf_text(pdf_path, ocr=ocr,
+                                                psm=config.psm)
     if not lines:
         return {"pdf_path":     str(pdf_path),
                 "pages_scanned": page_count,
                 "text_source":   source,
+                "pass_name":     config.name,
                 "error":         ("scanned/image-only manual — needs OCR"
                                   if not ocr else
                                   "OCR ran but produced no usable text"),
                 "section_found": False, "bindings": []}
 
-    span = _find_section(lines)
+    span = _find_section(lines,
+                         extra_headers=config.extra_section_headers,
+                         max_section_lines=config.max_section_lines)
     if span is None:
-        # Fallback: scan ALL lines (capped). Many old manuals don't
-        # have an explicit "CONTROLS" header — controls are sprinkled
-        # through the gameplay description. Apply the header-coalescer
-        # so multi-line "BUTTON A\nstarts game" gets seen as one binding.
+        if not config.accept_global_scan:
+            return {
+                "pdf_path":      str(pdf_path),
+                "pages_scanned": page_count,
+                "text_source":   source,
+                "pass_name":     config.name,
+                "section_found": False,
+                "bindings":      [],
+                "note":          "no section header found "
+                                 "(global-scan disabled for this pass)",
+            }
         scan_lines = _coalesce_header_followed_by_action(lines[:300])
         bindings = []
         for ln in scan_lines:
-            b = _parse_line(ln)
+            b = _parse_line(ln,
+                            extra_patterns=config.extra_line_patterns,
+                            looser=config.looser_action_filter,
+                            confidence_floor=config.confidence_floor)
             if b: bindings.append(b)
         return {
             "pdf_path":      str(pdf_path),
             "pages_scanned": page_count,
             "text_source":   source,
+            "pass_name":     config.name,
             "section_found": False,
             "section_text":  None,
             "section_lines": None,
@@ -577,18 +636,30 @@ def extract_bindings_from_pdf(pdf_path: Path, ocr: bool = False) -> dict:
     section_lines = _coalesce_header_followed_by_action(lines[start:end + 1])
     bindings = []
     for ln in section_lines:
-        b = _parse_line(ln)
+        b = _parse_line(ln,
+                        extra_patterns=config.extra_line_patterns,
+                        looser=config.looser_action_filter,
+                        confidence_floor=config.confidence_floor)
         if b: bindings.append(b)
 
     return {
         "pdf_path":      str(pdf_path),
         "pages_scanned": page_count,
         "text_source":   source,
+        "pass_name":     config.name,
         "section_found": True,
         "section_text":  "\n".join(section_lines),
         "section_lines": [start, end],
         "bindings":      _dedupe(bindings),
     }
+
+
+def extract_bindings_from_pdf(pdf_path: Path, ocr: bool = False) -> dict:
+    """Backwards-compatible legacy entry point — runs the default pass
+    config. New callers should use extract_with_config or the multi-pass
+    orchestrator in build_bindings_db_passes.
+    """
+    return extract_with_config(pdf_path, DEFAULT_CONFIG, ocr=ocr)
 
 
 def _dedupe(bindings: list[dict]) -> list[dict]:
