@@ -1,3 +1,15 @@
 PyYAML>=6.0,<7.0
 Pillow>=10.1,<14.0
 pystray>=0.19,<0.20
+
+# Manual research pipeline (v0.1.4) — PDF text extraction for the
+# control-section heuristic in manual_extract.py. Used at config-time
+# only, never at runtime.
+#   pdfplumber is preferred — handles glyph-positioned PDFs (1980s-90s
+#                             retro manuals) where pypdf drops word
+#                             boundaries.
+#   pypdf is the fallback if pdfplumber install fails on a constrained
+#                             system; manual_extract.py applies a
+#                             heuristic re-splitter in that path.
+pdfplumber>=0.11,<1.0
+pypdf>=4.0,<7.0
