@@ -13,3 +13,11 @@ pystray>=0.19,<0.20
 #                             heuristic re-splitter in that path.
 pdfplumber>=0.11,<1.0
 pypdf>=4.0,<7.0
+
+# OCR fallback for image-only PDFs (build-time only — only needed on
+# the dev box that produces the shippable bindings_db artifact).
+# End-user runtime never invokes OCR.
+#   pypdfium2: rasterises PDF pages to PIL images. Pure-pip, no
+#              poppler / Ghostscript dependency.
+#   tesseract.exe is installed externally (winget UB-Mannheim.TesseractOCR).
+pypdfium2>=4.0

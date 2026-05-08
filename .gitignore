@@ -39,6 +39,12 @@ data/manuals_online_cache.json
 # every install, never source.
 data/manual_archive_path.txt
 
+# Bindings DB working tree — built by build_bindings_db.py from the
+# user's local Manual_Package. The shippable artifact ends up under
+# release/ (tracked separately); the working tree here is per-machine
+# extraction state and shouldn't go into source.
+data/bindings_db/
+
 # Local Claude Code settings (project agents are tracked; personal overrides aren't)
 .claude/settings.local.json
 
