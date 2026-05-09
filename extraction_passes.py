@@ -21,6 +21,20 @@ from __future__ import annotations
 
 from manual_extract import ParserConfig
 
+# Single source of truth for extractor version. Bumped whenever heuristics
+# change in a way that would meaningfully alter outputs — so a future
+# `--upgrade-below-version <V>` run can selectively re-extract just the
+# titles that were processed under older logic.
+#
+# Versioning convention: "<release>-<heuristic-tag>" (sortable as strings).
+# Tags so far:
+#   0.1.4-baseline             initial OCR + 5-pass cascade
+#   0.1.4-multidirection       compound joystick directions emit one
+#                               binding per cardinal; OCR vocab fixes
+#                               (ieft→left etc.); lazy quantifiers in
+#                               action-by-verb fix LEAP-class clipping
+EXTRACTOR_VERSION = "0.1.4-multidirection"
+
 # Headers that signal a controls section in genre-specific contexts
 # the default list misses. Real-world examples observed in manuals:
 #   "OFFENSE" / "DEFENSE"           — sports manuals (10-Yard Fight, NHL)
@@ -214,11 +228,17 @@ PASS_5_PATTERNS = [
     # "and to the left or right".
     ("action-by-verb",
      re.compile(r"^([A-Z]{3,15})"
-                r"(?:\s+[a-z][a-z\s,]{0,50}?)?"               # optional short object (allow up to 50 chars)
+                # Both optional middle groups are LAZY (`??`) — the engine
+                # tries empty first so the trailing alternation can capture
+                # the FULL "the joystick ..." phrase. With greedy `?`, the
+                # middle would happily eat "the joystick up and to" and leave
+                # only "the left or right" for the input phrase, losing the
+                # primary direction (dpad_up) on multi-direction sentences.
+                r"(?:\s+[a-z][a-z\s,]{0,50}?)??"               # optional short object
                 r"\s+by\s+"
                 r"(?:pressing|holding|tapping|moving|using|"
                 r"positioning|tilting)"
-                r"(?:\s+[a-z][a-z\s,.\-]{0,60}?)?"              # "yourself under it, ... moving"
+                r"(?:\s+[a-z][a-z\s,.\-]{0,60}?)??"             # "yourself under it,"
                 r"\s+(the\s+joystick(?:\s+(?:button|up|down|left|right))?\b.*"
                 r"|the\s+fire\s+button\b.*"
                 r"|the\s+(?:up|down|left|right)\b.*)"          # OCR may drop 'joystick'

@@ -78,17 +78,34 @@ def _save_db(db: dict):
 
 
 def _games_to_retry(db: dict, current_pass: str,
-                    pass_order: list[str]) -> list[str]:
+                    pass_order: list[str],
+                    upgrade_below_version: str | None = None) -> list[str]:
     """Which games (normalised keys) should this pass try?
-    Rule: bindings is empty AND no later pass already succeeded.
-    A pass that already 'succeeded' for this game (even if it found
-    zero) is not re-run — that's what passes_after is for."""
+
+    Default rule: bindings == [] AND no same-or-later pass has been
+    attempted. A pass that already 'succeeded' for this game (even if
+    it found zero) is not re-run — that's what passes_after is for.
+
+    `upgrade_below_version`: when set, ALSO retry titles whose stored
+    `extractor_version` is lexicographically less than this string
+    OR is missing. Used to cleanly re-process records made under
+    older heuristics. Compares string-by-string (the EXTRACTOR_VERSION
+    convention is "X.Y.Z-tag" which sorts sensibly)."""
     games = db.get("games") or {}
     cur_idx = pass_order.index(current_pass)
     out = []
     for k, rec in games.items():
-        # Skip if already has bindings.
+        rec_version = rec.get("extractor_version") or ""
+
+        # Upgrade path — record exists but is stale per the version
+        # filter. Re-extract regardless of bindings or passes_attempted.
+        if upgrade_below_version and rec_version < upgrade_below_version:
+            out.append(k)
+            continue
+
+        # Default path: skip if already has bindings.
         if rec.get("bindings"): continue
+
         # Skip if a same-or-later pass already attempted (recorded
         # by `passes_attempted` list — earlier passes get listed even
         # if they yielded zero).
@@ -96,9 +113,6 @@ def _games_to_retry(db: dict, current_pass: str,
         attempt_idxs = [pass_order.index(p) for p in attempted
                         if p in pass_order]
         if any(idx >= cur_idx for idx in attempt_idxs): continue
-        # Skip if this PDF is image-only and we don't have OCR (legacy
-        # records from pre-OCR runs). Re-attempts with OCR happen
-        # naturally because text_source==empty triggers OCR.
         out.append(k)
     return out
 
@@ -150,9 +164,15 @@ def _run_pass3_psm_sweep(pdf_path: Path, base_config) -> dict:
 def run_pass(pass_name: str, system_id: str | None = None,
              limit: int | None = None,
              checkpoint_every: int = 10,
+             upgrade_below_version: str | None = None,
              verbose: bool = True) -> dict:
-    """Run one named pass over all systems (or one system)."""
-    from extraction_passes import (ORDERED_PASSES, get_pass, PASS_3_PSM_SWEEP)
+    """Run one named pass over all systems (or one system).
+
+    `upgrade_below_version`: when set, ALSO retries records whose
+    extractor_version is older than this string. Used after a
+    heuristic change ships a new EXTRACTOR_VERSION."""
+    from extraction_passes import (ORDERED_PASSES, get_pass,
+                                   PASS_3_PSM_SWEEP, EXTRACTOR_VERSION)
     from manual_extract import extract_with_config
     from manual_local import ensure_index, extract_local_manual
 
@@ -192,7 +212,8 @@ def run_pass(pass_name: str, system_id: str | None = None,
             if verbose: print(f"[{sys_id}] no DB file (skip)")
             continue
 
-        retry_keys = _games_to_retry(db, pass_name, pass_order)
+        retry_keys = _games_to_retry(db, pass_name, pass_order,
+                                     upgrade_below_version=upgrade_below_version)
         if limit:
             retry_keys = retry_keys[:limit]
         if not retry_keys:
@@ -262,6 +283,10 @@ def run_pass(pass_name: str, system_id: str | None = None,
                     del rec["note"]
                 stats["found"] += 1
                 stats["by_pass"][pass_name] += 1
+
+            # Stamp current extractor version on every touched record
+            # so future --upgrade-below-version filters skip it.
+            rec["extractor_version"] = EXTRACTOR_VERSION
 
             db["games"][key] = rec
 
@@ -345,6 +370,12 @@ def main():
     ap.add_argument("--system", help="Limit to one system.")
     ap.add_argument("--limit", type=int, help="At most N retries per system.")
     ap.add_argument("--checkpoint-every", type=int, default=10)
+    ap.add_argument("--upgrade-below-version", metavar="VERSION",
+                    help="Re-extract records whose stored "
+                         "extractor_version is older than VERSION "
+                         "(e.g. '0.1.4-multidirection'). Use after a "
+                         "heuristic change to retroactively re-process "
+                         "old records.")
     ap.add_argument("--quiet", action="store_true")
     ap.add_argument("--stats", action="store_true",
                     help="Just print per-pass stats and exit.")
@@ -367,6 +398,7 @@ def main():
             print(f"\n{'=' * 60}\n  RUNNING {cfg.name}\n{'=' * 60}")
         run_pass(cfg.name, system_id=args.system, limit=args.limit,
                  checkpoint_every=args.checkpoint_every,
+                 upgrade_below_version=args.upgrade_below_version,
                  verbose=not args.quiet)
 
     if not args.quiet:

@@ -69,8 +69,15 @@ ROOT = Path(__file__).resolve().parent
 DATA_DIR = ROOT / "data"
 BINDINGS_DB_DIR = DATA_DIR / "bindings_db"
 
-EXTRACTOR_VERSION = "0.1.4"
 SCHEMA_VERSION = 1
+
+
+def _extractor_version() -> str:
+    """Single source of truth lives in extraction_passes; re-imported
+    at call-site so the running build picks up changes without a
+    module reload dance."""
+    from extraction_passes import EXTRACTOR_VERSION
+    return EXTRACTOR_VERSION
 
 # Arcade systems are served better by controls.dat (Task 1) so we skip
 # them here. They're also massively duplicated in the archive index due
@@ -102,7 +109,7 @@ def load_system_db(system_id: str) -> dict:
         "system_id":         system_id,
         "schema_version":    SCHEMA_VERSION,
         "extracted_at":      None,
-        "extractor_version": EXTRACTOR_VERSION,
+        "extractor_version": _extractor_version(),
         "stats":             {},
         "games":             {},
     }
@@ -164,6 +171,11 @@ def process_game(system_id: str, normalised_name: str, hit: dict,
         "pages_scanned":     int(result.get("pages_scanned") or 0),
         "text_source":       result.get("text_source", "empty"),
         "bindings":          bindings,
+        # Per-record extractor version — the multi-pass orchestrator
+        # uses this for selective re-extraction when heuristics change
+        # ("--upgrade-below-version 0.1.4-multidirection" picks up
+        # records that were last processed under older logic).
+        "extractor_version": _extractor_version(),
         # Cascade telemetry — the multi-pass orchestrator
         # (build_bindings_db_passes.py) reads these to decide whether
         # to retry a title. pass1_default is always the producer here.
@@ -196,7 +208,7 @@ def process_system(system_id: str,
         "system_id":         system_id,
         "schema_version":    SCHEMA_VERSION,
         "extracted_at":      None,
-        "extractor_version": EXTRACTOR_VERSION,
+        "extractor_version": _extractor_version(),
         "stats":             {},
         "games":             {},
     }

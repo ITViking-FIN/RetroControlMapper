@@ -556,6 +556,64 @@ def _section_end(lines: list[str], start: int, n: int,
     return end
 
 
+# OCR error corrections targeted at controller-vocabulary words. Tesseract
+# routinely mangles common joystick/button/direction tokens — particularly
+# "left" (often → "ieft" / "1eft"), "down" (→ "dovvn" / "d0wn"), "fire"
+# (→ "lire" / "f1re"), "joystick" (→ "loystick" / "1oystick"), "button"
+# (→ "buttor" / "buttn"). These mutations have no semantic meaning in
+# English so correcting them is unambiguous.
+#
+# Restricted to vocabulary words intentionally — we do NOT do generic
+# English autocorrect (would risk false fixes on actual game terms).
+# Applied as whole-word substitutions before parsing.
+OCR_VOCAB_FIXES = {
+    # left
+    "ieft":      "left",
+    "1eft":      "left",
+    "leit":      "left",
+    "lett":      "left",
+    "ieit":      "left",
+    # right (occasionally)
+    "rignt":     "right",
+    "right.":    "right",
+    # down
+    "dovvn":     "down",
+    "d0wn":      "down",
+    "dovn":      "down",
+    # up — rarely mangled but for completeness
+    "u0":        "up",
+    # fire
+    "lire":      "fire",
+    "f1re":      "fire",
+    "iire":      "fire",
+    # joystick
+    "loystick":  "joystick",
+    "1oystick":  "joystick",
+    "loystrck":  "joystick",
+    # button
+    "buttor":    "button",
+    "buttn":     "button",
+    "bution":    "button",
+    "8utton":    "button",
+}
+
+# Compiled to a single regex per source word, with word boundaries
+# so we don't munch substrings of legitimate words.
+_OCR_VOCAB_RE = re.compile(
+    r"\b(" + "|".join(re.escape(k) for k in OCR_VOCAB_FIXES) + r")\b",
+    re.I)
+
+
+def _correct_ocr_vocab(line: str) -> str:
+    """Substitute known OCR mangling of controller vocabulary words.
+    Whole-word, case-insensitive (preserves original case where the
+    correction's case is unambiguous)."""
+    def _sub(m):
+        word = m.group(1)
+        return OCR_VOCAB_FIXES[word.lower()]
+    return _OCR_VOCAB_RE.sub(_sub, line)
+
+
 # Move-sequence noise indicators — patterns that signal a fighter-game
 # combo description rather than a button binding. Reject these BEFORE
 # pattern matching so we don't accidentally extract "Sweep Kick: Down +
@@ -595,10 +653,13 @@ def _is_move_sequence_noise(line: str) -> bool:
 
 
 def _clean_ocr_line(line: str) -> str:
-    """Strip leading OCR junk and normalise whitespace. Examples:
-       "* Button A �"           → "Button A"
-       "e Pushing this button"  → "Pushing this button"
-       "  - SELECT BUTTON  "    → "SELECT BUTTON"
+    """Strip leading OCR junk and normalise whitespace, then correct
+    known vocabulary mangling. Examples:
+       "* Button A �"               → "Button A"
+       "e Pushing this button"      → "Pushing this button"
+       "  - SELECT BUTTON  "        → "SELECT BUTTON"
+       "moving the joystick up
+        and to the ieft or right"   → "...up and to the left or right"
     """
     # Strip leading garbage characters often produced by OCR for bullets,
     # asterisks, em-dashes, and stray single letters.
@@ -606,7 +667,61 @@ def _clean_ocr_line(line: str) -> str:
     # Drop trailing OCR bits like "*", "—" and stray punctuation
     s = re.sub(r"[\s*\-—–•·�]+$", "", s)
     s = re.sub(r"\s+", " ", s).strip()
+    # Targeted OCR vocabulary corrections (left/right/up/down/fire/
+    # joystick/button) — applied AFTER whitespace normalisation so
+    # word boundaries are clean.
+    s = _correct_ocr_vocab(s)
     return s
+
+
+def _detect_tabular_row(line: str) -> list[str] | None:
+    """Detect a tabular column-separated row. Returns the list of
+    stripped cell strings, or None if the line isn't tabular. Tabular
+    rows are recognised by 3+ consecutive spaces between fields and
+    2+ non-empty cells. Common in racing/sports/RPG manuals that lay
+    out controls as JOYSTICK | KEY | ACTION columns."""
+    if "   " not in line: return None
+    cells = re.split(r"\s{3,}", line.strip())
+    cells = [c.strip() for c in cells if c.strip()]
+    if len(cells) >= 2:
+        return cells
+    return None
+
+
+def _expand_tabular_rows(lines: list[str]) -> list[str]:
+    """Walk the line list. For each tabular row (multi-space columns),
+    synthesise a "{button_cell} - {action_cell}" string the standard
+    line-pattern parser can match. Original lines are kept too — some
+    tables also produce a passable single-line dash form via the regular
+    parser, and dedupe handles the overlap.
+
+    For tables with 3+ cells we use:
+      - cell[0] as the button (typical: JOYSTICK direction, or fire
+        button label)
+      - cell[-1] as the action (typical: rightmost column = action
+        description)
+    The middle cells (often keyboard equivalents) are dropped from the
+    button-binding output — keyboard remaps are a separate concern.
+
+    Header rows ("JOYSTICK    KEYBOARD    ACTION") are filtered out by
+    the same noise-rejection downstream (multiple uppercase tokens, no
+    English-y action verbs)."""
+    out: list[str] = []
+    for ln in lines:
+        out.append(ln)
+        cells = _detect_tabular_row(ln)
+        if cells is None or len(cells) < 2:
+            continue
+        button_cell = cells[0]
+        action_cell = cells[-1]
+        # Reject pure-uppercase header rows (JOYSTICK, KEYBOARD, ACTION
+        # are uppercase headers, not bindings). Real binding rows have
+        # mixed case ("Up", "Down", "Fire").
+        if button_cell.isupper() and action_cell.isupper():
+            continue
+        # Synthesize the dash form
+        out.append(f"{button_cell} - {action_cell}")
+    return out
 
 
 def _coalesce_header_followed_by_action(lines: list[str]) -> list[str]:
@@ -837,6 +952,14 @@ def extract_with_config(pdf_path: Path, config: ParserConfig,
                                   if not ocr else
                                   "OCR ran but produced no usable text"),
                 "section_found": False, "bindings": []}
+
+    # Pre-pass: expand tabular rows. "Up    Climb" / "Down    Jump"
+    # multi-space tables otherwise get whitespace-collapsed into
+    # ambiguous single-space lines. Synthesising "Up - Climb" early
+    # lets the standard button-dash pattern catch them. Always-on —
+    # tabular detection is conservative and false positives are
+    # filtered downstream by the existing button-token validators.
+    lines = _expand_tabular_rows(lines)
 
     # Optional pre-pass: merge wrapped sentences. Many manual control
     # descriptions span 2-3 OCR lines, breaking line-by-line parsers.
