@@ -79,6 +79,12 @@ class ParserConfig:
     # pass 5 (single-button systems) which would generate noise if run
     # against multi-button platforms. None = run on every system.
     system_filter: set[str] | None = None
+    # Merge wrapped sentences before line parsing. Many manual control
+    # descriptions span 2-3 lines ("LEAP to get from one ledge to another
+    # by moving the joystick\nup and to the ieft or right."). Default
+    # False — pass 1 relies on lines being separate. Pass 5 enables this
+    # for prose-heavy joystick manuals.
+    merge_wrapped_lines: bool = False
 
 # ============================================================
 # Section detection
@@ -193,6 +199,12 @@ BUTTON_TOKENS = {
     "stick down":     "dpad_down",
     "stick left":     "dpad_left",
     "stick right":    "dpad_right",
+    # On single-button systems, "joystick button" alone (without
+    # "fire") is the only action button — same target as fire.
+    "joystick button": "fire",
+    "the joystick":    "stick",
+    "the fire button": "fire",
+    "the joystick button": "fire",
 }
 
 
@@ -259,16 +271,55 @@ HEADER_ONLY_RE = re.compile(
 
 
 def _canonical_button(raw: str) -> str | None:
-    """Map raw button text from the manual to a canonical key."""
+    """Map raw button text from the manual to a canonical key.
+
+    Robust to prose-style input phrases from action-first patterns:
+      "the joystick button while you are running"  → fire
+      "the joystick up and to the left or right"   → dpad_up
+      "yourself under it, moving the joystick up"  → dpad_up
+    by trying progressively shorter prefixes and looking for direction
+    tokens in the presence of joystick/stick references.
+    """
     norm = raw.strip().lower()
     norm = re.sub(r"\s+", " ", norm)
+    norm = re.sub(r"^(?:the\s+|your\s+|a\s+|an\s+)", "", norm)
+    norm = re.sub(r"[.!,;:]+$", "", norm).strip()
+
+    # Tier 1: exact match
     if norm in BUTTON_TOKENS:
         return BUTTON_TOKENS[norm]
-    # Strip trailing 'button' and try again
+
+    # Tier 2: progressive prefix shrink. "joystick button while running"
+    # → try "joystick button while running", "joystick button while",
+    # "joystick button" → match. Used for prose-style trailing modifiers.
+    # Per-token punctuation stripped so "up," still matches direction tokens.
+    raw_parts = norm.split()
+    parts = [p.rstrip(",.;:!?") for p in raw_parts]
+    for end in range(min(len(parts), 4), 0, -1):
+        prefix = " ".join(parts[:end])
+        if prefix in BUTTON_TOKENS:
+            return BUTTON_TOKENS[prefix]
+
+    # Tier 3: direction tokens. Two cases:
+    # (a) "joystick up and to the left" — has "up" + "joystick" → dpad_up
+    # (b) "up, and holding it there" — first token is a direction; OCR
+    #     dropped the "joystick" word. The action-by-verb pattern only
+    #     captures phrases that started with "the ..." so this is bounded.
+    has_joystick = "joystick" in parts or "stick" in parts
+    if has_joystick:
+        for token in parts:
+            if token in ("up", "down", "left", "right"):
+                return f"dpad_{token}"
+    # Case (b) — first word is bare direction (after stripped articles)
+    if parts and parts[0] in ("up", "down", "left", "right"):
+        return f"dpad_{parts[0]}"
+
+    # Tier 4: strip trailing 'button' and re-try
     no_button = re.sub(r"\s+button$", "", norm).strip()
     if no_button in BUTTON_TOKENS:
         return BUTTON_TOKENS[no_button]
-    # Direct single-letter A/B/C/X/Y/Z fallback
+
+    # Tier 5: bare single-letter / shoulder-button fallbacks
     if re.fullmatch(r"[abcxyz]", norm):
         return norm
     if re.fullmatch(r"l[12rt]|r[12lt]", norm):
@@ -521,6 +572,53 @@ def _coalesce_header_followed_by_action(lines: list[str]) -> list[str]:
     return out
 
 
+def _merge_wrapped_lines(lines: list[str]) -> list[str]:
+    """Join lines that look like they're continuations of the previous
+    sentence. Heuristic: a line is a continuation when:
+      - the previous line doesn't end with terminating punctuation (.!?)
+      - the current line starts with a lowercase letter, OR a connector
+        word (and/or/but/up/down/left/right/the/a/while)
+      - neither line is a section header (all-caps short line)
+
+    Returns a NEW list — original input untouched."""
+    if not lines: return []
+    out: list[str] = []
+    SENTENCE_END = re.compile(r"[.!?:;]\s*$")
+    HEADER_LIKE = re.compile(r"^[\s*\-—]*[A-Z][A-Z0-9 \-]{2,40}\s*$")
+    # NB: no re.I here — `[a-z]` must mean lowercase only. With re.I,
+    # uppercase headers like "KICK" / "PAUSE" would be wrongly considered
+    # continuations of the previous line.
+    CONTINUER  = re.compile(
+        r"^(?:[a-z]|And\s|Or\s|But\s|The\s+|A\s+|While\s+|Until\s+"
+        r"|Up\s|Down\s|Left\s|Right\s|To\s+\w"
+        r"|and\s|or\s|but\s|the\s+|a\s+|while\s+|until\s+"
+        r"|up\s|down\s|left\s|right\s|to\s+\w)")
+
+    i = 0
+    n = len(lines)
+    while i < n:
+        cur = lines[i].strip()
+        if not cur:
+            i += 1; continue
+
+        # Try to absorb continuation lines.
+        merged = cur
+        j = i + 1
+        merge_count = 0
+        while j < n and merge_count < 2:    # cap at 2 continuation lines
+            nxt = lines[j].strip()
+            if not nxt: break
+            if SENTENCE_END.search(merged): break
+            if HEADER_LIKE.match(nxt): break
+            if not CONTINUER.match(nxt): break
+            merged = merged + " " + nxt
+            merge_count += 1
+            j += 1
+        out.append(merged)
+        i = j if merge_count > 0 else i + 1
+    return out
+
+
 def _parse_line(line: str,
                 extra_patterns: list[tuple] | None = None,
                 looser: bool = False,
@@ -552,10 +650,28 @@ def _parse_line(line: str,
 
     rank = {"high": 2, "medium": 1, "low": 0}
 
-    for pname, pat, conf in patterns:
+    for entry in patterns:
+        # Support both 3-tuple (legacy) and 4-tuple (action-first prose).
+        # 4-tuple's 4th element is `swap=True` — group 1 is the ACTION
+        # text, group 2 is the BUTTON / input phrase. The Bruce Lee
+        # manual's "KICK by pressing the joystick button" is the
+        # canonical example: action ("KICK") comes first in the source.
+        if len(entry) == 4:
+            pname, pat, conf, swap = entry
+        else:
+            pname, pat, conf = entry
+            swap = False
         m = pat.match(cleaned)
         if not m: continue
-        btn_raw, action = m.group(1), m.group(2)
+        if swap:
+            btn_raw, action = m.group(2), m.group(1)
+            # Action is typically all-caps in this prose shape ("KICK")
+            # — title-case it so the all-caps validator below doesn't
+            # reject and so the GUI displays it pleasantly.
+            if action.isupper():
+                action = action.title()
+        else:
+            btn_raw, action = m.group(1), m.group(2)
         btn = _canonical_button(btn_raw)
         if not btn: continue
         action = re.sub(r"\s+", " ", action).strip().rstrip(".,;")
@@ -616,6 +732,11 @@ def extract_with_config(pdf_path: Path, config: ParserConfig,
                                   if not ocr else
                                   "OCR ran but produced no usable text"),
                 "section_found": False, "bindings": []}
+
+    # Optional pre-pass: merge wrapped sentences. Many manual control
+    # descriptions span 2-3 OCR lines, breaking line-by-line parsers.
+    if config.merge_wrapped_lines:
+        lines = _merge_wrapped_lines(lines)
 
     span = _find_section(lines,
                          extra_headers=config.extra_section_headers,

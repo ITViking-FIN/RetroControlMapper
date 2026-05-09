@@ -196,6 +196,35 @@ PASS_5_PATTERNS = [
      re.compile(r"^fire(?:\s+button)?\s*\+\s*(up|down|left|right|"
                 r"diagonal|any\s+direction)\s*[-:=→]\s*(.{2,80})$", re.I),
      "medium"),
+    # ACTION-FIRST PROSE: "KICK by pressing the joystick button".
+    # 4-tuple form with swap=True flips the regex groups: group 1 (the
+    # action verb) becomes the binding's action, group 2 (the input
+    # phrase) becomes the button. Real C64/Amiga manual samples this
+    # rescues:
+    #   "KICK by pressing the joystick button while you are running"
+    #   "PUNCH by pressing the joystick button while you are standing"
+    #   "LEAP by moving the joystick up and to the left or right"
+    #   "CLIMB up a vine by ... moving the joystick up"
+    # Group 1 = ALL-CAPS verb (3-15 chars). The action verb may be
+    # followed by short lowercase qualifiers ("CLIMB up a vine") — we
+    # allow up to ~30 chars of object phrase before "by VERBING".
+    # Group 2 = input phrase, captured greedily through end-of-line.
+    # _canonical_button's tier-2 prefix-shrink + tier-3 direction
+    # detection handles trailing prose like "while you are running" or
+    # "and to the left or right".
+    ("action-by-verb",
+     re.compile(r"^([A-Z]{3,15})"
+                r"(?:\s+[a-z][a-z\s,]{0,50}?)?"               # optional short object (allow up to 50 chars)
+                r"\s+by\s+"
+                r"(?:pressing|holding|tapping|moving|using|"
+                r"positioning|tilting)"
+                r"(?:\s+[a-z][a-z\s,.\-]{0,60}?)?"              # "yourself under it, ... moving"
+                r"\s+(the\s+joystick(?:\s+(?:button|up|down|left|right))?\b.*"
+                r"|the\s+fire\s+button\b.*"
+                r"|the\s+(?:up|down|left|right)\b.*)"          # OCR may drop 'joystick'
+                r"$", re.I),
+     "medium",
+     True),                       # swap=True
     # Tabular layouts (Up    Climb / Down    Jump) need to be detected
     # BEFORE _clean_ocr_line collapses multi-space into single — that's
     # a separate concern from line-pattern matching. Skipped here;
@@ -210,6 +239,12 @@ PASS_5_SINGLE_BUTTON = ParserConfig(
     looser_action_filter=True,
     confidence_floor="medium",
     system_filter=SINGLE_BUTTON_SYSTEMS,
+    # Single-button-system manuals describe controls in flowing prose
+    # that wraps across 2-3 lines. The action-by-verb pattern would
+    # otherwise miss "LEAP ... by moving the joystick\nup and to the
+    # left" because line 1 ends without 'up' and line 2 doesn't have
+    # the action verb.
+    merge_wrapped_lines=True,
 )
 
 ORDERED_PASSES: list[ParserConfig] = [
