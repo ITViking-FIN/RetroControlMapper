@@ -270,15 +270,30 @@ HEADER_ONLY_RE = re.compile(
     r"\s*[*\-�•\.]*\s*$", re.I)
 
 
-def _canonical_button(raw: str) -> str | None:
+def _canonical_button(raw: str) -> str | list[str] | None:
     """Map raw button text from the manual to a canonical key.
 
+    Returns:
+      - str         single canonical button ("fire", "a", "dpad_up", ...)
+      - list[str]   multiple canonical buttons (compound directions on
+                    a DE-9 joystick — pushing "up and left" closes the
+                    Up switch AND the Left switch simultaneously, so
+                    one manual phrase produces two bindings sharing
+                    the same action)
+      - None        no canonical mapping
+
+    Caller (_parse_line) detects the list form and emits one binding
+    per element. The same action is duplicated across each direction —
+    matches how a DE-9 joystick actually wires (two cardinal switches
+    closed at once = diagonal input).
+
     Robust to prose-style input phrases from action-first patterns:
-      "the joystick button while you are running"  → fire
-      "the joystick up and to the left or right"   → dpad_up
-      "yourself under it, moving the joystick up"  → dpad_up
-    by trying progressively shorter prefixes and looking for direction
-    tokens in the presence of joystick/stick references.
+      "the joystick button while you are running"
+            → "fire"
+      "the joystick up and to the left or right"
+            → ["dpad_up", "dpad_left", "dpad_right"]
+      "yourself under it, moving the joystick up"
+            → "dpad_up"
     """
     norm = raw.strip().lower()
     norm = re.sub(r"\s+", " ", norm)
@@ -289,30 +304,58 @@ def _canonical_button(raw: str) -> str | None:
     if norm in BUTTON_TOKENS:
         return BUTTON_TOKENS[norm]
 
-    # Tier 2: progressive prefix shrink. "joystick button while running"
-    # → try "joystick button while running", "joystick button while",
-    # "joystick button" → match. Used for prose-style trailing modifiers.
-    # Per-token punctuation stripped so "up," still matches direction tokens.
+    # Per-token punctuation stripping so "up," still resolves
     raw_parts = norm.split()
     parts = [p.rstrip(",.;:!?") for p in raw_parts]
+    DIRECTIONS = ("up", "down", "left", "right")
+    has_joystick = "joystick" in parts or "stick" in parts
+
+    # Tier 2: COMPOUND-DIRECTION detection (must run BEFORE the prefix
+    # shrink, since "joystick up and to the left" should produce both
+    # dpad_up AND dpad_left, not just resolve "joystick up" via tier 3).
+    #
+    # Compound: "joystick up and to the left or right"
+    #   → ["dpad_up", "dpad_left", "dpad_right"]
+    # Reflects how a DE-9 joystick actually wires: pushing diagonally
+    # closes TWO cardinal switches simultaneously, so each cardinal
+    # is its own binding sharing the same action. NOT a separate
+    # "diagonal" input.
+    if has_joystick:
+        found = []
+        for token in parts:
+            if token in DIRECTIONS and token not in found:
+                found.append(token)
+        if len(found) > 1:
+            return [f"dpad_{d}" for d in found]
+        # Fall through if only one direction (or none) — let tier 3
+        # progressive prefix shrink handle "joystick button while running"
+
+    # Bare direction at start (OCR dropped "joystick"). Same compound
+    # logic — an OCR-mangled "up and to the left" still means both Up
+    # and Left switches close simultaneously.
+    if parts and parts[0] in DIRECTIONS:
+        found = [parts[0]]
+        for token in parts[1:]:
+            if token in DIRECTIONS and token not in found:
+                found.append(token)
+        if len(found) > 1:
+            return [f"dpad_{d}" for d in found]
+        return f"dpad_{found[0]}"
+
+    # Tier 3: progressive prefix shrink. "joystick button while running"
+    # → try "joystick button while", "joystick button" → match. Used
+    # for prose-style trailing modifiers.
     for end in range(min(len(parts), 4), 0, -1):
         prefix = " ".join(parts[:end])
         if prefix in BUTTON_TOKENS:
             return BUTTON_TOKENS[prefix]
 
-    # Tier 3: direction tokens. Two cases:
-    # (a) "joystick up and to the left" — has "up" + "joystick" → dpad_up
-    # (b) "up, and holding it there" — first token is a direction; OCR
-    #     dropped the "joystick" word. The action-by-verb pattern only
-    #     captures phrases that started with "the ..." so this is bounded.
-    has_joystick = "joystick" in parts or "stick" in parts
+    # Tier 4: single-direction in joystick context (compound check
+    # above didn't fire — there's only one direction in the phrase).
     if has_joystick:
         for token in parts:
-            if token in ("up", "down", "left", "right"):
+            if token in DIRECTIONS:
                 return f"dpad_{token}"
-    # Case (b) — first word is bare direction (after stripped articles)
-    if parts and parts[0] in ("up", "down", "left", "right"):
-        return f"dpad_{parts[0]}"
 
     # Tier 4: strip trailing 'button' and re-try
     no_button = re.sub(r"\s+button$", "", norm).strip()
@@ -622,9 +665,11 @@ def _merge_wrapped_lines(lines: list[str]) -> list[str]:
 def _parse_line(line: str,
                 extra_patterns: list[tuple] | None = None,
                 looser: bool = False,
-                confidence_floor: str = "medium") -> dict | None:
-    """Try each line pattern against the cleaned line. Return a binding
-    dict or None. Pre-cleans OCR garbage prefixes/suffixes.
+                confidence_floor: str = "medium") -> list[dict]:
+    """Try each line pattern against the cleaned line. Return a list of
+    binding dicts (typically 0 or 1; CAN be 2-4 for compound-direction
+    cases like "the joystick up and to the left or right" which closes
+    multiple DE-9 cardinal switches simultaneously).
 
     `extra_patterns` are appended to LINE_PATTERNS (a pass can add new
     shapes without editing the global list).
@@ -638,7 +683,7 @@ def _parse_line(line: str,
     "high" even if the regex would, since the broader heuristics are
     by definition lower-precision than pass 1's tight match."""
     cleaned = _clean_ocr_line(line)
-    if not cleaned: return None
+    if not cleaned: return []
 
     patterns = LINE_PATTERNS + list(extra_patterns or [])
 
@@ -695,14 +740,29 @@ def _parse_line(line: str,
         if rank.get(conf, 0) > rank.get(confidence_floor, 1):
             conf = confidence_floor
 
-        return {
+        # Compound-direction case: _canonical_button returned a list.
+        # Emit one binding per cardinal direction, all sharing the
+        # same action ("LEAP" with up+left+right → 3 bindings).
+        # This matches DE-9 joystick electrical reality — diagonals
+        # are TWO simultaneous cardinal switch closures, not a
+        # separate "diagonal" input.
+        if isinstance(btn, list):
+            return [
+                {"button":     b,
+                 "action":     action,
+                 "confidence": conf,
+                 "raw":        line,
+                 "matched_by": pname}
+                for b in btn
+            ]
+        return [{
             "button":     btn,
             "action":     action,
             "confidence": conf,
             "raw":        line,
             "matched_by": pname,
-        }
-    return None
+        }]
+    return []
 
 
 DEFAULT_CONFIG = ParserConfig(name="pass1_default", psm=3,
@@ -756,11 +816,10 @@ def extract_with_config(pdf_path: Path, config: ParserConfig,
         scan_lines = _coalesce_header_followed_by_action(lines[:300])
         bindings = []
         for ln in scan_lines:
-            b = _parse_line(ln,
+            bindings.extend(_parse_line(ln,
                             extra_patterns=config.extra_line_patterns,
                             looser=config.looser_action_filter,
-                            confidence_floor=config.confidence_floor)
-            if b: bindings.append(b)
+                            confidence_floor=config.confidence_floor))
         return {
             "pdf_path":      str(pdf_path),
             "pages_scanned": page_count,
@@ -778,11 +837,10 @@ def extract_with_config(pdf_path: Path, config: ParserConfig,
     section_lines = _coalesce_header_followed_by_action(lines[start:end + 1])
     bindings = []
     for ln in section_lines:
-        b = _parse_line(ln,
+        bindings.extend(_parse_line(ln,
                         extra_patterns=config.extra_line_patterns,
                         looser=config.looser_action_filter,
-                        confidence_floor=config.confidence_floor)
-        if b: bindings.append(b)
+                        confidence_floor=config.confidence_floor))
 
     return {
         "pdf_path":      str(pdf_path),
