@@ -556,6 +556,44 @@ def _section_end(lines: list[str], start: int, n: int,
     return end
 
 
+# Move-sequence noise indicators — patterns that signal a fighter-game
+# combo description rather than a button binding. Reject these BEFORE
+# pattern matching so we don't accidentally extract "Sweep Kick: Down +
+# Heavy Kick" or "Hadouken: ↓ ↘ → + Punch" as bindings. Combos aren't
+# bindings: the game internally recognises input sequences, RetroBat
+# only handles physical-button → emulated-button mapping.
+_ARROW_CHARS = "↑↓←→↗↘↙↖"
+MOVE_SEQUENCE_INDICATORS = (
+    # Two unicode arrows within 30 chars of each other — combo notation
+    # ("↓ ↘ → + Punch"). Single arrow is fine ("↑ Up: Move forward")
+    # since some manual headers use one as a glyph.
+    re.compile(rf"[{_ARROW_CHARS}].{{0,30}}[{_ARROW_CHARS}]"),
+    # An arrow followed by '+' or 'and' within 20 chars — combo
+    # ("↓ + Punch", "→ and HP").
+    re.compile(rf"[{_ARROW_CHARS}].{{0,20}}(?:\+|\band\b)", re.I),
+    # 3+ chained "+ X" tokens — combo ingredient list (HP+LK+MP).
+    re.compile(r"(?:\+\s*\w+){3,}"),
+    # ASCII arrow chains — OCR often turns ↓↘→ into ">>>" or "vvv"
+    re.compile(r"[<>^v]{3,}"),
+    # Charge moves — "Charge ← for 2 sec, → + Punch"
+    re.compile(r"\bcharge\b.{0,40}\b(?:back|forward|down|up|left|right)\b", re.I),
+    # Multi-char fighter token combinations — "HP+LK", "MP+MK"
+    re.compile(r"\b[HLMhlm][PKpk]\s*\+\s*[HLMhlm][PKpk]\b"),
+)
+
+
+def _is_move_sequence_noise(line: str) -> bool:
+    """True when the line is clearly a fighter-game move-sequence
+    description (Hadouken, Fatality, special move tables) rather than
+    a button binding. Filtered out before pattern matching to keep
+    the bindings DB clean of game-internal combo data."""
+    if not line: return False
+    for pat in MOVE_SEQUENCE_INDICATORS:
+        if pat.search(line):
+            return True
+    return False
+
+
 def _clean_ocr_line(line: str) -> str:
     """Strip leading OCR junk and normalise whitespace. Examples:
        "* Button A �"           → "Button A"
@@ -684,6 +722,13 @@ def _parse_line(line: str,
     by definition lower-precision than pass 1's tight match."""
     cleaned = _clean_ocr_line(line)
     if not cleaned: return []
+
+    # Reject fighter-game move-sequence lines before pattern matching.
+    # "Hadouken: ↓ ↘ → + Punch" superficially looks like a binding
+    # ("Hadouken" left of colon, action right of colon) but it's a
+    # game-internal combo description we don't want in the DB.
+    if _is_move_sequence_noise(cleaned):
+        return []
 
     patterns = LINE_PATTERNS + list(extra_patterns or [])
 
