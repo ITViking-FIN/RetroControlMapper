@@ -75,6 +75,10 @@ class ParserConfig:
     accept_global_scan: bool = True          # whether the no-section-found fallback runs
     max_section_lines: int = 80
     confidence_floor: str = "medium"         # passes 3+ tag results as "low" by default
+    # Optional: limit this pass to specific RetroBat system ids. Used by
+    # pass 5 (single-button systems) which would generate noise if run
+    # against multi-button platforms. None = run on every system.
+    system_filter: set[str] | None = None
 
 # ============================================================
 # Section detection
@@ -172,6 +176,23 @@ BUTTON_TOKENS = {
     "control pad":     "dpad",
     "left stick":      "lstick",
     "right stick":     "rstick",
+    # Direction tokens — workhorses for single-button-joystick systems
+    # (Atari 2600/ST, C64, Amiga, Amstrad, MSX, ZX Spectrum). Manuals
+    # of that era describe controls as "Push joystick up to climb" /
+    # "Up: Jump" rather than "A Button: Jump". Pass 5's patterns yield
+    # these tokens and rely on the canonical mapping below.
+    "up":             "dpad_up",
+    "down":           "dpad_down",
+    "left":           "dpad_left",
+    "right":          "dpad_right",
+    "joystick up":    "dpad_up",
+    "joystick down":  "dpad_down",
+    "joystick left":  "dpad_left",
+    "joystick right": "dpad_right",
+    "stick up":       "dpad_up",
+    "stick down":     "dpad_down",
+    "stick left":     "dpad_left",
+    "stick right":    "dpad_right",
 }
 
 

@@ -174,6 +174,16 @@ def run_pass(pass_name: str, system_id: str | None = None,
         # biggest first
         systems.sort(key=lambda s: -len(index.get(s, {})))
 
+    # Apply per-pass system_filter (pass 5 narrows to single-button
+    # systems — running its joystick patterns against NES manuals would
+    # produce nonsense like "up: walk left" from "press up to walk left").
+    if cfg.system_filter is not None:
+        before = len(systems)
+        systems = [s for s in systems if s in cfg.system_filter]
+        if verbose:
+            print(f"[{pass_name}] system_filter: {len(systems)}/{before} "
+                  f"systems pass the filter ({sorted(systems)})")
+
     grand = {"attempted": 0, "found": 0, "errors": 0}
 
     for sys_id in systems:
@@ -330,7 +340,7 @@ def main():
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--start-pass", default="pass2_extra_headers",
                     help="First pass to run (default: pass2_extra_headers).")
-    ap.add_argument("--end-pass", default="pass4_loose",
+    ap.add_argument("--end-pass", default="pass5_single_button",
                     help="Last pass to run.")
     ap.add_argument("--system", help="Limit to one system.")
     ap.add_argument("--limit", type=int, help="At most N retries per system.")

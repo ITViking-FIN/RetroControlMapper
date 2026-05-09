@@ -105,11 +105,119 @@ PASS_4_LOOSE = ParserConfig(
     confidence_floor="low",
 )
 
+
+# ============================================================
+# Pass 5 — single-button-joystick specialist
+# ============================================================
+#
+# Manuals for Atari 2600/ST, C64, Amiga, Amstrad CPC, MSX, ZX Spectrum
+# describe controls fundamentally differently from the Nintendo /
+# PlayStation lineage that pass 1 was tuned for. Examples real-world
+# observed in the archive:
+#
+#   "Push the joystick up to climb"
+#   "Pull joystick down to crouch"
+#   "Press fire to shoot"
+#   "Joystick left - Walk left"
+#   "Up = Jump, Down = Duck, Fire = Attack"
+#
+# Pass 5 narrows scope to systems known to use this paradigm and adds
+# patterns specifically for direction-based and fire-only vocab.
+
+# RetroBat system ids known to use joystick + 1-2 fire button(s) only.
+# Manuals for these tend to spell controls as "joystick up = climb"
+# rather than "A Button: Jump". Pass 5 only fires for these systems.
+SINGLE_BUTTON_SYSTEMS = {
+    # Atari
+    "atari2600", "atari5200", "atari7800", "atari800", "atarist",
+    "lynx", "jaguar", "jaguarcd",
+    # Commodore
+    "c64", "c20", "amiga500", "amiga1200", "amiga4000", "amigacd32",
+    # Sinclair / Amstrad / dragon
+    "zxspectrum", "amstradcpc", "gx4000", "dragon32", "atom",
+    # MSX family
+    "msx1", "msx2", "msxturbor",
+    # Misc retro
+    "vectrex", "intellivision", "colecovision",
+    "channelf", "advision", "creatiVision",
+    "astrocade", "arcadia", "odyssey2",
+    "ti99", "apple2",
+    # SNK pocket / minor handhelds
+    "ngp", "ngpc", "wonderswan", "wonderswancolor",
+}
+
+PASS_5_HEADERS = [
+    "joystick controls",
+    "your joystick",
+    "playing with the joystick",
+    "the joystick",
+    "the fire button",
+    "moving",
+    "movement",
+    "loading and playing",
+    "loading the game",
+    "instructions",
+    "joystick or keyboard",
+    "keyboard controls",
+    "keys",
+    "key controls",
+]
+
+import re
+PASS_5_PATTERNS = [
+    # "Push joystick up to climb" / "Pull joystick down to crouch" /
+    # "Move joystick left to walk" / "Tilt joystick right to turn"
+    ("joystick-direction-to",
+     re.compile(r"^(?:push|pull|move|tilt|hold)\s+(?:the\s+)?joystick\s+"
+                r"(up|down|left|right|north|south|east|west)\s+(?:to|will|you\s+can)\s+(.{2,80})$",
+                re.I),
+     "high"),
+    # "Joystick up - Climb" / "Joystick LEFT: Walk left"
+    ("joystick-direction-dash",
+     re.compile(r"^joystick\s+(up|down|left|right|north|south|east|west)"
+                r"\s*[-:=]\s*(.{2,80})$", re.I),
+     "high"),
+    # Bare directional shorthand in tabular form: "Up - Jump", "Down: Crouch"
+    ("direction-shorthand",
+     re.compile(r"^(up|down|left|right)\s*[-:=]\s*(.{2,80})$", re.I),
+     "medium"),
+    # "Press fire to shoot" — already in default but here we tighten
+    # to require fire as the literal token (no false positives).
+    ("fire-to-action",
+     re.compile(r"^(?:press|hold|tap|push)\s+(?:the\s+)?(fire(?:\s+button)?)"
+                r"\s+(?:to|will)\s+(.{2,80})$", re.I),
+     "high"),
+    # "Fire - Shoot" / "FIRE: Punch"
+    ("fire-dash",
+     re.compile(r"^(fire(?:\s+button)?)\s*[-:=]\s*(.{2,80})$", re.I),
+     "high"),
+    # "Fire + Up = Special move" / "Fire + Direction → Throw"
+    ("fire-plus-direction",
+     re.compile(r"^fire(?:\s+button)?\s*\+\s*(up|down|left|right|"
+                r"diagonal|any\s+direction)\s*[-:=→]\s*(.{2,80})$", re.I),
+     "medium"),
+    # Tabular layouts (Up    Climb / Down    Jump) need to be detected
+    # BEFORE _clean_ocr_line collapses multi-space into single — that's
+    # a separate concern from line-pattern matching. Skipped here;
+    # could be a future addition with a pre-clean tabular detector.
+]
+
+PASS_5_SINGLE_BUTTON = ParserConfig(
+    name="pass5_single_button",
+    psm=3,
+    extra_section_headers=PASS_5_HEADERS,
+    extra_line_patterns=PASS_5_PATTERNS,
+    looser_action_filter=True,
+    confidence_floor="medium",
+    system_filter=SINGLE_BUTTON_SYSTEMS,
+)
+
 ORDERED_PASSES: list[ParserConfig] = [
     PASS_1_DEFAULT,
     PASS_2_EXTRA_HEADERS,
     PASS_3_PSM_SWEEP,
     PASS_4_LOOSE,
+    PASS_5_SINGLE_BUTTON,
 ]
 
 
