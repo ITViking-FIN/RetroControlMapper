@@ -128,12 +128,23 @@ def tesseract_version() -> str | None:
 
 def _render_page(pdf, page_index: int, dpi: int = RENDER_DPI):
     """Return a PIL.Image for one page of a pypdfium2-opened PDF.
-    Caller owns closing the page."""
+    Caller owns closing the page.
+
+    Resource hygiene: pypdfium2's PdfBitmap holds a C-level buffer that
+    the returned PIL Image references via numpy view. Without an
+    explicit bitmap.close() AND a PIL .copy() (to detach from the
+    underlying buffer), the C buffer lingers as long as the PIL Image
+    is alive. Over thousands of pages this accumulates into a
+    multi-gigabyte memory creep. Fix: detach via .copy() then close the
+    bitmap immediately, so only the Python-owned PIL bytes remain."""
     page = pdf[page_index]
     try:
         # scale = dpi / 72 (PDF native is 72 DPI)
         bitmap = page.render(scale=dpi / 72)
-        return bitmap.to_pil()
+        try:
+            return bitmap.to_pil().copy()
+        finally:
+            bitmap.close()
     finally:
         page.close()
 
