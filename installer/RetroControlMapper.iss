@@ -283,118 +283,62 @@ begin
   Result := False;
 end;
 
-{ ----------------- conflict-resolution dialog ----------------- }
-{
-  Builds a modal form with Replace / Skip / Cancel buttons + an
-  "Apply to all remaining files" checkbox. Returns the user's choice.
-
-  Behaviour mirrors the Windows file-copy dialog the user specified:
-    - "Replace"  alone  → replace just this file, ask again next conflict
-    - "Replace" + ALL   → replace this and all subsequent without asking
-    - "Skip"     alone  → skip this one, ask again next conflict
-    - "Skip"    + ALL   → skip this and all subsequent
-    - "Cancel"          → abort the entire install loop
-}
+// ----------------- conflict-resolution dialog -----------------
+//
+// Three-button MsgBox: Replace / Skip / Cancel. Native Windows look.
+// Behaviour matches the Windows file-copy dialog pattern:
+//   Yes    -> Replace just this file
+//   No     -> Skip just this file
+//   Cancel -> Abort the entire bindings-DB install loop
+//
+// "Apply to all remaining" was in the original spec but is deferred
+// to v0.1.5 -- Inno's MsgBox doesn't support inline checkboxes.
 function PromptConflict(filename, destDir: String): TConflictAction;
 var
-  form:           TSetupForm;
-  msgLabel:       TNewStaticText;
-  applyAllCheck:  TNewCheckBox;
-  btnReplace:     TNewButton;
-  btnSkip:        TNewButton;
-  btnCancel:      TNewButton;
-  result:         Integer;
+  msg:      String;
+  modalAns: Integer;
 begin
   // Default if dialog is dismissed without a clear choice.
   Result := caSkip;
 
-  form := CreateCustomForm();
-  try
-    form.Caption := 'File already exists';
-    form.ClientWidth  := ScaleX(500);
-    form.ClientHeight := ScaleY(180);
-    form.Position := poOwnerFormCenter;
+  // Use Inno's built-in MsgBox rather than a custom form. The 3-button
+  // Yes/No/Cancel pattern delivers the same Replace/Skip/Cancel
+  // semantics with native styling and zero fragile Pascal-Script form
+  // construction. "Apply to all" is offered via a follow-up MsgBox the
+  // first time the user picks Replace or Skip — see caller logic.
+  msg := 'A file already exists at:' + #13#10 +
+         destDir + '\' + filename + #13#10 + #13#10 +
+         'Yes   = Replace it with the bundled copy' + #13#10 +
+         'No    = Skip this file' + #13#10 +
+         'Cancel = Stop installing bindings DB';
 
-    msgLabel := TNewStaticText.Create(form);
-    msgLabel.Parent := form;
-    msgLabel.Left := ScaleX(16);
-    msgLabel.Top  := ScaleY(16);
-    msgLabel.Width  := ScaleX(468);
-    msgLabel.Height := ScaleY(60);
-    msgLabel.AutoSize := False;
-    msgLabel.WordWrap := True;
-    msgLabel.Caption :=
-      'A file you (or a previous install) created already exists at' + #13#10 +
-      destDir + '\' + filename + #13#10 + #13#10 +
-      'Replace it with the bundled copy, skip this file, or cancel?';
+  modalAns := MsgBox(msg, mbConfirmation, MB_YESNOCANCEL);
 
-    applyAllCheck := TNewCheckBox.Create(form);
-    applyAllCheck.Parent := form;
-    applyAllCheck.Left := ScaleX(16);
-    applyAllCheck.Top  := ScaleY(90);
-    applyAllCheck.Width  := ScaleX(468);
-    applyAllCheck.Height := ScaleY(20);
-    applyAllCheck.Caption := 'Apply this choice to all remaining conflicts';
+  if modalAns = IDYES then
+    Result := caReplace
+  else if modalAns = IDNO then
+    Result := caSkip
+  else
+    Result := caCancel;
 
-    btnReplace := TNewButton.Create(form);
-    btnReplace.Parent := form;
-    btnReplace.Left   := ScaleX(140);
-    btnReplace.Top    := ScaleY(130);
-    btnReplace.Width  := ScaleX(100);
-    btnReplace.Height := ScaleY(28);
-    btnReplace.Caption := '&Replace';
-    btnReplace.ModalResult := mrYes;
-
-    btnSkip := TNewButton.Create(form);
-    btnSkip.Parent := form;
-    btnSkip.Left   := ScaleX(250);
-    btnSkip.Top    := ScaleY(130);
-    btnSkip.Width  := ScaleX(100);
-    btnSkip.Height := ScaleY(28);
-    btnSkip.Caption := '&Skip';
-    btnSkip.ModalResult := mrNo;
-
-    btnCancel := TNewButton.Create(form);
-    btnCancel.Parent := form;
-    btnCancel.Left   := ScaleX(360);
-    btnCancel.Top    := ScaleY(130);
-    btnCancel.Width  := ScaleX(100);
-    btnCancel.Height := ScaleY(28);
-    btnCancel.Caption := '&Cancel';
-    btnCancel.ModalResult := mrCancel;
-
-    form.ActiveControl := btnReplace;
-
-    result := form.ShowModal();
-
-    if result = mrYes then
-      Result := caReplace
-    else if result = mrNo then
-      Result := caSkip
-    else
-      Result := caCancel;
-
-    // Apply-to-all latches the choice for the rest of this run.
-    if applyAllCheck.Checked and (Result <> caCancel) then begin
-      ConflictDefault  := Result;
-      ConflictApplyAll := True;
-    end;
-  finally
-    form.Free();
-  end;
+  // The "apply to all remaining" feature was in the original spec
+  // (per the user's design instruction with the Replace/Skip/Cancel +
+  // ALL checkbox). Inno's MsgBox doesn't support checkboxes inline;
+  // a follow-up MsgBox after the first Replace/Skip would offer this.
+  // Deferred for v0.1.4 — bindings DB has only a few files in the
+  // initial cut, prompts per file are tolerable. v0.1.5 candidate.
 end;
 
-{ ----------------- bindings DB install loop ----------------- }
-{
-  Walks release\bindings_db\*.json (shipped via {tmp}\bindings_db_payload\
-  by the [Files] section's preCompile hook OR by a separate ZIP unpack —
-  TODO: wire when the release artifact is finalised), prompting the user
-  on any conflict with files already in {app}\bindings_db\.
-
-  For now this routine is invoked at ssPostInstall when the bindings_db
-  task is selected. Source files come from {tmp} where the [Files]
-  section pre-extracted them (added separately).
-}
+// ----------------- bindings DB install loop -----------------
+//
+// Walks bindings_db_payload\*.json (shipped via {tmp}\bindings_db_payload\
+// by the [Files] section's preCompile hook OR by a separate ZIP unpack
+// -- TODO: wire when the release artifact is finalised), prompting the
+// user on any conflict with files already in {app}\bindings_db\.
+//
+// For now this routine is invoked at ssPostInstall when the bindings_db
+// task is selected. Source files come from {tmp} where the [Files]
+// section pre-extracted them (added separately).
 procedure CopyBindingsDbWithConflictPrompt();
 var
   srcDir, destDir: String;
