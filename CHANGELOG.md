@@ -4,6 +4,94 @@ All notable changes to RetroControlMapper. Format follows [Keep a
 Changelog](https://keepachangelog.com); versioning follows
 [SemVer](https://semver.org).
 
+## [v0.1.4] — 2026-05-12
+
+**Intelligence release.** This version starts knowing about your games.
+Out of the box, ~1,800 games across 20+ retro systems get suggested
+button-to-action bindings — no per-game configuration needed. The
+intelligence comes from two sources: the community-maintained MAME/
+FBNeo `controls.dat` (canonical arcade button labels for 1,061 titles),
+and a heuristic pipeline that reads game-manual PDFs via OCR + a
+5-pass cascade of section-detection and pattern-matching regexes.
+Plus a v0.2 spike toward LLM-based extraction (Qwen 2.5 3B over LAN)
+for the long tail.
+
+### Added
+
+- **Arcade controls dataset.** `data_arcade_controls.py` pulls
+  `yo1dog/controls-dat-json` on first arcade-system lookup. 1,061
+  canonical titles with rich button labels (`P1_BUTTON1: "Light Punch"`)
+  and joystick direction mappings. Cached locally for offline use.
+  Covers mame, fbneo, hbmame, neogeo, cps1/2/3.
+- **Game manual extraction pipeline.** Multi-tier lookup:
+  - Local 7z archive ingestor (`manual_local.py`) — indexes 19,548
+    manual entries across 63 systems from a user-supplied
+    Manual_Package.7z, on-demand single-PDF extraction.
+  - Online research (`manual_research_online.py`) — Flaresolverr-
+    routed scraper for Vimm's Lair (fully implemented), GamesDatabase
+    and ReplacementDocs (stubbed for future work).
+  - PDF → text → bindings extractor (`manual_extract.py`) — pdfplumber
+    primary, pypdf fallback with heuristic word-resplit for glyph-
+    positioned PDFs.
+- **OCR fallback** (`manual_ocr.py`) — tesseract-based OCR for
+  scanned bitmap manuals (~80% of the retro corpus). Uses pypdfium2
+  for rasterisation, persistent OCR text cache keyed by
+  `(pdf_path, psm, lang, dpi, prefer_toc)`.
+- **TOC-aware fast-path** — manuals with a Table of Contents get
+  OCR'd selectively (TOC pages + target controls page only), cutting
+  per-manual OCR from 30 pages to ~3.
+- **Multi-pass extraction cascade** (5 passes climbing the yield
+  curve — each pass runs only on titles the previous left empty):
+  - Pass 1: default tight heuristics
+  - Pass 2: extended section headers (sports/RPG/fighter genres)
+  - Pass 3: PSM sweep (re-OCR at PSM 6/4/11)
+  - Pass 4: looser regex thresholds, low-confidence flag
+  - Pass 5: single-fire-button joystick specialist (DE-9 systems)
+- **DE-9 compound directions.** Joystick "up and to the left" emits
+  TWO bindings (dpad_up + dpad_left) sharing the same action —
+  matches how DE-9 joysticks electrically wire (no diagonal switch).
+- **OCR vocabulary correction.** Targeted fix-ups for common Tesseract
+  mangles in controller words: `ieft`→`left`, `dovvn`→`down`,
+  `lire`→`fire`, `loystick`→`joystick`, `buttor`→`button`, etc.
+- **Move-sequence rejection.** Fighter-game combo descriptions
+  (Hadouken, Fatality, etc.) get explicitly filtered before pattern
+  matching so the bindings DB stays clean of game-internal combat
+  data.
+- **Extractor versioning.** Per-record `extractor_version` stamp +
+  `--upgrade-below-version` CLI flag for selective re-extraction
+  when heuristics ship.
+- **Update notification UI overhaul.** Old "Release notes ↗" link
+  replaced with three labelled actions: `Upgrade ↗` (direct installer
+  download from GitHub release assets), `Release notes`, and
+  `Skip this version` (persists in localStorage).
+- **v0.2-spike LLM scaffold.** `llm_extract.py` + `llm_memory.py` +
+  `llm_style_guide.py` lay the groundwork for hybrid LLM extraction
+  on regex-zero titles. Ollama HTTP client, prompt builder with
+  one-shot example + 6 manual-variation patterns + 7 explicit
+  pitfalls, per-system few-shot memory pool (quality-scored,
+  prompt-cache-friendly), structured uncertainty channel for items
+  the LLM should flag rather than guess at. Full protocol documented
+  in `docs/LLM_PROTOCOL.md`.
+
+### Fixed
+
+- **pypdfium2 bitmap leak.** Long-running OCR processes accumulated
+  ~200KB-13MB per page in C-level bitmap buffers that pypdfium2 keeps
+  alive while the PIL Image references them. Fix: explicit
+  `bitmap.close()` after `.copy()` detaches the PIL image from the
+  underlying buffer. Memory creep on the build run dropped 60×.
+- **Early-stop loop no-op.** `manual_ocr.ocr_pdf_pages` had an
+  early-stop heuristic that reduced `cap` inside a `for i in
+  range(...)` loop — Python's range captures cap at loop creation,
+  so cap reductions never took effect. Replaced with a while loop.
+  Result on FF7 PSX: 30 pages OCR'd → 11 pages, 85s → 30s.
+- **Action-by-verb regex backtracking.** The pass-5 prose pattern's
+  optional middle groups were greedy, eating into "the joystick"
+  and leaving only "the left or right" for the input phrase →
+  losing the primary direction on compound bindings. Made groups
+  lazy (`??`) — Bruce Lee LEAP went from 2 cardinals to 3 (full
+  up+left+right).
+
 ## [v0.1.3] — 2026-05-07
 
 **Feature release.** End-to-end mapping flows: the user can now
