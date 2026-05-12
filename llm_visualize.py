@@ -325,33 +325,45 @@ def render_html(calls: list[dict], window: int = 25) -> str:
     median_e = (elapsed_sorted[mid] if elapsed_sorted else 0) if len(elapsed_sorted) % 2 == 1 else \
                ((elapsed_sorted[mid - 1] + elapsed_sorted[mid]) / 2 if elapsed_sorted else 0)
 
-    return HTML_TEMPLATE.format(
-        n_calls=len(calls),
-        first_ts=(calls[0].get("timestamp") or "?")[:19].replace("T", " "),
-        last_ts=(calls[-1].get("timestamp") or "?")[:19].replace("T", " "),
-        total_bindings=bindings_total,
-        yield_pct=yield_pct,
-        total_uncertain=uncertain_total,
-        avg_uncertain_per_call=round(uncertain_total / max(1, len(calls)), 2),
-        mean_elapsed=round(sum(elapsed_vals) / max(1, len(elapsed_vals)), 1),
-        median_elapsed=round(median_e, 1),
-        min_elapsed=round(min(elapsed_vals), 1) if elapsed_vals else 0,
-        max_elapsed=round(max(elapsed_vals), 1) if elapsed_vals else 0,
-        total_pool=total_pool,
-        n_systems_pooled=n_pooled,
-        plural_s=("" if n_pooled == 1 else "s"),
-        window=window,
-        cum_data_json=json.dumps(_cumulative_bindings(calls)),
-        elapsed_data_json=json.dumps(elapsed_with_color),
-        yield_data_json=json.dumps(_rolling_yield(calls, window=window)),
-        tok_data_json=json.dumps(_token_efficiency(calls)),
-        pool_data_json=json.dumps(pool_with_color),
-    )
+    # Replace-based substitution (CSS/JS contain literal `{}` which
+    # collide with str.format() placeholders).
+    substitutions = {
+        "{n_calls}":               str(len(calls)),
+        "{first_ts}":              (calls[0].get("timestamp") or "?")[:19].replace("T", " "),
+        "{last_ts}":               (calls[-1].get("timestamp") or "?")[:19].replace("T", " "),
+        "{total_bindings}":        str(bindings_total),
+        "{yield_pct}":             str(yield_pct),
+        "{total_uncertain}":       str(uncertain_total),
+        "{avg_uncertain_per_call}": str(round(uncertain_total / max(1, len(calls)), 2)),
+        "{mean_elapsed}":          str(round(sum(elapsed_vals) / max(1, len(elapsed_vals)), 1)),
+        "{median_elapsed}":        str(round(median_e, 1)),
+        "{min_elapsed}":           str(round(min(elapsed_vals), 1) if elapsed_vals else 0),
+        "{max_elapsed}":           str(round(max(elapsed_vals), 1) if elapsed_vals else 0),
+        "{total_pool}":            str(total_pool),
+        "{n_systems_pooled}":      str(n_pooled),
+        "{plural_s}":              ("" if n_pooled == 1 else "s"),
+        "{window}":                str(window),
+        "{cum_data_json}":         json.dumps(_cumulative_bindings(calls)),
+        "{elapsed_data_json}":     json.dumps(elapsed_with_color),
+        "{yield_data_json}":       json.dumps(_rolling_yield(calls, window=window)),
+        "{tok_data_json}":         json.dumps(_token_efficiency(calls)),
+        "{pool_data_json}":        json.dumps(pool_with_color),
+    }
+    out = HTML_TEMPLATE
+    for k, v in substitutions.items():
+        out = out.replace(k, v)
+    return out
 
 
 def print_summary(calls: list[dict]):
+    # Windows default cp1252 console can't print Unicode arrows; force
+    # utf-8 stdout if the runtime supports it.
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except (AttributeError, OSError):
+        pass
     if not calls:
-        print("No calls logged yet — has the hybrid feed run?")
+        print("No calls logged yet -- has the hybrid feed run?")
         return
     elapsed_vals = [c.get("elapsed_s") or 0 for c in calls if c.get("elapsed_s")]
     bindings_total = sum(c.get("bindings_count") or 0 for c in calls)
@@ -361,30 +373,36 @@ def print_summary(calls: list[dict]):
     for c in calls:
         sid = c.get("system_id") or "unknown"
         b = by_system.setdefault(sid, {"calls": 0, "bindings": 0,
-                                       "uncertain": 0, "elapsed_sum": 0})
+                                       "uncertain": 0, "elapsed_sum": 0,
+                                       "calls_with_bindings": 0})
         b["calls"] += 1
-        b["bindings"] += c.get("bindings_count") or 0
+        bind_count = c.get("bindings_count") or 0
+        b["bindings"] += bind_count
+        if bind_count > 0:
+            b["calls_with_bindings"] += 1
         b["uncertain"] += c.get("uncertain_count") or 0
         b["elapsed_sum"] += c.get("elapsed_s") or 0
 
     print(f"LLM telemetry summary ({len(calls)} calls)")
-    print(f"  span:        {calls[0].get('timestamp','?')[:19]}  →  "
+    print(f"  span:        {calls[0].get('timestamp','?')[:19]}  ->  "
           f"{calls[-1].get('timestamp','?')[:19]}")
-    print(f"  bindings:    {bindings_total}  "
-          f"({round(100*has_binding/len(calls), 1)}% of calls produced ≥1)")
+    print(f"  bindings:    {bindings_total} total, "
+          f"{has_binding}/{len(calls)} calls produced >=1 "
+          f"({round(100*has_binding/len(calls), 1)}% hit rate)")
     print(f"  uncertain:   {uncertain_total}  "
           f"(avg {round(uncertain_total/len(calls), 2)} per call)")
     if elapsed_vals:
         print(f"  latency:     mean {round(sum(elapsed_vals)/len(elapsed_vals), 1)}s  "
               f"range {round(min(elapsed_vals), 1)}-{round(max(elapsed_vals), 1)}s")
     print()
-    print(f"{'system':<14} {'calls':>6} {'bindings':>9} {'yield':>6} "
-          f"{'unc':>5} {'avg-s':>6}")
+    print(f"{'system':<14} {'calls':>6} {'bindings':>9} {'hit':>5} "
+          f"{'avg/hit':>7} {'unc':>5} {'avg-s':>6}")
     for sid, b in sorted(by_system.items(), key=lambda kv: -kv[1]["calls"]):
         avg_s = b["elapsed_sum"] / max(1, b["calls"])
-        yld = (b["bindings"] / max(1, b["calls"])) * 100
+        hit_pct = (b["calls_with_bindings"] / max(1, b["calls"])) * 100
+        avg_per_hit = b["bindings"] / max(1, b["calls_with_bindings"]) if b["calls_with_bindings"] else 0
         print(f"{sid:<14} {b['calls']:>6} {b['bindings']:>9} "
-              f"{yld:>5.1f}% {b['uncertain']:>5} {avg_s:>5.1f}s")
+              f"{hit_pct:>4.1f}% {avg_per_hit:>6.1f}  {b['uncertain']:>5} {avg_s:>5.1f}s")
 
 
 def main():
