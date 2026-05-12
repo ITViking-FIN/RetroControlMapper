@@ -67,9 +67,16 @@ data/final-stats.txt
 # examples + diagnostic logs. The pool grows over runs; never source.
 data/llm_few_shot.json
 data/llm_rejections.jsonl
+data/llm_uncertain.jsonl
+data/llm_calls.jsonl
+data/llm_learning_curve.html
+data/llm_hybrid_feed.log
+data/llm_hybrid_feed_run.log
 data/cascade_resumed.log
 data/pass5_only.log
+data/pass5_after_v3.log
 data/pass1_v2.log
+data/pass1_v3.log
 
 # OCR text cache — keyed by (pdf path, PSM, lang, DPI). Avoids re-running
 # tesseract across multi-pass extraction. Per-machine, regenerable.

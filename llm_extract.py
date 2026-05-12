@@ -64,6 +64,9 @@ REJECTION_LOG = DATA_DIR / "llm_rejections.jsonl"
 # enter the bindings DB on their own. A separate review CLI could
 # later promote them to bindings or reject them.
 UNCERTAIN_LOG = DATA_DIR / "llm_uncertain.jsonl"
+# Per-call telemetry — one record per LLM extraction. Feeds the
+# llm_visualize.py learning-curve chart (speed/yield trends over time).
+CALL_LOG = DATA_DIR / "llm_calls.jsonl"
 
 PROTOCOL_VERSION = "1.0"
 # Default Ollama endpoint. Localhost is the safe public default; users
@@ -565,6 +568,38 @@ def log_rejections(rejections: list[dict], passport: SystemPassport,
         pass
 
 
+def log_call(passport: SystemPassport, section_text: str,
+             bindings: list[dict], uncertain: list[dict],
+             rejected: list[dict], call_info: dict,
+             used_examples: int, memory_outcome: dict | None,
+             pool_size_after: int | None):
+    """One-line JSONL telemetry record per LLM call. Schema matches
+    llm_visualize.py's reader."""
+    CALL_LOG.parent.mkdir(parents=True, exist_ok=True)
+    rec = {
+        "timestamp":         time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "system_id":         passport.system_id,
+        "game_title":        passport.game_title,
+        "section_len":       len(section_text or ""),
+        "elapsed_s":         call_info.get("elapsed_s"),
+        "prompt_eval_count": call_info.get("prompt_eval_count"),
+        "eval_count":        call_info.get("eval_count"),
+        "bindings_count":    len(bindings or []),
+        "rejected_count":    len(rejected or []),
+        "uncertain_count":   len(uncertain or []),
+        "used_examples":     used_examples,
+        "memory_added":      bool(memory_outcome and memory_outcome.get("added_to_memory")),
+        "pool_size_after":   pool_size_after,
+        "model":             call_info.get("model"),
+        "protocol_version":  PROTOCOL_VERSION,
+    }
+    try:
+        with CALL_LOG.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    except OSError:
+        pass
+
+
 def log_uncertain(uncertain: list[dict], passport: SystemPassport,
                   section_text: str):
     """Append the LLM-flagged-as-uncertain items to llm_uncertain.jsonl
@@ -675,6 +710,16 @@ class LLMExtractor:
                                       "reason": reason}
                     if added and self.auto_save_memory:
                         self.memory.save()
+                # Capture post-call pool size for learning-curve telemetry
+                pool_size_after = None
+                if self.memory is not None:
+                    pool_size_after = self.memory.stats().get(
+                        passport.system_id, {}).get("pool_size", 0)
+                # Per-call telemetry record
+                log_call(passport, section_text, val.bindings,
+                         val.uncertain, val.rejected, last_call_info,
+                         len(prior_examples or []), memory_outcome,
+                         pool_size_after)
                 return {
                     "bindings":      val.bindings,
                     "uncertain":     val.uncertain,
