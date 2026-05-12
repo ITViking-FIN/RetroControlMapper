@@ -1853,9 +1853,18 @@ function rbcfUpdateRenderStatus(pop, info) {
     html = `No releases yet — dev build.`;
   } else if (upd && latest) {
     cls += ' rbcf-update-status-update';
-    const url = info.release_url || '#';
+    const notesUrl = info.release_url || '#';
+    const installUrl = info.installer_url || info.release_url || '#';
+    // Three action affordances:
+    //   Upgrade       — direct installer download (or release page if
+    //                   no .exe asset is attached to the release)
+    //   Release notes — what the link used to be by itself
+    //   Skip          — dismiss for this version only (same as the
+    //                   header badge ×), persists in localStorage
     html = `<strong>v${rbcfEscape(latest)}</strong> available · ` +
-      `<a class="rbcf-update-link" href="${rbcfEscape(url)}" target="_blank" rel="noopener">Release notes ↗</a>`;
+      `<a class="rbcf-update-link rbcf-update-link-cta" href="${rbcfEscape(installUrl)}" target="_blank" rel="noopener">Upgrade ↗</a> · ` +
+      `<a class="rbcf-update-link" href="${rbcfEscape(notesUrl)}" target="_blank" rel="noopener">Release notes</a> · ` +
+      `<button type="button" class="rbcf-update-link rbcf-update-link-skip" data-skip-version="${rbcfEscape(latest)}">Skip this version</button>`;
   } else if (src === 'cache' && (!info.checked_at || !info.has_cache)) {
     cls += ' rbcf-update-status-muted';
     html = `Not yet checked.`;
@@ -1877,6 +1886,27 @@ function rbcfUpdateRenderStatus(pop, info) {
       rbcfUpdateOnCheckNowClicked(pop);
     });
   }
+  // Wire the "Skip this version" button. Persists the dismissal in
+  // localStorage and re-renders the status row in muted "Up to date
+  // (skipped vX)" state so the user can tell it took effect.
+  const skipBtn = statusEl.querySelector('.rbcf-update-link-skip');
+  if (skipBtn) {
+    skipBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      const ver = skipBtn.getAttribute('data-skip-version');
+      if (ver) {
+        rbcfUpdateMarkBadgeDismissed(ver);
+        // Hide the header badge if it's still visible
+        const hdrBadge = document.getElementById('rbcf-update-badge');
+        if (hdrBadge && hdrBadge.parentNode) {
+          hdrBadge.parentNode.removeChild(hdrBadge);
+        }
+        // Update the status row to reflect the skipped state
+        statusEl.className = 'rbcf-update-status rbcf-update-status-muted';
+        statusEl.innerHTML = `Skipped v${rbcfEscape(ver)}. Will re-prompt when a newer release ships.`;
+      }
+    });
+  }
 }
 
 function rbcfUpdateRenderHeaderBadge(info) {
@@ -1896,13 +1926,20 @@ function rbcfUpdateRenderHeaderBadge(info) {
   const badge = document.createElement('div');
   badge.id = 'rbcf-update-badge';
   badge.className = 'rbcf-update-badge';
-  const url = info.release_url || '#';
+  const notesUrl = info.release_url || '#';
+  const installUrl = info.installer_url || info.release_url || '#';
   const ver = info.latest;
-  badge.title = `Update available: v${ver}. Click for release notes.`;
+  badge.title = `Update available: v${ver}. Click 'Upgrade' to download the installer, or × to skip this version.`;
+  // Two affordances on the header pill: the version label still leads
+  // to release notes (low-friction information), an explicit "Upgrade"
+  // CTA opens the installer, and × skips this version. Three icons in
+  // a compact 16px-tall pill is a tight fit — kept short.
   badge.innerHTML = `
-    <a class="rbcf-update-badge-link" href="${rbcfEscape(url)}" target="_blank" rel="noopener"
-       aria-label="Update available: v${rbcfEscape(ver)}">v${rbcfEscape(ver)}</a>
-    <button type="button" class="rbcf-update-badge-x" aria-label="Dismiss update notice">×</button>
+    <a class="rbcf-update-badge-link" href="${rbcfEscape(notesUrl)}" target="_blank" rel="noopener"
+       aria-label="Update available: v${rbcfEscape(ver)} — release notes">v${rbcfEscape(ver)}</a>
+    <a class="rbcf-update-badge-upgrade" href="${rbcfEscape(installUrl)}" target="_blank" rel="noopener"
+       aria-label="Upgrade to v${rbcfEscape(ver)}">Upgrade</a>
+    <button type="button" class="rbcf-update-badge-x" aria-label="Skip this version">×</button>
   `;
   if (cog) actions.insertBefore(badge, cog);
   else actions.appendChild(badge);

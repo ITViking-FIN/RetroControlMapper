@@ -73,6 +73,12 @@ class UpdateInfo:
     update_available: bool = False
     release_url: str | None = None
     release_notes_excerpt: str | None = None
+    # First .exe asset attached to the GitHub release — typically the
+    # Inno installer. The frontend's "Upgrade" button links here so the
+    # user gets a direct download instead of having to navigate the
+    # release page. None when no .exe asset is attached; the frontend
+    # falls back to release_url in that case.
+    installer_url: str | None = None
     published_at: str | None = None       # ISO from GitHub
     checked_at: str = ""                  # ISO when WE checked
     source: str = "cache"                 # 'cache' | 'live' | 'unreleased' | 'error'
@@ -136,6 +142,7 @@ def load_cached() -> UpdateInfo | None:
         update_available=bool(data.get("update_available", False)),
         release_url=data.get("release_url"),
         release_notes_excerpt=data.get("release_notes_excerpt"),
+        installer_url=data.get("installer_url"),
         published_at=data.get("published_at"),
         checked_at=data.get("checked_at", ""),
         source=data.get("source", "cache"),
@@ -430,6 +437,21 @@ def check_for_updates(allow_online: bool = False, force: bool = False) -> Update
     raw_body = body.get("body") or ""
     excerpt = raw_body[:300] if raw_body else None
 
+    # Find the installer asset. GitHub releases attach build artifacts
+    # under "assets". We look for the first .exe — by convention this
+    # is the Inno-Setup installer (e.g. RB-Controller_fix-Setup-0.1.4.exe).
+    # If none found, the frontend falls back to release_url.
+    installer_url: str | None = None
+    assets = body.get("assets")
+    if isinstance(assets, list):
+        for a in assets:
+            if not isinstance(a, dict): continue
+            name = a.get("name") or ""
+            dl = a.get("browser_download_url")
+            if dl and name.lower().endswith(".exe"):
+                installer_url = dl
+                break
+
     cmp = _compare_semver(__version__, latest_clean)
     info = UpdateInfo(
         current=__version__,
@@ -437,6 +459,7 @@ def check_for_updates(allow_online: bool = False, force: bool = False) -> Update
         update_available=(cmp < 0),
         release_url=body.get("html_url"),
         release_notes_excerpt=excerpt,
+        installer_url=installer_url,
         published_at=body.get("published_at"),
         checked_at=now,
         source="live",

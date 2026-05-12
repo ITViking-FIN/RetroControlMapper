@@ -3807,7 +3807,8 @@ button.secondary:hover,
 }
 
 /* Header badge — candy-gradient pill that sits between the pad-pills and
-   the cog. Click opens release notes; small × dismisses for that version. */
+   the cog. Three affordances: version-label opens release notes,
+   "Upgrade" opens the installer download, × dismisses for this version. */
 .rbcf-update-badge {
   display: inline-flex;
   align-items: center;
@@ -3834,6 +3835,43 @@ button.secondary:hover,
   cursor: pointer;
 }
 .rbcf-update-badge-link:hover { text-decoration: underline; }
+/* "Upgrade" CTA inside the header badge — emphasised vs the version-
+   label link, separated by a subtle divider so it reads as a distinct
+   action rather than another label. */
+.rbcf-update-badge-upgrade {
+  color: #fff;
+  text-decoration: none;
+  font-weight: 600;
+  padding-left: 8px;
+  margin-left: 4px;
+  border-left: 1px solid rgba(255, 255, 255, 0.4);
+  cursor: pointer;
+}
+.rbcf-update-badge-upgrade:hover { text-decoration: underline; }
+.rbcf-update-badge-upgrade:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 1px;
+  border-radius: 2px;
+}
+/* Status-row "Skip this version" — looks like a link, behaves like a button */
+.rbcf-update-link-skip {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.rbcf-update-link-skip:hover { opacity: 0.85; }
+.rbcf-update-link-skip:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+/* "Upgrade ↗" CTA in the status row — emphasise it as the primary action */
+.rbcf-update-link-cta {
+  font-weight: 600;
+}
 .rbcf-update-badge-x {
   background: rgba(255, 255, 255, 0.2);
   border: 0;
