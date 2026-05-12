@@ -202,26 +202,69 @@ These records feed iterative prompt improvements:
 
 ---
 
-## Few-shot examples (future iteration)
+## Learning loop (the few-shot memory)
 
-`data/llm_few_shot.json` (gitignored) accumulates known-good extractions
-per system family. Format:
+`llm_memory.py` implements a persistent per-system example pool that
+the model "learns" from across runs. We can't fine-tune Qwen 2.5 3B
+in-place, so learning here means **prompt enrichment**: every
+successful extraction becomes a candidate few-shot example for future
+prompts from the same system.
 
-```json
-{
-  "snes": [
-    {
-      "section_text": "...",
-      "output": { "bindings": [...] }
-    }
-  ],
-  "c64": [...]
-}
+### Storage
+
+`data/llm_few_shot.json` (gitignored). Per-system pool with quality
+scores, capped at `MAX_POOL_PER_SYSTEM = 20`. When the pool is full,
+the lowest-quality example gets evicted for any new candidate that
+outscores it.
+
+### Quality score (0-10 composite)
+
+| Component | Max | Source |
+|---|---|---|
+| Binding count (plateau at 6) | 4.0 | More patterns covered |
+| Confidence-weighted avg | 4.0 | high=1.0, medium=0.6, low=0.3 |
+| Validator pass rate | 2.0 | accepted / (accepted + rejected) |
+
+Bindings must hit `MIN_BINDINGS_FOR_EXAMPLE = 3` to be considered at all.
+
+### Selection strategy
+
+The orchestrator pulls `DEFAULT_EXAMPLES_IN_PROMPT = 2` examples
+per call. Selection:
+
+1. Sort all examples by quality descending; take top 2×N.
+2. Within that set, prefer least-recently-used (`selected_count`).
+3. Increment `selected_count` for the chosen examples.
+
+The rotation step is important — without it, the same 2 high-quality
+examples would dominate every prompt and the model would overfit to
+their phrasing.
+
+### Speed compounding via Ollama prompt-cache
+
+Ollama caches identical prompt prefixes between requests. The prompt
+is structured so the SYSTEM-INVARIANT parts come first:
+
+```
+[System prompt — same for all SNES]      ← cached
+[Generic one-shot example]                ← cached
+[2 SNES-specific examples from pool]      ← cached (stable per system)
+[NEW SECTION TEXT — varies per game]      ← only this is new
+[Output: JSON]
 ```
 
-The orchestrator includes 1-2 examples in the prompt for the matching
-system family. Helps the LLM lock onto the expected shape without
-having to re-invent it each call.
+During a batch run processing 100 SNES titles, the first call pays
+full prompt-eval cost; subsequent calls reuse the cached prefix and
+only re-evaluate the new section text. Typical speedup: 2-4× faster
+inference per call within the same system batch.
+
+### CLI
+
+```
+py llm_memory.py stats              # per-system pool sizes + scores
+py llm_memory.py list snes          # show top examples for one system
+py llm_memory.py dump-path          # where the JSON file lives
+```
 
 ---
 

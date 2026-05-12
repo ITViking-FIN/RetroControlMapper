@@ -54,6 +54,23 @@ data/bindings_user_submission_queue/
 # build log
 data/build_bindings_db.log
 
+# Cascade pipeline runner — per-machine paths to temp logs, lives
+# in the repo for convenience but is not source.
+run_full_pipeline.sh
+memory_watch.sh
+data/cascade.log
+data/upgrade.log
+data/pipeline.log
+data/final-stats.txt
+
+# LLM learning-loop state (v0.2 spike) — per-machine accumulated
+# examples + diagnostic logs. The pool grows over runs; never source.
+data/llm_few_shot.json
+data/llm_rejections.jsonl
+data/cascade_resumed.log
+data/pass5_only.log
+data/pass1_v2.log
+
 # OCR text cache — keyed by (pdf path, PSM, lang, DPI). Avoids re-running
 # tesseract across multi-pass extraction. Per-machine, regenerable.
 data/.ocr_cache/

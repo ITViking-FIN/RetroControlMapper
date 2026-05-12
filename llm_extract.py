@@ -326,11 +326,19 @@ class LLMClient:
 # Prompt builder — implements LLM_PROTOCOL.md exactly
 # ============================================================
 
-def build_prompt(section_text: str, passport: SystemPassport) -> str:
+def build_prompt(section_text: str, passport: SystemPassport,
+                 prior_examples: list = None) -> str:
     """Compose the user-facing prompt. Empirically refined for the
     Qwen2.5-3B model class: short and concrete, anchored by a one-shot
     example, rules near the example so the model treats them as
     instructions not abstract guidance.
+
+    `prior_examples` (optional): list of llm_memory.Example records from
+    the per-system pool. Injected AFTER the generic example block,
+    BEFORE the new input. Strategically placed early in the prompt so
+    Ollama's prompt-cache can reuse the system + examples prefix across
+    same-system calls within a batch — meaningful latency reduction
+    on long runs.
 
     Tested findings (v0.2 spike, 2026-05-12):
       - long rule lists confuse small models -> output empty/minimal
@@ -344,6 +352,14 @@ def build_prompt(section_text: str, passport: SystemPassport) -> str:
     buttons_csv = ", ".join(passport.buttons)
     era = f", {passport.era_hint}" if passport.era_hint else ""
     genre = f", {passport.genre_hint}" if passport.genre_hint else ""
+
+    # System-specific accumulated examples — injected just before the
+    # new input. Format chosen for Ollama prompt-cache compatibility
+    # (deterministic order, fixed-width fields).
+    learned_block = ""
+    if prior_examples:
+        from llm_memory import format_examples_for_prompt
+        learned_block = "\n" + format_examples_for_prompt(prior_examples)
 
     return f"""Extract video game button bindings from this manual section. The ACTION is the ALL-CAPS or capitalized verb at the start of each sentence (KICK, LEAP, JUMP, RUN, etc.) — that is the move name. Match each move to the physical input that triggers it.
 
@@ -379,7 +395,7 @@ EXAMPLE output:
 ]}}
 
 (PAUSE skipped because SPACE key is not in Available inputs.)
-
+{learned_block}
 NOW EXTRACT FROM:
 \"\"\"
 {section_text}
@@ -517,15 +533,28 @@ def log_rejections(rejections: list[dict], passport: SystemPassport,
 # ============================================================
 
 class LLMExtractor:
-    """Orchestrates: build_prompt -> call LLM -> validate -> log."""
+    """Orchestrates: build_prompt -> call LLM -> validate -> log.
+
+    Optional `memory` parameter enables few-shot learning: examples
+    from the per-system pool get injected into prompts, and successful
+    extractions get offered back to the pool. Over a batch run, the
+    pool grows and prompts get richer for the same compute budget —
+    the LLM "learns" via prompt engineering rather than weight
+    updates, exploiting Ollama's prompt-cache for free latency wins."""
 
     def __init__(self, endpoint: str = DEFAULT_ENDPOINT,
                  model: str = DEFAULT_MODEL,
                  retries: int = DEFAULT_RETRIES,
-                 timeout: int = DEFAULT_TIMEOUT):
+                 timeout: int = DEFAULT_TIMEOUT,
+                 memory: "LLMMemory | None" = None,
+                 examples_per_prompt: int = 2,
+                 auto_save_memory: bool = True):
         self.client = LLMClient(endpoint=endpoint, model=model, timeout=timeout)
         self.retries = retries
         self.model = model
+        self.memory = memory
+        self.examples_per_prompt = examples_per_prompt
+        self.auto_save_memory = auto_save_memory
 
     def extract_bindings(self, section_text: str,
                          passport: SystemPassport) -> dict:
@@ -536,7 +565,14 @@ class LLMExtractor:
                     "notes": "empty section text",
                     "call_info": {}}
 
-        prompt = build_prompt(section_text, passport)
+        # Pull system-specific examples from memory if available
+        prior_examples = None
+        if self.memory is not None and self.examples_per_prompt > 0:
+            prior_examples = self.memory.get_examples(
+                passport.system_id, n=self.examples_per_prompt)
+
+        prompt = build_prompt(section_text, passport,
+                              prior_examples=prior_examples)
         last_err = None
         last_resp = None
         last_call_info: dict = {}
@@ -562,11 +598,26 @@ class LLMExtractor:
                               for r in val.rejected)
             if not invalid_json or attempt >= self.retries:
                 log_rejections(val.rejected, passport, section_text)
+                # Offer the extraction to memory if quality is good
+                memory_outcome = None
+                if self.memory is not None and val.bindings:
+                    output_for_memory = {"bindings": val.bindings,
+                                         "notes": val.notes}
+                    added, reason = self.memory.consider(
+                        passport.system_id, section_text,
+                        output_for_memory,
+                        validator_rejected=len(val.rejected))
+                    memory_outcome = {"added_to_memory": added,
+                                      "reason": reason}
+                    if added and self.auto_save_memory:
+                        self.memory.save()
                 return {
-                    "bindings":  val.bindings,
-                    "rejected":  val.rejected,
-                    "notes":     val.notes,
-                    "call_info": last_call_info,
+                    "bindings":      val.bindings,
+                    "rejected":      val.rejected,
+                    "notes":         val.notes,
+                    "call_info":     last_call_info,
+                    "memory":        memory_outcome,
+                    "used_examples": len(prior_examples or []),
                 }
             # Strict-retry prompt prefix
             prompt = ("YOUR PREVIOUS RESPONSE WAS NOT VALID JSON. "
@@ -602,6 +653,11 @@ def main():
     E.add_argument("--endpoint", default=DEFAULT_ENDPOINT)
     E.add_argument("--model", default=DEFAULT_MODEL)
     E.add_argument("--show-section", action="store_true")
+    E.add_argument("--no-memory", action="store_true",
+                   help="Skip the few-shot memory store entirely.")
+    E.add_argument("--examples", type=int, default=2,
+                   help="How many memory examples to inject into the prompt "
+                        "(default 2). Set to 0 to disable.")
     args = ap.parse_args()
 
     if args.cmd is None:
@@ -660,14 +716,26 @@ def main():
               f"({', '.join(passport.buttons[:6])}{'...' if len(passport.buttons) > 6 else ''})")
         print(f"Section:  {len(section_text)} chars\n")
 
-        ex = LLMExtractor(endpoint=args.endpoint, model=args.model)
+        memory = None
+        if not args.no_memory:
+            from llm_memory import LLMMemory
+            memory = LLMMemory()
+        ex = LLMExtractor(endpoint=args.endpoint, model=args.model,
+                          memory=memory, examples_per_prompt=args.examples)
         result = ex.extract_bindings(section_text, passport)
         ci = result.get("call_info", {})
         print(f"LLM call: {ci.get('elapsed_s', 0)}s  "
               f"in={ci.get('prompt_eval_count', 0)} tok, "
-              f"out={ci.get('eval_count', 0)} tok")
+              f"out={ci.get('eval_count', 0)} tok  "
+              f"(used {result.get('used_examples', 0)} prior examples)")
         print(f"Bindings: {len(result['bindings'])} accepted, "
-              f"{len(result['rejected'])} rejected\n")
+              f"{len(result['rejected'])} rejected")
+        if result.get("memory"):
+            m = result["memory"]
+            tag = "ADDED to memory" if m["added_to_memory"] else "not added"
+            print(f"Memory:   {tag} - {m['reason']}\n")
+        else:
+            print()
         for b in result["bindings"]:
             print(f"  {b['button']:>12} -> {b['action']:<30} "
                   f"[{b['confidence']}]")
