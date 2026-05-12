@@ -58,6 +58,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 DATA_DIR = ROOT / "data"
 REJECTION_LOG = DATA_DIR / "llm_rejections.jsonl"
+# Uncertain bindings — items the LLM flagged as ambiguous via the
+# `uncertain` array in its response. Logged for human review; never
+# enter the bindings DB on their own. A separate review CLI could
+# later promote them to bindings or reject them.
+UNCERTAIN_LOG = DATA_DIR / "llm_uncertain.jsonl"
 
 PROTOCOL_VERSION = "1.0"
 DEFAULT_ENDPOINT = "http://192.168.70.102:11434"
@@ -361,6 +366,13 @@ def build_prompt(section_text: str, passport: SystemPassport,
         from llm_memory import format_examples_for_prompt
         learned_block = "\n" + format_examples_for_prompt(prior_examples)
 
+    # Style-guide block — variations and pitfalls the LLM should know.
+    # Filtered to the system family (joystick vs gamepad) so we don't
+    # spend tokens explaining gamepad patterns to single-button-system
+    # extractions and vice versa.
+    from llm_style_guide import format_style_guide
+    style_block = format_style_guide(passport.system_id)
+
     return f"""Extract video game button bindings from this manual section. The ACTION is the ALL-CAPS or capitalized verb at the start of each sentence (KICK, LEAP, JUMP, RUN, etc.) — that is the move name. Match each move to the physical input that triggers it.
 
 GAME: {passport.game_title}
@@ -392,10 +404,10 @@ EXAMPLE output:
     "source_quote":"WALK left and right by moving the joystick"}},
   {{"button":"fire", "action":"Jump", "confidence":"high",
     "source_quote":"JUMP by pressing the fire button"}}
-]}}
+], "uncertain": [], "notes": ""}}
 
 (PAUSE skipped because SPACE key is not in Available inputs.)
-{learned_block}
+{style_block}{learned_block}
 NOW EXTRACT FROM:
 \"\"\"
 {section_text}
@@ -412,6 +424,7 @@ Output JSON only:"""
 class ValidationResult:
     bindings:   list[dict] = field(default_factory=list)
     rejected:   list[dict] = field(default_factory=list)
+    uncertain:  list[dict] = field(default_factory=list)
     notes:      str = ""
     raw_call_info: dict = field(default_factory=dict)
 
@@ -493,6 +506,24 @@ def validate(raw_response: str, section_text: str,
             "matched_by":   "llm",
             "extractor":    "llm-qwen2.5-3b",
         })
+
+    # Uncertain items: the LLM flagged these as ambiguous. Don't enter
+    # the bindings DB but route to llm_uncertain.jsonl for async human
+    # review. Schema is more permissive than bindings — tentative
+    # button might not even be in passport (the LLM is asking).
+    for u in (parsed.get("uncertain") or []):
+        if not isinstance(u, dict): continue
+        # Must at least have a source_quote present in input to be
+        # diagnostic. Otherwise it's just noise.
+        u_quote = (u.get("source_quote") or "").strip()
+        if not u_quote or not _quote_in_text(u_quote, section_text):
+            continue
+        out.uncertain.append({
+            "tentative_button": (u.get("tentative_button") or "").strip(),
+            "tentative_action": (u.get("tentative_action") or "").strip(),
+            "source_quote":     u_quote,
+            "reason":           (u.get("reason") or "").strip(),
+        })
     return out
 
 
@@ -522,6 +553,32 @@ def log_rejections(rejections: list[dict], passport: SystemPassport,
                     "section_text_hash": section_h,
                     "protocol_version":  PROTOCOL_VERSION,
                     **r,
+                }
+                f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    except OSError:
+        pass
+
+
+def log_uncertain(uncertain: list[dict], passport: SystemPassport,
+                  section_text: str):
+    """Append the LLM-flagged-as-uncertain items to llm_uncertain.jsonl
+    for later human review. The protocol allows the LLM to ask 'I see
+    a candidate but I'm not sure' rather than forcing a guess into the
+    bindings DB."""
+    if not uncertain: return
+    UNCERTAIN_LOG.parent.mkdir(parents=True, exist_ok=True)
+    ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    section_h = _section_hash(section_text)
+    try:
+        with UNCERTAIN_LOG.open("a", encoding="utf-8") as f:
+            for u in uncertain:
+                rec = {
+                    "timestamp":         ts,
+                    "system_id":         passport.system_id,
+                    "game_title":        passport.game_title,
+                    "section_text_hash": section_h,
+                    "protocol_version":  PROTOCOL_VERSION,
+                    **u,
                 }
                 f.write(json.dumps(rec, ensure_ascii=False) + "\n")
     except OSError:
@@ -598,6 +655,7 @@ class LLMExtractor:
                               for r in val.rejected)
             if not invalid_json or attempt >= self.retries:
                 log_rejections(val.rejected, passport, section_text)
+                log_uncertain(val.uncertain, passport, section_text)
                 # Offer the extraction to memory if quality is good
                 memory_outcome = None
                 if self.memory is not None and val.bindings:
@@ -613,6 +671,7 @@ class LLMExtractor:
                         self.memory.save()
                 return {
                     "bindings":      val.bindings,
+                    "uncertain":     val.uncertain,
                     "rejected":      val.rejected,
                     "notes":         val.notes,
                     "call_info":     last_call_info,
@@ -744,6 +803,14 @@ def main():
             print("\nRejections:")
             for r in result["rejected"][:5]:
                 print(f"  {r.get('reason'):<30} {str(r.get('binding', ''))[:80]}")
+        uncertain = result.get("uncertain") or []
+        if uncertain:
+            print(f"\nUncertain (flagged for review — {len(uncertain)} items):")
+            for u in uncertain[:5]:
+                print(f"  ?  {u.get('tentative_button', '?'):>10} -> "
+                      f"{u.get('tentative_action', '?')[:30]}")
+                print(f"     reason: {u.get('reason', '')[:80]}")
+                print(f"     quote:  {u.get('source_quote', '')[:60]!r}")
         if result.get("notes"):
             print(f"\nLLM notes: {result['notes']}")
 

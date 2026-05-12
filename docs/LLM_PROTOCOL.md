@@ -96,6 +96,14 @@ the same action, matching DE-9 joystick electrical reality).
       "source_quote": "<verbatim substring of the input section text>"
     }
   ],
+  "uncertain": [
+    {
+      "tentative_button": "<best-guess button or freeform>",
+      "tentative_action": "<best-guess phrase>",
+      "source_quote":     "<verbatim substring of input>",
+      "reason":           "<one-line why unsure>"
+    }
+  ],
   "notes": "<optional one-line uncertainty flag, or empty>"
 }
 ```
@@ -201,6 +209,68 @@ These records feed iterative prompt improvements:
   may need better few-shot examples.
 
 ---
+
+## Style guide — variations + pitfalls + uncertainty
+
+`llm_style_guide.py` teaches the LLM about three meta-things:
+
+### 1. Recognised manual variations
+
+Six patterns the LLM should detect:
+
+| Variation | Example | Where |
+|---|---|---|
+| **press-to-action** | `Press A to jump` | Universal |
+| **button-header** | `A Button\n  Spin Jump` | Gamepad systems |
+| **dash-mapping** | `L1 — Strafe left` | Universal |
+| **action-first-prose** | `KICK by pressing the joystick button` | Joystick systems |
+| **compound-joystick** | `LEAP by moving up and to the left` → 2 bindings | Joystick systems |
+| **tabular** | `Up    Climb up vine` | Universal |
+
+System-family filtering: joystick systems (C64, Amiga, Atari, ZX, MSX, etc.)
+see joystick-specific examples; gamepad systems (NES, SNES, PSX, etc.) see
+gamepad-specific examples. Reduces irrelevant prompt tokens.
+
+### 2. Pitfalls — explicit don'ts
+
+Seven failure modes the LLM is taught to skip:
+
+- **cross-reference** — `See the Options section for joystick configuration` is NOT a binding
+- **combo-as-binding** — `Hadouken: Down, Down-Forward, Forward + Punch` is a game mechanic
+- **legal-or-warning** — copyright/safety text is not gameplay
+- **menu-navigation-flavor** — generic UI navigation is implicit; don't pollute
+- **story-description** — lore text is not control documentation
+- **missing-button-or-action** — a sentence with ONLY a button OR an action is not a binding
+- **ocr-garbled** — when OCR is unreadable, route to `uncertain` rather than guess
+
+### 3. Uncertainty channel
+
+The LLM has a structured way to **ask rather than guess**. The output
+schema includes an `uncertain` array for ambiguous candidates:
+
+```json
+{
+  "uncertain": [
+    {
+      "tentative_button": "fire",
+      "tentative_action": "Magic",
+      "source_quote": "X = Magic",
+      "reason": "Unclear if 'Magic' is the verb (cast) or noun (menu)"
+    }
+  ]
+}
+```
+
+These items go to `data/llm_uncertain.jsonl` for asynchronous human
+review. They never enter the bindings DB on their own. A future
+review CLI could promote them to bindings or mark them rejected,
+feeding back into prompt refinement.
+
+When to use uncertainty (taught explicitly in the prompt):
+- Action could be a verb OR a noun
+- OCR text is degraded
+- Same button mapped to multiple incompatible actions
+- Button in text doesn't match the Available inputs list
 
 ## Learning loop (the few-shot memory)
 
