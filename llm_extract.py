@@ -28,7 +28,7 @@ module must match it.
 ## Usage
 
     from llm_extract import LLMExtractor, SystemPassport
-    ex = LLMExtractor(endpoint="http://192.168.70.102:11434",
+    ex = LLMExtractor(endpoint="http://localhost:11434",
                        model="qwen2.5:3b")
     passport = SystemPassport.for_system("snes", "Super Mario World",
                                           era_hint="1991",
@@ -47,6 +47,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import sys
 import time
@@ -65,8 +66,13 @@ REJECTION_LOG = DATA_DIR / "llm_rejections.jsonl"
 UNCERTAIN_LOG = DATA_DIR / "llm_uncertain.jsonl"
 
 PROTOCOL_VERSION = "1.0"
-DEFAULT_ENDPOINT = "http://192.168.70.102:11434"
-DEFAULT_MODEL    = "qwen2.5:3b"
+# Default Ollama endpoint. Localhost is the safe public default; users
+# point at a LAN box via the `RBCF_LLM_ENDPOINT` env var or the
+# --endpoint CLI flag. The hybrid feed orchestrator and any future
+# GUI integration honour the same env var.
+DEFAULT_ENDPOINT = os.environ.get("RBCF_LLM_ENDPOINT",
+                                  "http://localhost:11434")
+DEFAULT_MODEL    = os.environ.get("RBCF_LLM_MODEL", "qwen2.5:3b")
 DEFAULT_TIMEOUT  = 60   # seconds per call (warm)
 DEFAULT_RETRIES  = 1    # one retry on malformed JSON
 
