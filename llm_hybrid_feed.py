@@ -116,20 +116,32 @@ def _get_section_text(pdf_path: Path) -> str | None:
 def _process_title(extractor, system_id: str, normalised_name: str,
                    rec: dict, index: dict, verbose: bool = True) -> dict:
     """Run LLM on one title. Returns the updated record (caller writes
-    to DB). Does NOT mutate input — returns a copy."""
-    from llm_extract import SystemPassport
+    to DB). Does NOT mutate input — returns a copy.
+
+    Important: `llm_attempted=true` only gets stamped on REAL outcomes
+    (success, skip-with-reason, exception). Connection failures /
+    Ollama-unreachable get NO mutation — _games_to_retry will pick up
+    the same title on next run when the box is back online.
+    """
+    from llm_extract import SystemPassport, LLMError
 
     out = dict(rec)
-    out["llm_attempted"] = True
-    out["llm_attempted_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ",
-                                             time.gmtime())
+    # Note: we no longer pre-stamp llm_attempted here. It gets set ONLY
+    # after we know the LLM call actually executed (success or hard
+    # failure that the LLM itself rejected). See bottom of function.
 
     pdf_path = _resolve_pdf_path(system_id, normalised_name, index)
     if pdf_path is None:
+        out["llm_attempted"] = True
+        out["llm_attempted_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ",
+                                                 time.gmtime())
         out["llm_skip_reason"] = "no PDF available (archive miss?)"
         return out
     section_text = _get_section_text(pdf_path)
     if not section_text:
+        out["llm_attempted"] = True
+        out["llm_attempted_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ",
+                                                 time.gmtime())
         out["llm_skip_reason"] = "OCR yielded no text"
         return out
     # Section sanity guard: if it's massive (>4000 chars), probably the
@@ -144,7 +156,17 @@ def _process_title(extractor, system_id: str, normalised_name: str,
 
     try:
         result = extractor.extract_bindings(section_text, passport)
+    except LLMError as e:
+        # Ollama unreachable / connection failed — do NOT mark
+        # llm_attempted. Next run picks this title up again. Surfacing
+        # the error so the caller can bail the whole run if Ollama is
+        # down (no point in churning 3000 titles all with the same
+        # network failure).
+        raise
     except Exception:
+        out["llm_attempted"] = True
+        out["llm_attempted_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ",
+                                                 time.gmtime())
         out["llm_skip_reason"] = (f"exception: "
             f"{traceback.format_exc(limit=1).strip().splitlines()[-1]}")
         return out
@@ -152,6 +174,12 @@ def _process_title(extractor, system_id: str, normalised_name: str,
     bindings = result.get("bindings") or []
     uncertain = result.get("uncertain") or []
     ci = result.get("call_info") or {}
+
+    # Real outcome (success OR LLM-returned-nothing-but-call-completed)
+    # — safe to mark attempted.
+    out["llm_attempted"] = True
+    out["llm_attempted_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ",
+                                             time.gmtime())
 
     if bindings:
         out["bindings"]       = bindings
@@ -186,8 +214,15 @@ def run_feed(system_id: str | None = None, limit: int | None = None,
              checkpoint_every: int = 10, force: bool = False,
              dry_run: bool = False, verbose: bool = True,
              endpoint: str | None = None, model: str | None = None,
-             examples_per_prompt: int = 2) -> dict:
-    """The full hybrid feed loop."""
+             examples_per_prompt: int = 2,
+             skip_single_button: bool = False) -> dict:
+    """The full hybrid feed loop.
+
+    `skip_single_button=True` excludes systems in
+    llm_style_guide.JOYSTICK_SYSTEMS so this can run in parallel with
+    the regex pass-5 (single-button specialist) without race-condition
+    risk on shared per-system DBs.
+    """
     from manual_local import ensure_index
     from llm_extract import LLMExtractor, DEFAULT_ENDPOINT, DEFAULT_MODEL
     from llm_memory import LLMMemory
@@ -204,6 +239,16 @@ def run_feed(system_id: str | None = None, limit: int | None = None,
         systems = sorted([p.stem for p in BINDINGS_DB_DIR.glob("*.json")
                           if p.stem in index])
         systems.sort(key=lambda s: -len(index.get(s, {})))
+
+    # Optional: drop joystick (single-button) systems. Lets the hybrid
+    # feed run safely alongside the regex pass-5 cascade.
+    if skip_single_button:
+        from llm_style_guide import JOYSTICK_SYSTEMS
+        before = len(systems)
+        systems = [s for s in systems if s not in JOYSTICK_SYSTEMS]
+        if verbose:
+            print(f"--skip-single-button: dropped {before - len(systems)} "
+                  f"joystick systems; processing {len(systems)} multi-button.")
 
     memory = LLMMemory()
     extractor = LLMExtractor(
@@ -262,6 +307,23 @@ def run_feed(system_id: str | None = None, limit: int | None = None,
                 print("\n[interrupted] saving checkpoint and stopping...")
                 _save_db(db); memory.save(); return grand
             except Exception as e:
+                # LLMError from _process_title means Ollama is unreachable
+                # — bail the whole run, don't waste cycles. Caller can
+                # resume when the box is back online; no titles get
+                # falsely marked llm_attempted in the meantime.
+                from llm_extract import LLMError
+                if isinstance(e, LLMError):
+                    print(f"\n[fatal] Ollama unreachable mid-run: {e}",
+                          file=sys.stderr)
+                    print("  Saving partial progress and aborting. "
+                          "Re-run when Ollama is back — already-attempted "
+                          "titles will be skipped, in-flight title will "
+                          "be retried.", file=sys.stderr)
+                    _save_db(db); memory.save()
+                    grand["errors"] += 1
+                    grand["aborted_at"] = key
+                    grand["abort_reason"] = "ollama_unreachable"
+                    return grand
                 grand["errors"] += 1
                 if verbose:
                     print(f"  [error] {key}: {e}", file=sys.stderr)
@@ -327,6 +389,10 @@ def main():
     ap.add_argument("--model", help="Ollama model override.")
     ap.add_argument("--examples", type=int, default=2,
                     help="Few-shot examples per prompt.")
+    ap.add_argument("--skip-single-button", action="store_true",
+                    help="Exclude joystick (single-button) systems. Use "
+                         "when running in parallel with pass 5 to avoid "
+                         "per-system DB race conditions.")
     ap.add_argument("--quiet", action="store_true")
     args = ap.parse_args()
 
@@ -340,6 +406,7 @@ def main():
         endpoint=args.endpoint,
         model=args.model,
         examples_per_prompt=args.examples,
+        skip_single_button=args.skip_single_button,
     )
 
     if not args.quiet:
