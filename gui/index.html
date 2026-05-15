@@ -64,6 +64,29 @@
       <span class="pane-tag">Target</span>
       Target system
       <span class="hint" id="target-name">—</span>
+      <!-- v0.1.5 13d: per-target-system overrides used to live in the
+           bottom accordion stack (#sec-game-options). Now a compact
+           button anchored to the target pane header — it's about the
+           target's quirks, belongs with the target. -->
+      <button type="button" id="btn-target-overrides" class="target-overrides-toggle"
+              title="Per-game overrides (keyboard pass-through, focus capture, joy-port)"
+              aria-label="Game overrides"
+              aria-haspopup="dialog"
+              aria-expanded="false">
+        <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <line x1="4" y1="21" x2="4" y2="14"/>
+          <line x1="4" y1="10" x2="4" y2="3"/>
+          <line x1="12" y1="21" x2="12" y2="12"/>
+          <line x1="12" y1="8" x2="12" y2="3"/>
+          <line x1="20" y1="21" x2="20" y2="16"/>
+          <line x1="20" y1="12" x2="20" y2="3"/>
+          <line x1="1" y1="14" x2="7" y2="14"/>
+          <line x1="9" y1="8" x2="15" y2="8"/>
+          <line x1="17" y1="16" x2="23" y2="16"/>
+        </svg>
+        <span>Overrides</span>
+      </button>
     </h2>
     <div class="target-selectors">
       <div class="field">
@@ -128,26 +151,24 @@
   <div class="mappings-grid" id="mappings-grid"></div>
 </section>
 
-<section id="sec-game-options" class="collapsible">
-  <h2>
-    <span class="chev" aria-hidden="true">▾</span>
-    <svg class="h2-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
-    Advanced game overrides
-    <span class="hint">keyboard pass-through, focus capture, joy-port — writes es_settings.cfg per-game keys</span>
-  </h2>
+<!-- v0.1.5 13d: Advanced game overrides lifted out of the accordion
+     stack and into a target-pane-header popover. The hidden host
+     below keeps the #game-options element in the DOM so the existing
+     gameOpts reference + renderers in app.js continue to work. -->
+<div id="game-options-host" hidden aria-hidden="true">
   <div class="game-options" id="game-options">
     <p class="muted small">Pick a system above to see options.</p>
   </div>
-</section>
+</div>
 
-<section id="sec-notes" class="collapsible">
-  <h2>
-    <span class="chev" aria-hidden="true">▾</span>
-    <svg class="h2-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg>
-    Notes
-  </h2>
+<!-- v0.1.5 13b: NOTES lifted out of the accordion stack and into a
+     header-anchored popover. Doc icon next to the settings cog opens
+     a popover containing this same textarea. The hidden host below
+     keeps the element in the DOM so existing notesEl.value accessors
+     in app.js (profile load/save, etc.) continue to work unchanged. -->
+<div id="notes-host" hidden aria-hidden="true">
   <textarea id="notes" placeholder="Free-text notes about this game's controls. Optional, kept in the profile YAML."></textarea>
-</section>
+</div>
 
 <section class="full footer">
   <p class="muted small">

@@ -1011,11 +1011,15 @@ function makeRowBadge(source) {
 }
 
 // Render the game-detail header strip. Hosts the confidence pill, the
-// "X of Y overrides" summary, and the overlay toggle. Lives at the top
-// of the Advanced game overrides section (#sec-game-options) — the
-// tightest space available without touching index.html.
+// "X of Y overrides" summary, and the overlay toggle.
+//
+// v0.1.5 13d: previously injected into #sec-game-options. Now lives
+// in the hidden #game-options-host so it travels into the overrides
+// popover when opened. (Follow-up: surface the override count as a
+// badge ON the Overrides button itself for at-a-glance visibility
+// without opening the popover.)
 function renderGameDetailHeader(systemId, profile, systemDefault) {
-  const sec = document.getElementById('sec-game-options');
+  const sec = document.getElementById('game-options-host');
   if (!sec) return;
   let host = sec.querySelector('.rbcf-game-detail-header');
   if (!systemId || !profile) {
@@ -1025,10 +1029,10 @@ function renderGameDetailHeader(systemId, profile, systemDefault) {
   if (!host) {
     host = document.createElement('div');
     host.className = 'rbcf-game-detail-header';
-    // Insert directly after the section's <h2> so it sits between the
-    // header and the existing intro/options grid.
-    const h2 = sec.querySelector('h2');
-    if (h2 && h2.nextSibling) sec.insertBefore(host, h2.nextSibling);
+    // Insert before the #game-options div so the strip sits at the
+    // top of the host (and thus at the top of the popover when shown).
+    const gameOpts = sec.querySelector('#game-options');
+    if (gameOpts) sec.insertBefore(host, gameOpts);
     else sec.prepend(host);
   }
 
@@ -2063,6 +2067,241 @@ function injectSettingsCog() {
     e.stopPropagation();
     if ($('rbcf-apply-settings-popover')) dismissSettingsPopover();
     else showSettingsPopover();
+  });
+}
+
+// ============================================================
+// v0.1.5 13b — NOTES popover (lifted from accordion section)
+// ============================================================
+// Doc icon sits in .page-actions, just before the settings cog. Click
+// opens a popover with a textarea bound to the existing #notes element
+// (hidden in the DOM via #notes-host). Existing notesEl.value accessors
+// in profile load/save continue to work — the textarea is the same
+// element regardless of where it's currently rendered.
+//
+// Pattern mirrors injectSettingsCog + showSettingsPopover.
+
+let _rbcfNotesOutsideHandler = null;
+let _rbcfNotesKeyHandler = null;
+
+function injectNotesIcon() {
+  let actions = document.querySelector('.page-actions');
+  if (!actions) {
+    const header = document.querySelector('header');
+    if (!header) return;
+    actions = document.createElement('div');
+    actions.className = 'page-actions';
+    header.appendChild(actions);
+  }
+  if ($('rbcf-notes-icon')) return;
+  const btn = document.createElement('button');
+  btn.id = 'rbcf-notes-icon';
+  btn.type = 'button';
+  btn.className = 'secondary rbcf-apply-settings-toggle';
+  btn.title = 'Game notes';
+  btn.setAttribute('aria-label', 'Game notes');
+  btn.setAttribute('aria-haspopup', 'dialog');
+  btn.setAttribute('aria-expanded', 'false');
+  btn.innerHTML = `
+    <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+      <polyline points="14 2 14 8 20 8"/>
+      <line x1="9" y1="13" x2="15" y2="13"/>
+      <line x1="9" y1="17" x2="13" y2="17"/>
+    </svg>
+  `;
+  // Insert BEFORE the settings cog so order is [...badge, notes, cog].
+  const cog = $('rbcf-apply-settings-cog');
+  if (cog) actions.insertBefore(btn, cog);
+  else actions.appendChild(btn);
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if ($('rbcf-notes-popover')) dismissNotesPopover();
+    else showNotesPopover();
+  });
+}
+
+function dismissNotesPopover() {
+  const pop = $('rbcf-notes-popover');
+  if (pop) {
+    // Move the textarea back to its hidden host so it stays in the DOM
+    // (existing notesEl.value accessors keep working).
+    const ta = pop.querySelector('#notes');
+    const host = $('notes-host');
+    if (ta && host) host.appendChild(ta);
+    pop.remove();
+  }
+  const icon = $('rbcf-notes-icon');
+  if (icon) icon.setAttribute('aria-expanded', 'false');
+  if (_rbcfNotesOutsideHandler) {
+    document.removeEventListener('mousedown', _rbcfNotesOutsideHandler, true);
+    _rbcfNotesOutsideHandler = null;
+  }
+  if (_rbcfNotesKeyHandler) {
+    document.removeEventListener('keydown', _rbcfNotesKeyHandler, true);
+    _rbcfNotesKeyHandler = null;
+  }
+}
+
+function showNotesPopover() {
+  dismissNotesPopover();
+  const icon = $('rbcf-notes-icon');
+  if (!icon) return;
+
+  const pop = document.createElement('div');
+  pop.id = 'rbcf-notes-popover';
+  pop.className = 'rbcf-apply-settings-popover rbcf-notes-popover';
+  pop.setAttribute('role', 'dialog');
+  pop.setAttribute('aria-label', 'Game notes');
+  pop.innerHTML = `
+    <div class="rbcf-apply-settings-head">
+      <h3 class="rbcf-apply-settings-title">Notes</h3>
+      <button type="button" class="rbcf-apply-modal-x" aria-label="Close" data-act="close">×</button>
+    </div>
+    <div class="rbcf-apply-settings-body">
+      <p class="rbcf-notes-help">Free-text notes about this game's controls. Kept in the profile YAML.</p>
+      <div class="rbcf-notes-textarea-host"></div>
+    </div>
+  `;
+  document.body.appendChild(pop);
+
+  // Move the existing textarea (with current value + listeners) into the popover.
+  const ta = $('notes');
+  const taHost = pop.querySelector('.rbcf-notes-textarea-host');
+  if (ta && taHost) {
+    taHost.appendChild(ta);
+    // Ensure it's visible inside the popover (its #notes-host parent had hidden).
+    ta.hidden = false;
+    ta.style.display = '';
+    setTimeout(() => ta.focus(), 0);
+  }
+
+  // Anchor below the icon, right-aligned to the page-actions edge.
+  const r = icon.getBoundingClientRect();
+  pop.style.position = 'absolute';
+  pop.style.top = (r.bottom + 8 + window.scrollY) + 'px';
+  pop.style.right = (window.innerWidth - r.right) + 'px';
+
+  icon.setAttribute('aria-expanded', 'true');
+
+  pop.querySelector('[data-act="close"]').addEventListener('click', dismissNotesPopover);
+  _rbcfNotesOutsideHandler = (e) => {
+    if (pop.contains(e.target)) return;
+    if (icon.contains(e.target)) return;
+    dismissNotesPopover();
+  };
+  _rbcfNotesKeyHandler = (e) => {
+    if (e.key === 'Escape') dismissNotesPopover();
+  };
+  document.addEventListener('mousedown', _rbcfNotesOutsideHandler, true);
+  document.addEventListener('keydown', _rbcfNotesKeyHandler, true);
+}
+
+// ============================================================
+// v0.1.5 13d — Advanced game overrides popover
+// ============================================================
+// "Overrides" button sits in the target pane header (right of the
+// target-name hint). Click → popover containing the #game-options
+// div (same DOM element the existing renderers populate). Pattern
+// mirrors the notes popover.
+//
+// Why not in the page-actions header strip: the overrides are
+// per-target-system, not global. They belong WITH the target system
+// the user is configuring, not in the global app chrome.
+
+let _rbcfOverridesOutsideHandler = null;
+let _rbcfOverridesKeyHandler = null;
+
+function dismissOverridesPopover() {
+  const pop = $('rbcf-overrides-popover');
+  if (pop) {
+    // Move all transient overrides content back to its hidden host so
+    // the renderers and gameOpts reference keep working. This includes
+    // both #game-options AND the .rbcf-game-detail-header strip.
+    const host = $('game-options-host');
+    const overridesContent = pop.querySelector('.rbcf-overrides-host');
+    if (host && overridesContent) {
+      while (overridesContent.firstChild) {
+        host.appendChild(overridesContent.firstChild);
+      }
+    }
+    pop.remove();
+  }
+  const btn = $('btn-target-overrides');
+  if (btn) btn.setAttribute('aria-expanded', 'false');
+  if (_rbcfOverridesOutsideHandler) {
+    document.removeEventListener('mousedown', _rbcfOverridesOutsideHandler, true);
+    _rbcfOverridesOutsideHandler = null;
+  }
+  if (_rbcfOverridesKeyHandler) {
+    document.removeEventListener('keydown', _rbcfOverridesKeyHandler, true);
+    _rbcfOverridesKeyHandler = null;
+  }
+}
+
+function showOverridesPopover() {
+  dismissOverridesPopover();
+  const btn = $('btn-target-overrides');
+  if (!btn) return;
+
+  const pop = document.createElement('div');
+  pop.id = 'rbcf-overrides-popover';
+  pop.className = 'rbcf-apply-settings-popover rbcf-overrides-popover';
+  pop.setAttribute('role', 'dialog');
+  pop.setAttribute('aria-label', 'Per-game overrides');
+  pop.innerHTML = `
+    <div class="rbcf-apply-settings-head">
+      <h3 class="rbcf-apply-settings-title">Advanced game overrides</h3>
+      <button type="button" class="rbcf-apply-modal-x" aria-label="Close" data-act="close">×</button>
+    </div>
+    <div class="rbcf-apply-settings-body">
+      <p class="rbcf-overrides-help">Keyboard pass-through, focus capture, joy-port — writes <code>es_settings.cfg</code> per-game keys.</p>
+      <div class="rbcf-overrides-host"></div>
+    </div>
+  `;
+  document.body.appendChild(pop);
+
+  // Move ALL content from the hidden host (game-detail header strip
+  // + #game-options) into the popover so the strip and the options
+  // grid travel together.
+  const gameOptsHost = $('game-options-host');
+  const host = pop.querySelector('.rbcf-overrides-host');
+  if (gameOptsHost && host) {
+    while (gameOptsHost.firstChild) {
+      host.appendChild(gameOptsHost.firstChild);
+    }
+  }
+
+  // Anchor below the button, right-aligned with it.
+  const r = btn.getBoundingClientRect();
+  pop.style.position = 'absolute';
+  pop.style.top = (r.bottom + 8 + window.scrollY) + 'px';
+  pop.style.right = (window.innerWidth - r.right) + 'px';
+
+  btn.setAttribute('aria-expanded', 'true');
+
+  pop.querySelector('[data-act="close"]').addEventListener('click', dismissOverridesPopover);
+  _rbcfOverridesOutsideHandler = (e) => {
+    if (pop.contains(e.target)) return;
+    if (btn.contains(e.target)) return;
+    dismissOverridesPopover();
+  };
+  _rbcfOverridesKeyHandler = (e) => {
+    if (e.key === 'Escape') dismissOverridesPopover();
+  };
+  document.addEventListener('mousedown', _rbcfOverridesOutsideHandler, true);
+  document.addEventListener('keydown', _rbcfOverridesKeyHandler, true);
+}
+
+function wireTargetOverridesButton() {
+  const btn = $('btn-target-overrides');
+  if (!btn || btn._rbcfWired) return;
+  btn._rbcfWired = true;
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if ($('rbcf-overrides-popover')) dismissOverridesPopover();
+    else showOverridesPopover();
   });
 }
 
@@ -3303,11 +3542,12 @@ async function loadDevices() {
 // ============================================================
 // Click an .collapsible <h2> to toggle the .collapsed class on its
 // parent <section>. State persists in localStorage as a JSON array
-// of section IDs. On first load (no stored state), #sec-notes starts
-// collapsed; the others start open.
+// of section IDs. All remaining accordions start open on first load.
+// (v0.1.5 13b: #sec-notes was lifted out into a header popover; the
+//  default-closed list is empty until another section needs it.)
 
 const COLLAPSE_STORAGE_KEY = 'rbcf-collapsed';
-const COLLAPSE_DEFAULT_CLOSED = ['sec-notes'];
+const COLLAPSE_DEFAULT_CLOSED = [];
 
 function readCollapsedState() {
   try {
@@ -3546,6 +3786,8 @@ function setupCollapsibles() {
   }
   setupCollapsibles();
   injectSettingsCog();
+  injectNotesIcon();
+  wireTargetOverridesButton();
   setupClickAcross();
   // Initial templates pass for the default system (after loadSystems set it)
   if (selSystem.value) {

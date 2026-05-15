@@ -2536,6 +2536,108 @@ html.rbcf-onb-locked body { overflow: hidden; }
   overflow: hidden;
   animation: rbcf-apply-fade-in var(--dur-base) var(--ease);
 }
+/* v0.1.5 13b — notes popover. Wider than settings (textarea needs
+   room), fixed height so the textarea has predictable space. */
+.rbcf-notes-popover {
+  width: 480px;
+  max-width: calc(100vw - 32px);
+}
+.rbcf-notes-help {
+  font-size: 12px;
+  color: var(--tx-hint);
+  margin: 0 0 10px 0;
+}
+.rbcf-notes-textarea-host {
+  display: flex;
+  width: 100%;
+}
+.rbcf-notes-textarea-host > textarea {
+  width: 100%;
+  min-height: 220px;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  padding: 10px 12px;
+  background: var(--content-fill);
+  color: var(--tx);
+  border: 1px solid var(--edge-bottom);
+  border-radius: 8px;
+  resize: vertical;
+}
+.rbcf-notes-textarea-host > textarea:focus {
+  outline: 2px solid var(--acc);
+  outline-offset: 1px;
+  border-color: transparent;
+}
+/* When the textarea is in its hidden host (not in the popover),
+   keep it out of the layout entirely. */
+#notes-host {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+}
+
+/* v0.1.5 13d — overrides popover + target-pane "Overrides" toggle */
+.target-overrides-toggle {
+  /* Sits next to .hint (#target-name) in the target h2.
+     Compact secondary button — small icon + tight label. */
+  margin-left: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--content-fill);
+  border: 1px solid var(--edge-bottom);
+  color: var(--tx-secondary);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background var(--dur-base) var(--ease),
+              border-color var(--dur-base) var(--ease),
+              color var(--dur-base) var(--ease);
+  text-transform: none;
+  letter-spacing: 0;
+  flex-shrink: 0;
+}
+.target-overrides-toggle:hover {
+  background: var(--plate-fill);
+  border-color: var(--edge-inner);
+  color: var(--tx);
+}
+.target-overrides-toggle:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: 1px;
+}
+.target-overrides-toggle .btn-icon { width: 13px; height: 13px; }
+.target-overrides-toggle[aria-expanded="true"] {
+  background: var(--plate-fill);
+  border-color: var(--acc);
+  color: var(--acc);
+}
+.rbcf-overrides-popover {
+  /* Wider than notes — the .game-options grid wants room. */
+  width: 720px;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 96px);
+  overflow-y: auto;
+}
+.rbcf-overrides-help {
+  font-size: 12px;
+  color: var(--tx-hint);
+  margin: 0 0 12px 0;
+}
+.rbcf-overrides-host { display: block; width: 100%; }
+#game-options-host {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+}
 .rbcf-apply-settings-head {
   display: flex;
   align-items: center;
