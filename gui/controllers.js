@@ -16,7 +16,7 @@
 // the `.src-btn`/`.tgt-btn`/`.face.*` class hooks.
 
 const SRC_XINPUT = `
-<svg viewBox="0 0 620 360" xmlns="http://www.w3.org/2000/svg" class="ctrl-svg" aria-label="Your XInput controller">
+<svg viewBox="0 0 620 380" xmlns="http://www.w3.org/2000/svg" class="ctrl-svg" aria-label="Your XInput controller">
   <defs>
     <!-- Pearl-grey body, lit from upper left -->
     <linearGradient id="xiBody" x1="0.25" y1="0" x2="0.75" y2="1">
@@ -68,42 +68,51 @@ const SRC_XINPUT = `
     </filter>
   </defs>
 
-  <!-- Body — gentle 8BitDo-style curves -->
+  <!-- Body — 8BitDo-style with proper ergonomic grips.
+       v0.1.5 13c: extended grips from y=302 → y=342, bowed outward at the
+       widest point (x=55 left, 565 right), deepened the central notch
+       (y=275 vs prior y=258). Internal elements (d-pad, stick, face
+       buttons, View/Menu, shoulders/triggers) keep their original
+       positions on the upper/middle body and don't need to move. -->
   <g filter="url(#xiBodyShadow)">
     <path d="M 130 96
              Q 78 96 70 152
-             L 70 232
-             Q 70 296 142 302
-             L 215 302
-             Q 250 302 268 282
-             Q 290 258 310 258
-             Q 330 258 352 282
-             Q 370 302 405 302
-             L 478 302
-             Q 550 296 550 232
+             L 70 215
+             Q 55 290 90 325
+             Q 115 345 150 342
+             L 215 342
+             Q 250 342 270 315
+             Q 290 275 310 275
+             Q 330 275 350 315
+             Q 370 342 405 342
+             L 470 342
+             Q 505 345 530 325
+             Q 565 290 550 215
              L 550 152
              Q 542 96 490 96
              Z"
           fill="url(#xiBody)" stroke="rgba(20,24,38,0.25)" stroke-width="1.25"/>
-    <!-- Top sheen -->
+    <!-- Top sheen (unchanged — sits on top of body, doesn't depend on grip shape) -->
     <path d="M 132 100
              Q 84 100 78 148
              Q 200 132 310 132
              Q 420 132 542 148
              Q 536 100 488 100 Z"
           fill="url(#xiBodyHi)"/>
-    <!-- Bottom shading -->
-    <path d="M 78 230
-             Q 86 296 142 298
-             L 215 298
-             Q 250 298 268 280
-             Q 290 256 310 256
-             Q 330 256 352 280
-             Q 370 298 405 298
-             L 478 298
-             Q 534 296 542 230
-             Q 430 250 310 250
-             Q 190 250 78 230 Z"
+    <!-- Bottom shading — adjusted to follow the new grip shape. -->
+    <path d="M 70 215
+             Q 55 290 90 325
+             Q 115 345 150 342
+             L 215 342
+             Q 250 342 270 315
+             Q 290 275 310 275
+             Q 330 275 350 315
+             Q 370 342 405 342
+             L 470 342
+             Q 505 345 530 325
+             Q 565 290 550 215
+             Q 430 235 310 235
+             Q 190 235 70 215 Z"
           fill="url(#xiBodyLo)" opacity="0.65"/>
     <!-- Centre console (slightly recessed plate where home/select/start sit) -->
     <ellipse cx="310" cy="170" rx="68" ry="34" fill="rgba(20,24,38,0.06)"/>
@@ -196,8 +205,8 @@ const SRC_XINPUT = `
     </g>
   </g>
 
-  <!-- Title -->
-  <text x="310" y="338" text-anchor="middle" class="ctrl-caption">XInput / Xbox controller</text>
+  <!-- Title (sits below the extended grips at y=342) -->
+  <text x="310" y="356" text-anchor="middle" class="ctrl-caption">XInput / Xbox controller</text>
 </svg>
 `;
 
