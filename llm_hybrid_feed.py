@@ -72,10 +72,33 @@ def _save_db(db: dict):
     tmp.replace(p)
 
 
-def _qualifies_for_llm(rec: dict, force: bool) -> bool:
-    """Regex-zero AND not yet LLM-attempted (unless --force)."""
-    if rec.get("bindings"): return False           # has regex bindings already
-    if not force and rec.get("llm_attempted"):     # already tried
+def _qualifies_for_llm(rec: dict, force: bool,
+                       retry_mode: str = "none") -> bool:
+    """Decide whether a title should get an LLM call.
+
+    retry_mode controls what re-attempts look like:
+      "none"            — default. Skip llm_attempted records (unless --force).
+      "empty"           — retry any record with empty bindings even if attempted.
+                          Catches "manual probably has controls, Llama saw
+                          nothing first time" cases. Burns compute on
+                          genuinely-no-controls manuals.
+      "uncertain-only"  — retry records where bindings=[] AND
+                          llm_uncertain_count > 0. Llama already noticed
+                          candidate bindings; with a richer pool it may
+                          now commit them. Highest signal-per-compute.
+    """
+    if rec.get("bindings"): return False           # has bindings already
+    if force: return True                          # bypass all guards
+
+    if retry_mode == "uncertain-only":
+        if rec.get("llm_uncertain_count", 0) > 0:
+            return True
+        return False                               # nothing to revisit
+    if retry_mode == "empty":
+        return True                                # attempt anything still empty
+
+    # retry_mode == "none": default — skip if already tried
+    if rec.get("llm_attempted"):
         return False
     return True
 
@@ -203,11 +226,12 @@ def _process_title(extractor, system_id: str, normalised_name: str,
     return out
 
 
-def _list_targets(system_id: str, force: bool = False) -> list[str]:
+def _list_targets(system_id: str, force: bool = False,
+                  retry_mode: str = "none") -> list[str]:
     db = _load_db(system_id)
     if db is None: return []
     return [k for k, r in (db.get("games") or {}).items()
-            if _qualifies_for_llm(r, force)]
+            if _qualifies_for_llm(r, force, retry_mode=retry_mode)]
 
 
 def run_feed(system_id: str | None = None, limit: int | None = None,
@@ -215,7 +239,8 @@ def run_feed(system_id: str | None = None, limit: int | None = None,
              dry_run: bool = False, verbose: bool = True,
              endpoint: str | None = None, model: str | None = None,
              examples_per_prompt: int = 2,
-             skip_single_button: bool = False) -> dict:
+             skip_single_button: bool = False,
+             retry_mode: str = "none") -> dict:
     """The full hybrid feed loop.
 
     `skip_single_button=True` excludes systems in
@@ -274,7 +299,7 @@ def run_feed(system_id: str | None = None, limit: int | None = None,
              "started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
 
     for sys_id in systems:
-        targets = _list_targets(sys_id, force=force)
+        targets = _list_targets(sys_id, force=force, retry_mode=retry_mode)
         if not targets:
             if verbose: print(f"[{sys_id}] no targets (all titles either have "
                               f"bindings or already LLM-attempted)")
@@ -393,6 +418,16 @@ def main():
                     help="Exclude joystick (single-button) systems. Use "
                          "when running in parallel with pass 5 to avoid "
                          "per-system DB race conditions.")
+    ap.add_argument("--retry-mode", choices=("none", "empty",
+                                              "uncertain-only"),
+                    default="none",
+                    help="Re-attempt previously-tried titles. "
+                         "'uncertain-only' (recommended) retries records "
+                         "where the LLM flagged candidates but couldn't "
+                         "commit any bindings — highest signal-per-compute "
+                         "with a more mature memory pool. 'empty' retries "
+                         "any zero-binding record. Default 'none' = skip "
+                         "anything llm_attempted.")
     ap.add_argument("--quiet", action="store_true")
     args = ap.parse_args()
 
@@ -407,6 +442,7 @@ def main():
         model=args.model,
         examples_per_prompt=args.examples,
         skip_single_button=args.skip_single_button,
+        retry_mode=args.retry_mode,
     )
 
     if not args.quiet:

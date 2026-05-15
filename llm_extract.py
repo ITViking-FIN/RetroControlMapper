@@ -675,12 +675,15 @@ class LLMExtractor:
         last_resp = None
         last_call_info: dict = {}
 
+        last_was_llmerror = False
         for attempt in range(self.retries + 1):
             t0 = time.time()
             try:
                 resp = self.client.generate(prompt, json_mode=True)
             except LLMError as e:
-                last_err = str(e); break
+                last_err = str(e)
+                last_was_llmerror = True
+                break
             elapsed = time.time() - t0
             last_call_info = {
                 "elapsed_s":         round(elapsed, 2),
@@ -733,6 +736,15 @@ class LLMExtractor:
             prompt = ("YOUR PREVIOUS RESPONSE WAS NOT VALID JSON. "
                       "OUTPUT MUST BE A JSON OBJECT, NOTHING ELSE.\n\n"
                       + prompt)
+
+        # BW-1: if the failure was an LLMError (network / Ollama dead /
+        # timeout), re-raise so the orchestrator can detect Ollama is
+        # down and abort the run instead of stranding hundreds of
+        # records with llm_attempted=true and no real call. Swallowing
+        # LLMError here is exactly what caused the 494-stranded-records
+        # incident on 2026-05-12.
+        if last_was_llmerror:
+            raise LLMError(last_err or "LLM unreachable after all retries")
 
         return {
             "bindings": [], "rejected": [
