@@ -6,11 +6,13 @@ established lanes:
 
 1. **New controller image** — you own a controller we don't have a photo
    of (or have a better photo of one we do).
-2. **New game profile** — you've worked out a button/keystroke mapping
-   for a specific game and want to share it.
+2. **New game bindings** — you've worked out a button/keystroke mapping
+   for a game and want to share it back. v0.1.5 ships an in-app
+   submission flow (see Lane 2 below).
 3. **Bug fix** — something's broken; you can fix it.
 4. **New feature** — something not yet shipped that fits the project's
-   scope (per `v0.1.3-PLAN.md`, `CLAUDE.md`).
+   scope. Open a discussion issue first — most feature work is
+   prioritised against an internal roadmap.
 
 Each lane has a streamlined workflow below. If your contribution doesn't
 fit, open a discussion issue first — we'd rather chat about it than have
@@ -74,12 +76,55 @@ v1 vs v2) have different VID:PIDs and benefit from distinct photos.
 
 ---
 
-## Lane 2 — Contributing a game profile
+## Lane 2 — Contributing game bindings
 
-(Stub — fully documented in v0.2 when we ship community sharing as a
-first-class feature. For now, profile contributions live in your local
-`profiles/` and we'll publish a curated `community/` folder in this
-repo as part of v0.1.3 Task 6.)
+v0.1.5 ships an in-app submission flow. The fastest path:
+
+1. Open the game in the GUI (system + ROM selectors).
+2. Click the **💡 Suggestions** icon in the top-right toolbar.
+3. Apply the existing suggestions if any look right; tweak in the
+   mapping grid; drop the manual PDF if you have it for more
+   coverage.
+4. Tick **"Submit my approved bindings to the community DB on Save
+   Profile"** in the Suggestions popover footer.
+5. Hit **Save Profile**. The app opens a pre-filled GitHub Issue in
+   your browser with title, labels (`community-binding`,
+   `bindings-submission`), and the binding JSON in the body.
+6. Review the Issue body, edit if you want to add context (manual
+   source link, why a binding choice was made, etc.), then **Submit
+   new issue**.
+
+The maintainer triages submissions and folds accepted bindings into
+the next release's bundled DB. **No accounts, no OAuth, no upload-
+on-your-behalf** — every submission is a conscious click in your
+browser.
+
+### Submission JSON format + field stability
+
+Full schema, validation rules, and which fields are *contract* (we
+won't rename) vs *internal* (we may restructure) are documented in
+[`docs/COMMUNITY_BINDINGS.md`](docs/COMMUNITY_BINDINGS.md).
+
+### CLI alternative
+
+If you don't want to use the GUI, run the extractor directly:
+
+```
+py manual_user_contribution.py path/to/manual.pdf <system_id> <rom_name> --save --submit
+```
+
+This produces the same submission record as the GUI flow; copy the
+`bindings:` block from the queue file under
+`%APPDATA%\RB-Controller_fix\data\bindings_user_submission_queue\`
+into a GitHub Issue manually.
+
+### What's coming in v0.1.6
+
+A proper OAuth-backed PR flow against a dedicated companion repo
+(`RetroControlMapper-community-bindings`). Auto-merge after CI
+validation. Live DB updates without reinstall. The v0.1.5 Issue-
+based flow continues working as a fallback for users who prefer
+not to authenticate.
 
 ---
 
@@ -94,8 +139,10 @@ repo as part of v0.1.3 Task 6.)
 
 ## Lane 4 — New features
 
-Read `CLAUDE.md` and `v0.1.3-PLAN.md` first. If your idea fits an
-existing task slot, claim it in an issue and let's chat about scope.
+Open a discussion issue first describing what you want to build and
+why. Most feature work is prioritised against an internal roadmap and
+some "obvious" features are intentionally deferred for compatibility
+or scope reasons — better to chat before you invest hours.
 
 ---
 

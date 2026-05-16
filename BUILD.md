@@ -49,6 +49,10 @@ The bundle includes:
 - `controller_catalog.yaml`
 - `LICENSE`, `README.md`, `INSTRUCTIONS.md`
 - `profiles/` — the **factory seed library** (read-only)
+- `data/bindings_db/` — **bindings DB** (v0.1.5 onwards). 62 per-system
+  JSON files (~7.2 MB), read at runtime by `bindings_lookup.py` via
+  `Path(__file__).parent / "data" / "bindings_db"`, which resolves
+  to `_MEIPASS/data/bindings_db/` inside the frozen exe.
 
 User-writable data lives **outside** the .exe, under
 `%APPDATA%/RB-Controller_fix/`:
@@ -58,6 +62,13 @@ User-writable data lives **outside** the .exe, under
 - `controller_sync.log`
 - `rbcfrc` — RetroBat root override (see `config.py`)
 - `backups/` — daily snapshot archive
+- `data/bindings_user/` — user-applied bindings (v0.1.5 onwards).
+  `bindings_lookup._user_data_dir()` resolves this to
+  `%APPDATA%/RB-Controller_fix/data/bindings_user/` when
+  `sys.frozen` is true, or to the source tree's `data/bindings_user/`
+  in dev runs.
+- `data/bindings_user_submission_queue/` — local record of
+  community submissions (v0.1.5 MVP). Same resolver as above.
 
 ## First-run profile-seed handoff (IMPORTANT)
 
@@ -78,12 +89,31 @@ Future work (post-v0.1.0): teach `rbcf_gui.py` startup to detect
 `sys.frozen` and fall back to copying the bundled tree itself, so the
 .exe is usable standalone. Tracked in DECISIONS.md.
 
+## Environment variables (dev / build)
+
+- `RBCF_LLM_ENDPOINT` — Ollama API base URL (default
+  `http://localhost:11434`). Point at a LAN box for offloaded
+  extraction runs.
+- `RBCF_LLM_MODEL` — model name passed to Ollama (default
+  `qwen2.5:3b`). Set to `qwen2.5:7b` to use the bigger checkpoint.
+  Provenance is derived from this value (`extractor: "llm-qwen2.5-7b"`
+  etc.), so audit + selective re-runs against newer models work
+  without code changes.
+
+These are read by `llm_extract.py` + `llm_hybrid_feed.py`. End
+users running the installed exe never need to set them; relevant
+only when running the binding-extraction pipeline locally.
+
 ## Bumping the version
 
-1. Edit `__version__` in `config.py` (e.g. `"0.1.0"` → `"0.1.1"`).
-2. Re-run `.\build.ps1`.
-3. Tag the git commit and push — `update_check.py` polls GitHub
-   releases at `GITHUB_OWNER/GITHUB_REPO` (also defined in `config.py`).
+1. Edit `__version__` in `config.py` (e.g. `"0.1.4"` → `"0.1.5"`).
+2. Edit `AppVersion` in `installer/RetroControlMapper.iss` to match.
+3. Re-run `.\build.ps1`.
+4. Re-run `installer\build-installer.ps1` to produce
+   `installer/output/RetroControlMapper_X.Y.Z_setup.exe`.
+5. Tag the git commit (annotated, `v0.1.5` etc.) and push — 
+   `update_check.py` polls GitHub releases at
+   `GITHUB_OWNER/GITHUB_REPO` (also defined in `config.py`).
 
 There is no separate version file in the .spec — the .exe doesn't
 carry a Windows VERSIONINFO resource yet (that's deferred to v0.1.1

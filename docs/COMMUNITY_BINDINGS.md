@@ -4,8 +4,9 @@ This document describes the JSON schema and submission flow for
 community-contributed bindings in RetroControlMapper v0.1.5. The
 **v0.1.5 ship is the MVP**: GUI builds a pre-filled GitHub Issue,
 user submits, project owner triages into the shipped bindings_db.
-v0.1.6 will add the full OAuth-backed PR flow described in
-[`v0.1.5-PLAN.md`](../v0.1.5-PLAN.md) Task 15.
+v0.1.6 will add the full OAuth-backed PR flow against a dedicated
+companion repo (`RetroControlMapper-community-bindings`) with
+GitHub device-code authentication and CI-validated automerge.
 
 This file is the **stability contract** — what fields contributors
 should expect to be honored across versions vs internal-only fields
@@ -69,7 +70,7 @@ rename or repurpose these. Contributors should rely on them.
 | `bindings[].button` | string (lowercase) | Pad button. One of: `a`, `b`, `x`, `y`, `l1`, `r1`, `l2`, `r2`, `l3`, `r3`, `select`, `start`, `up`, `down`, `left`, `right`, `home`. |
 | `bindings[].action` | string | Description of what the button does. For keystroke mappings, the `RETROK_*` constant. For action descriptions (controls.dat-style), free text like `"Light Punch"`. |
 | `bindings[].confidence` | enum: `high`, `medium`, `low` | Submitter's confidence. Defaults to `medium`. |
-| `bindings[].matched_by` | string | `user`, `manual_extract`, `llm`, `controls.dat`. |
+| `bindings[].matched_by` | string | One of: `user`, `manual_extract`, `llm`, `controls.dat`. v0.1.5 GUI submissions emit `matched_by: "user"` exclusively (the other values come from records that originate in the bundled DB extractors and aren't surfaced as submissions yet — but consumers may encounter them in merged community contributions of legacy data, so the vocabulary is fixed). |
 
 **Internal fields** — we may rename or restructure these without
 warning. Contributors should not rely on them.

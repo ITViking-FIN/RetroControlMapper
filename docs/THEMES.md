@@ -11,7 +11,7 @@ plus the user-tunable accent feature that applies across all themes.
 
 ---
 
-## Currently shipped (v0.1.2)
+## Currently shipped (as of v0.1.5)
 
 | Theme key | Mood | Status |
 |---|---|---|

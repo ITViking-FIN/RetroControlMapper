@@ -56,14 +56,31 @@ aren't queried.
 from __future__ import annotations
 
 import json
+import os
 import re
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 DATA_DIR = ROOT / "data"
 BUNDLED_DB_DIR = DATA_DIR / "bindings_db"
-USER_DB_DIR = DATA_DIR / "bindings_user"
+
+# v0.1.5: user-writable data lives under %APPDATA%/RB-Controller_fix/data/
+# when running as a frozen PyInstaller exe; under the source tree's
+# data/ when running from source. The bundled DB stays read-only at
+# the frozen-bundle path (or the source tree's data/bindings_db/ in
+# dev). Matches the same pattern used for profiles/ and the controller
+# sync log (see rbcf.spec header comment for the architecture).
+def _user_data_dir() -> Path:
+    if getattr(sys, "frozen", False):
+        appdata = os.environ.get("APPDATA") or os.environ.get("LOCALAPPDATA")
+        if appdata:
+            return Path(appdata) / "RB-Controller_fix" / "data"
+    return DATA_DIR
+
+USER_DATA_DIR = _user_data_dir()
+USER_DB_DIR = USER_DATA_DIR / "bindings_user"
 
 # Arcade systems (controls.dat handles these)
 ARCADE_SYSTEMS = {

@@ -1,12 +1,27 @@
 # LLM Extraction Protocol
 
 A contract between **the orchestrator** (Python code running on the
-dev/build machine) and **the local LLM** (Qwen 2.5 3B via Ollama on
+dev/build machine) and **the local LLM** (Qwen 2.5 via Ollama on
 a separate LAN box). Designed for repeatable, high-precision
 button-binding extraction from game manual OCR text.
 
 This document is the source of truth. The implementation (`llm_extract.py`)
 must match it. The LLM's system prompt is generated from it.
+
+## Model selection (v0.1.5+)
+
+Default model: `qwen2.5:3b`. Override via the `RBCF_LLM_MODEL`
+environment variable — set to `qwen2.5:7b` to use the bigger
+checkpoint (better accuracy, similar throughput on a 12 GB GPU).
+
+The endpoint base URL is `RBCF_LLM_ENDPOINT` (defaults to
+`http://localhost:11434`). Point at a LAN box for offloaded runs.
+
+The per-binding `extractor` provenance tag is derived from the
+model name in use — `extractor: "llm-qwen2.5-3b"` for 3B,
+`"llm-qwen2.5-7b"` for 7B, etc. This makes selective re-runs against
+upgraded models trivial (filter the bindings DB by extractor tag,
+re-feed only those records).
 
 ---
 
@@ -181,8 +196,9 @@ After receiving the LLM response, the orchestrator runs:
 | No duplicate (button, action) pairs | Dedupe |
 | `confidence` ∈ {high, medium, low} | Default to medium |
 
-Surviving bindings get stamped with `extractor: "llm-qwen2.5-3b"` and
-saved to the bindings DB.
+Surviving bindings get stamped with `extractor: "llm-<model>"`
+(derived from `RBCF_LLM_MODEL` — e.g. `llm-qwen2.5-3b`,
+`llm-qwen2.5-7b`) and saved to the bindings DB.
 
 ---
 

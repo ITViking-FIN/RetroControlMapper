@@ -154,16 +154,21 @@ def save_and_optionally_submit(result: dict, submit: bool = False,
 
 def _queue_submission(system_id: str, rom_name: str,
                       bindings: list[dict]) -> dict:
-    """Stub for the community-submission path. The real implementation
-    will piggy-back on the existing submit-controller flow (GitHub PR
-    against a community/bindings repo). For now: write a queue file
-    the user can review/clear later, with a clear note that no actual
-    network submission has occurred."""
-    from datetime import datetime, timezone
-    from pathlib import Path
-    import json
+    """v0.1.5 MVP community-submission queue. The GUI builds a
+    pre-filled GitHub Issue URL alongside this — the queue file is
+    the local record. v0.1.6 will replace the queue+Issue flow with
+    a proper OAuth-backed PR against the companion bindings repo
+    (see docs/COMMUNITY_BINDINGS.md).
 
-    queue_dir = Path(__file__).resolve().parent / "data" / "bindings_user_submission_queue"
+    Queue lives under the same user-writable root as ``bindings_user``:
+    %APPDATA%/RB-Controller_fix/data/bindings_user_submission_queue/
+    in frozen builds, ``./data/...`` in dev runs (see
+    ``bindings_lookup._user_data_dir`` for the resolver)."""
+    from datetime import datetime, timezone
+    import json
+    from bindings_lookup import USER_DATA_DIR
+
+    queue_dir = USER_DATA_DIR / "bindings_user_submission_queue"
     queue_dir.mkdir(parents=True, exist_ok=True)
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
     fn = queue_dir / f"{ts}_{system_id}_{_safe(rom_name)}.json"

@@ -10,21 +10,22 @@ Welcome. This is the long-form manual. If you just want to get started in three 
 
 1. [Getting started](#getting-started)
 2. [The main UI](#the-main-ui)
-3. [Controller management](#controller-management)
-4. [Per-game vs. per-system profiles](#per-game-vs-per-system-profiles)
-5. [The Save → Apply flow](#the-save--apply-flow)
-6. [Backups](#backups)
-7. [The GUID drift fix](#the-guid-drift-fix)
-8. [Bezel viewport calibration](#bezel-viewport-calibration)
-9. [Light / Dark / Auto theme](#light--dark--auto-theme)
-10. [Network features (privacy)](#network-features-privacy)
-11. [Settings cog reference](#settings-cog-reference)
-12. [CLI reference](#cli-reference)
-13. [Files we touch](#files-we-touch)
-14. [Files we never touch](#files-we-never-touch)
-15. [Troubleshooting](#troubleshooting)
-16. [FAQ](#faq)
-17. [Reporting bugs](#reporting-bugs)
+3. [Suggestions, PDF drop, and community submit](#suggestions-pdf-drop-and-community-submit)
+4. [Controller management](#controller-management)
+5. [Per-game vs. per-system profiles](#per-game-vs-per-system-profiles)
+6. [The Save → Apply flow](#the-save--apply-flow)
+7. [Backups](#backups)
+8. [The GUID drift fix](#the-guid-drift-fix)
+9. [Bezel viewport calibration](#bezel-viewport-calibration)
+10. [Light / Dark / Auto theme](#light--dark--auto-theme)
+11. [Network features (privacy)](#network-features-privacy)
+12. [Settings cog reference](#settings-cog-reference)
+13. [CLI reference](#cli-reference)
+14. [Files we touch](#files-we-touch)
+15. [Files we never touch](#files-we-never-touch)
+16. [Troubleshooting](#troubleshooting)
+17. [FAQ](#faq)
+18. [Reporting bugs](#reporting-bugs)
 
 ---
 
@@ -32,7 +33,7 @@ Welcome. This is the long-form manual. If you just want to get started in three 
 
 ### Install
 
-1. Grab `RetroControlMapper_v0.1.0_setup.exe` from the [latest release](https://github.com/ITViking-FIN/RetroControlMapper/releases/latest).
+1. Grab `RetroControlMapper_0.1.5_setup.exe` from the [latest release](https://github.com/ITViking-FIN/RetroControlMapper/releases/latest).
 2. Run the installer. You'll be asked two things:
    - **"Back up current RetroBat settings?"** — leave this on. It captures a permanent, never-overwritten "factory" snapshot you can fall back to no matter what happens later.
    - **"Run RetroControlMapper at Windows startup?"** — recommended if you want the GUID drift watcher (see below) to fix controller mappings automatically the moment they break. You can change this later from the Settings cog.
@@ -57,15 +58,21 @@ You can re-run onboarding any time from the Settings cog → Re-run onboarding.
 
 ## The main UI
 
-The page is divided into a **header**, a **two-pane body** (source + target), a **mappings section**, and an **advanced section** at the bottom.
+The default view is **sleek by design** — header + source/target controllers side-by-side, and a footer. Everything else (mapping table, overrides, notes, settings, manual-extracted suggestions) lives behind a card-styled icon toolbar in the top-right. Each popover has an "Always keep ___ visible" toggle that pins the panel inline below the controllers if you prefer to see it permanently.
 
 ### Header
 
-- **Pad pills** (left side). One per detected controller. The active pill has a green dot. Click any pill to make it the active source. Click the chevron next to the pills to expand the controller management drawer.
-- **System and game selectors.** System dropdown lists every system your RetroBat install knows about. Game dropdown lists ROMs from `roms/<system>/`. Profiles you already have are marked.
-- **Apply** button. Pushes saved profiles to RetroBat (with preview by default — see below).
-- **Settings cog.** Opens the settings popover. See [Settings cog reference](#settings-cog-reference).
-- **Update badge** (occasionally). Appears next to the cog if a newer version is available. Click for release notes and the download link. Only appears if you've enabled update checks.
+- **Pad pills** (top-left). One per detected controller. The active pill has a green dot. Click any pill to make it the active source. Click the chevron next to the pills to expand the controller management drawer.
+- **Five-icon toolbar** (top-right, card-styled). Left-to-right in workflow order:
+  - **💡 Suggestions** — manual-extracted bindings for the loaded game (new in v0.1.5; see the dedicated section below). Count badge shows how many bindings are on offer for the active game.
+  - **⌨ Mappings** — pad-button-to-keyboard-key mapping grid (`RETROK_*` codes). Count badge shows how many keys you've bound.
+  - **🎚 Overrides** — per-game advanced settings (keyboard pass-through, focus capture, joy-port). Count badge shows how many overrides are set.
+  - **📄 Notes** — free-text notes saved into the profile YAML.
+  - **⚙ Settings** — global app settings.
+- **System and game selectors.** Inside the target pane, below the header. System dropdown lists every system your RetroBat install knows about. Game dropdown lists ROMs from `roms/<system>/`. Profiles you already have are marked.
+- **Apply / Save / Test buttons.** At the bottom of the target pane. Apply pushes saved profiles to RetroBat (preview by default — see below). Test launches the current ROM in RetroBat using the saved bindings. Save Profile writes the YAML.
+- **Update badge** (occasionally). Appears next to the ⚙ cog if a newer version is available. Click for release notes and the download link. Only appears if you've enabled update checks.
+- **Pin toggles.** Each icon's popover has an "Always keep ___ visible" checkbox in its footer. Tick it → the panel renders inline below the controllers, with a small unpin × on its header to fold it back into the icon-bar. Pin state persists across sessions via `localStorage`.
 
 ### Source pane (left)
 
@@ -89,9 +96,9 @@ At the bottom, three action buttons:
 - **Apply** — pushes saved profiles into RetroBat's config files. Preview by default.
 - **Save Profile** — writes the YAML profile under `profiles/<system>/<rom>.yaml`. With "One-Click Save & Apply" on (settings cog), this also runs Apply automatically.
 
-### Mappings section
+### Mappings popover (⌨)
 
-For buttons the libretro core doesn't already handle (e.g. C64 keyboard keys mapped to a pad face button, MAME service buttons, Amiga F-key shortcuts), you'll see per-button text inputs here. The values are RetroArch keystroke codes like `RETROK_F1`, `RETROK_SPACE`, `RETROK_RETURN`.
+For buttons the libretro core doesn't already handle (e.g. C64 keyboard keys mapped to a pad face button, MAME service buttons, Amiga F-key shortcuts), click the ⌨ icon to open the mapping grid. The values are RetroArch keystroke codes like `RETROK_F1`, `RETROK_SPACE`, `RETROK_RETURN`. Rows with a bound value get a green-tinted input field so you can scan which buttons are mapped at a glance. A green tip banner at the top reminds you these mappings apply *per system* (via libretro core options), not per game — dismissible.
 
 **Three ways to fill a binding** (any of these works — pick whichever fits):
 
@@ -131,18 +138,75 @@ with lines like `input_remap_id_1_btn_a = 0` (meaning: physical A button now pro
 
 **Cancel mid-bind:** press Escape, click outside the source/target panes, or click the same physical button again to disarm.
 
-**Reliable systems (CD32, SNES, Saturn, NeoGeo, etc.) keep their default mapping.** Click-across is intentionally OFF there — the verified default is plug-and-play, and v0.1.4 will add a "Customize" affordance for explicit overrides.
+**Reliable systems (CD32, SNES, Saturn, NeoGeo, etc.) keep their default mapping.** Click-across is intentionally OFF there — the verified default is plug-and-play. A "Customize" affordance for explicit overrides is planned for a future release.
 
-### Advanced game overrides section
+### Overrides popover (🎚)
 
-Settings that survive RetroBat's launch-time config regeneration:
+Settings that survive RetroBat's launch-time config regeneration. Click the 🎚 icon to open:
 
 - **Joystick port assignment** — which port (1–4) this game uses by default. Important for C64 where some games expect joystick on port 2.
 - **Game Focus mode** — capture keyboard input for this game so global hotkeys don't interfere.
 - **Keyboard pass-through** — for systems where the keyboard is part of the experience (Amiga, Atari ST, ZX Spectrum, C64).
 - **Analog mouse** — Amiga / Atari ST games that originally used a mouse.
 
-These are written as per-game keys in `es_settings.cfg` and survive the launcher's regeneration step.
+These are written as per-game keys in `es_settings.cfg` and survive the launcher's regeneration step. The count badge on the 🎚 icon shows how many overrides are active for the loaded game.
+
+### Notes popover (📄)
+
+Free-text notes about a game's controls. Saved into the profile YAML under `notes:`. Click the 📄 icon to open the editor.
+
+---
+
+## Suggestions, PDF drop, and community submit
+
+v0.1.5 ships a bundled bindings database (62 systems, **9,804 mappings** across **4,143 games**) extracted from game-manual PDFs by a hybrid pipeline (heuristic regex passes + local Qwen 2.5 LLM over LAN). Most popular titles now open with suggested mappings pre-populated — no more configuring from scratch.
+
+### Reviewing suggestions (💡)
+
+When you pick a system + game in the target pane, the app auto-fetches matching bindings from the bundled DB. The **💡 Suggestions** icon's count badge shows how many are on offer. Click it to open the popover:
+
+Each suggestion shows:
+- **Pad button** (e.g. `A`, `dpad_up`) — what the manual says.
+- **Action** — what that button does (e.g. `RETROK_RETURN`, `"Light Punch"`).
+- **Confidence chip** — `high` / `medium` / `low` based on extraction certainty.
+- **Source chip** — colour-coded by extractor:
+  - 🟣 `bundled` — from a manual-extracted source baked into the installer.
+  - 🟡 `arcade` — from the community `controls.dat` (MAME / FBNeo / Neo-Geo etc.).
+  - 🟣 `llm` — extracted by the local Qwen 2.5 LLM pass.
+  - 🔵 `regex` — extracted by a pattern-matching pass.
+  - 🟢 `user_pdf` — you just dropped a PDF and this came from it.
+
+Three actions per row:
+- **Apply** — pushes the binding into the mapping grid for this game.
+- **Reject** — hides this suggestion (doesn't affect the bundled DB).
+- The header has **Apply all** to push every visible suggestion at once.
+
+Suggestions persist in `data/bindings_user/<system>.json` once you apply + save, so the next time you load this game your applied bindings come back automatically.
+
+### Drop a PDF for an unknown game
+
+If the suggestions list is empty and you have the game's manual, drag the PDF onto the drop-zone at the bottom of the Suggestions popover (or click "Choose file…").
+
+- **No OCR on your machine.** The dev box pre-OCR'd the bundled DB; your local installation runs only `pypdf` text extraction. Scanned (image-only) PDFs surface a friendly warning explaining we can't auto-extract from them locally — you can still map the controls manually.
+- **Native-text PDFs** (most modern manuals, web archive re-typesets, homebrew docs) produce useful suggestions you can review and apply just like bundled ones, with a green `user_pdf` source chip.
+- **Size cap:** 50 MiB — manuals over that are rare and the parser chokes anyway.
+
+### Submitting back to the community (MVP)
+
+The Suggestions popover footer has a toggle: **"Submit my approved bindings to the community DB on Save Profile"**. Tick it, then hit Save Profile:
+
+1. Your profile saves locally normally.
+2. The app builds a pre-filled **GitHub Issue** with title, labels (`community-binding`, `bindings-submission`), and the binding JSON in the body.
+3. Your default browser opens to the GitHub Issue compose page. Review, edit if you want, then submit when ready.
+4. The project maintainer triages submissions and folds accepted bindings into the next release's bundled DB.
+
+**No accounts, no OAuth, no upload-on-your-behalf in v0.1.5.** Every submission is a conscious click in your browser. A full OAuth-backed PR flow against a dedicated companion repo lands in v0.1.6.
+
+Schema, field stability guarantees, and the per-system file format are documented in [`docs/COMMUNITY_BINDINGS.md`](docs/COMMUNITY_BINDINGS.md).
+
+**Where the local data lives:**
+- Approved bindings → `%APPDATA%\RB-Controller_fix\data\bindings_user\<system>.json` (frozen builds) or `data/bindings_user/<system>.json` (dev runs).
+- Submission queue (your local record of what you've submitted) → `%APPDATA%\RB-Controller_fix\data\bindings_user_submission_queue\<timestamp>_<sys>_<rom>.json`.
 
 ---
 
@@ -394,7 +458,7 @@ We make outbound network requests in **two** circumstances. Both are explicitly 
 
 ### Update check
 
-- **What it does.** Compares the local `__version__` (currently `0.1.0`) against the latest release tag of `ITViking-FIN/RetroControlMapper` on GitHub.
+- **What it does.** Compares the local `__version__` (currently `0.1.5`) against the latest release tag of `ITViking-FIN/RetroControlMapper` on GitHub.
 - **When it runs.** Only after you click **Check now** in Settings cog → Updates, OR if you've enabled "Auto-check at startup" (default off).
 - **Caching.** Result cached for 24h (errors cached for 1h). Stored at `%APPDATA%\RB-Controller_fix\update-check.json`.
 - **Source.** Public GitHub releases API only. No auth, no cookies.
@@ -631,7 +695,7 @@ Bugs and feature requests: [GitHub issues](https://github.com/ITViking-FIN/Retro
 
 Please include:
 
-- **Version** — found in Settings cog → About. Currently `0.1.0`.
+- **Version** — found in Settings cog → About. Currently `0.1.5`.
 - **Windows version** — Windows 10 / 11, build number if you have it.
 - **RetroBat version** — found in RetroBat's own About screen.
 - **What you expected vs. what happened.**

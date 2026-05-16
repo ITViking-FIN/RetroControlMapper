@@ -16,6 +16,10 @@ RetroControlMapper fixes all three.
 
 ## Features
 
+- **🆕 4,143 games come with suggested bindings out of the box.** A bundled bindings database (62 systems, 9,804 mappings extracted from game-manual PDFs) means most popular titles open with one-click "Apply this suggestion" — no more configuring controls from scratch. Surfaced in the new **💡 Suggestions popover** in the GUI's top-right toolbar, with source chips (bundled / arcade / LLM-extracted / your own contribution) and confidence ratings.
+- **🆕 Drop a PDF to extract bindings for any game.** Don't see your game in the suggestions? Drag the manual onto the Suggestions popover — local pypdf extraction (no OCR install needed on your end) pulls candidate bindings into the same review UI.
+- **🆕 Contribute back to the community.** Tick "Submit my approved bindings to the community DB on Save Profile" — the app builds a pre-filled GitHub Issue with your bindings JSON and opens it in your browser. The project maintainer triages contributions into the next release's bundled DB. No accounts, no OAuth in v0.1.5 (full PR flow lands in v0.1.6).
+- **Sleek 5-icon toolbar.** v0.1.5 collapses non-controller UI into a card-styled toolbar in the top-right (💡 Suggestions, ⌨ Mappings, 🎚 Overrides, 📄 Notes, ⚙ Settings). Each opens a popover. Each has an "Always keep visible" pin toggle that drops the panel inline below the controllers if you prefer the old layout. Count badges show how many bindings/overrides are set at a glance.
 - **200+ system dropdown** — every system from your local RetroBat install, automatically discovered.
 - **30+ pre-curated controller bindings** for popular systems out of the box: NES, SNES, Genesis / Mega Drive, Game Boy / GBA, N64, PSX, Saturn, Dreamcast, MAME, Neo Geo, CPS, C64, Amiga 500/1200/CD32, Atari ST, ZX Spectrum, and more.
 - **Side-by-side controller view** — your physical pad on the left, the target system's controller on the right, both lighting up live as you press buttons. Curated SVGs for the popular systems; **schematic auto-generated for the long tail** so you never see an empty pane no matter what system you pick.
@@ -32,15 +36,15 @@ RetroControlMapper fixes all three.
 - **Tray-resident** — closes to the system tray instead of quitting; tray menu controls Show/Hide and Quit, and an optional "run at Windows startup" toggle.
 - **Search-online lookup** for unknown systems' bindings — only fires after you click the button, no consent caching.
 - **Two-tier backups** — a permanent pre-install snapshot of your RetroBat config, plus rolling per-edit working snapshots; restore from any of them.
-- **Light / Dark / Auto theme** — frosted-acrylic visual design with translucent layered panels, candy-coloured accent pills, and soft scattered shadows.
+- **Light / Dark / Auto theme** — frosted-acrylic visual design with translucent layered panels.
 
 ---
 
 ## Install
 
-> **Current version: v0.1.3** ([changelog](CHANGELOG.md)).
+> **Current version: v0.1.5** ([changelog](CHANGELOG.md)).
 
-1. Download `RetroControlMapper_0.1.3_setup.exe` from the [latest release](https://github.com/ITViking-FIN/RetroControlMapper/releases/latest).
+1. Download `RetroControlMapper_0.1.5_setup.exe` from the [latest release](https://github.com/ITViking-FIN/RetroControlMapper/releases/latest).
 2. Run the installer. The setup wizard will offer to back up your current RetroBat settings — **leave this on, it's free insurance**.
 3. Optionally let the installer add a "Run at Windows startup" entry so the GUID watcher can keep your controller mappings stable in the background.
 
@@ -62,7 +66,7 @@ RetroControlMapper fixes all three.
 ## Quick links
 
 - **[Full instruction manual](INSTRUCTIONS.md)** — every screen, every setting, plus troubleshooting and an FAQ.
-- **[Report a bug](https://github.com/ITViking-FIN/RetroControlMapper/issues)** — please include the version (`0.1.3`), your Windows version, and a description of what you expected versus what happened.
+- **[Report a bug](https://github.com/ITViking-FIN/RetroControlMapper/issues)** — please include the version (`0.1.5`), your Windows version, and a description of what you expected versus what happened.
 - **[Latest release](https://github.com/ITViking-FIN/RetroControlMapper/releases/latest)** — installers and release notes.
 
 ---
