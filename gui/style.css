@@ -4372,3 +4372,182 @@ button.secondary:hover,
   border-radius: 8px;
   resize: vertical;
 }
+
+/* =========================================================
+   v0.1.5 Task 1 + 5 + 15 — Suggestions panel
+   ---------------------------------------------------------
+   Surfaces bindings_db.lookup() results when a (system, rom)
+   pair is loaded, plus user-PDF drop + community submit.
+========================================================= */
+.rbcf-suggestions-popover {
+  width: 640px;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 96px);
+  overflow-y: auto;
+}
+.rbcf-suggestions-empty {
+  padding: 14px 16px;
+  background: var(--content-fill);
+  border: 1px dashed var(--edge-bottom);
+  border-radius: 8px;
+  color: var(--tx-hint);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.rbcf-suggestions-empty strong { color: var(--tx); }
+
+.rbcf-suggestions-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--edge-bottom);
+}
+.rbcf-suggestions-head strong { color: var(--tx); font-size: 13px; }
+.rbcf-suggestion-src-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: lowercase;
+  letter-spacing: 0.02em;
+}
+.rbcf-suggestion-src-chip.src-bundled  { background: rgba(167, 108, 255, 0.15); color: #c79bff; }
+.rbcf-suggestion-src-chip.src-arcade   { background: rgba(255, 196, 73, 0.18);  color: #ffd16b; }
+.rbcf-suggestion-src-chip.src-user     { background: rgba(91, 141, 239, 0.18);  color: #5B8DEF; }
+.rbcf-suggestion-src-chip.src-user_pdf { background: rgba(123, 196, 127, 0.18); color: #7BC47F; }
+.rbcf-suggestion-src-chip.src-online   { background: rgba(255, 121, 121, 0.18); color: #ff9e9e; }
+.rbcf-apply-all {
+  margin-left: auto;
+  padding: 5px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--acc);
+  background: var(--acc-bg-soft, rgba(167, 108, 255, 0.15));
+  color: var(--acc, #a76cff);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.rbcf-apply-all:hover { background: rgba(167, 108, 255, 0.25); }
+
+.rbcf-suggestion-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.rbcf-suggestion-row {
+  display: grid;
+  grid-template-columns: 60px 1fr auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  background: var(--plate-fill);
+  border: 1px solid var(--edge-bottom);
+  border-radius: 7px;
+  font-size: 12px;
+}
+.rbcf-suggestion-btn {
+  font-weight: 600;
+  color: var(--tx);
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 11px;
+}
+.rbcf-suggestion-action {
+  color: var(--tx-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rbcf-suggestion-chips { display: flex; gap: 4px; }
+.rbcf-conf-chip, .rbcf-kind-chip {
+  display: inline-flex;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.rbcf-conf-chip.conf-high   { background: rgba(123, 196, 127, 0.18); color: #7BC47F; }
+.rbcf-conf-chip.conf-medium { background: rgba(255, 196, 73, 0.18);  color: #ffd16b; }
+.rbcf-conf-chip.conf-low    { background: rgba(255, 121, 121, 0.18); color: #ff9e9e; }
+.rbcf-kind-chip.kind-llm    { background: rgba(167, 108, 255, 0.18); color: #c79bff; }
+.rbcf-kind-chip.kind-arcade { background: rgba(255, 196, 73, 0.12);  color: #ffd16b; }
+.rbcf-kind-chip.kind-regex  { background: rgba(91, 141, 239, 0.12);  color: #5B8DEF; }
+.rbcf-kind-chip.kind-user   { background: rgba(123, 196, 127, 0.12); color: #7BC47F; }
+
+.rbcf-suggestion-actions { display: flex; gap: 4px; }
+.rbcf-apply-row, .rbcf-reject-row {
+  padding: 3px 8px;
+  border-radius: 5px;
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid var(--edge-bottom);
+  background: var(--content-fill);
+  color: var(--tx-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.rbcf-apply-row:hover {
+  background: rgba(123, 196, 127, 0.18);
+  color: #7BC47F;
+  border-color: #7BC47F;
+}
+.rbcf-reject-row:hover {
+  background: rgba(255, 121, 121, 0.18);
+  color: #ff9e9e;
+  border-color: #ff9e9e;
+}
+
+/* PDF drop zone */
+.rbcf-pdf-drop {
+  margin-top: 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 2px dashed var(--edge-inner);
+  border-radius: 10px;
+  background: rgba(91, 141, 239, 0.04);
+  transition: background 150ms, border-color 150ms;
+}
+.rbcf-pdf-drop.drag-over {
+  border-color: var(--acc, #a76cff);
+  background: rgba(167, 108, 255, 0.08);
+}
+.rbcf-pdf-drop > svg {
+  width: 28px; height: 28px;
+  color: var(--tx-hint);
+  flex-shrink: 0;
+}
+.rbcf-pdf-drop > div {
+  flex: 1;
+  font-size: 12px;
+  color: var(--tx-secondary);
+  line-height: 1.45;
+}
+.rbcf-pdf-drop strong { color: var(--tx); }
+.rbcf-pdf-drop-note { color: var(--tx-hint); font-size: 11px; margin-top: 2px; }
+.rbcf-pdf-pick {
+  padding: 5px 12px;
+  border-radius: 6px;
+  background: var(--content-fill);
+  border: 1px solid var(--edge-bottom);
+  color: var(--tx);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.rbcf-pdf-pick:hover { background: var(--plate-fill); border-color: var(--edge-inner); }
+
+/* Community submit toggle (inside the popover body, above the pin footer) */
+.rbcf-community-foot {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--edge-bottom);
+}

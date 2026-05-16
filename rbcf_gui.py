@@ -2644,6 +2644,31 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             q = self._query()
             sys_id = (q.get("system", [""])[0] or "").strip()
             return self._json({"system": sys_id, "profile": load_system_default(sys_id)})
+        # v0.1.5 Task 1: surface bundled bindings_db suggestions into the
+        # GUI. lookup() walks user → bundled → arcade in priority order.
+        # Stays offline (include_online=False) so profile-load latency is
+        # filesystem-only. A separate /api/suggestions/online endpoint
+        # exposes the slow Vimm fallback behind an explicit click.
+        if u.path == "/api/suggestions":
+            q = self._query()
+            sys_id = (q.get("system", [""])[0] or "").strip()
+            rom    = (q.get("rom",    [""])[0] or "").strip()
+            try:
+                import bindings_lookup
+                hit = bindings_lookup.lookup(sys_id, rom, include_online=False)
+            except Exception as e:  # noqa: BLE001
+                return self._json({"ok": False, "error": str(e), "hit": None})
+            return self._json({"ok": True, "system": sys_id, "rom": rom, "hit": hit})
+        if u.path == "/api/suggestions/online":
+            q = self._query()
+            sys_id = (q.get("system", [""])[0] or "").strip()
+            rom    = (q.get("rom",    [""])[0] or "").strip()
+            try:
+                import bindings_lookup
+                hit = bindings_lookup.online_lookup(sys_id, rom)
+            except Exception as e:  # noqa: BLE001
+                return self._json({"ok": False, "error": str(e), "hit": None})
+            return self._json({"ok": True, "system": sys_id, "rom": rom, "hit": hit})
         if u.path == "/api/templates":
             q = self._query()
             sys_id = (q.get("system", [""])[0] or "").strip()
@@ -2723,6 +2748,49 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return
         u = urllib.parse.urlparse(self.path)
 
+        # v0.1.5 Task 5 (BW-8): user-contribution PDF drop. Multipart
+        # like /api/controller-image. End-user environment doesn't have
+        # tesseract → manual_user_contribution explicitly disables OCR;
+        # scanned PDFs surface a friendly "needs OCR" warning the GUI
+        # shows. Cap at 50 MiB (manuals over that are vanishingly rare,
+        # and pypdf chokes anyway).
+        if u.path == "/api/contribute-pdf":
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+            except ValueError:
+                return self._json({"ok": False, "error": "bad content-length"}, status=400)
+            MAX_PDF_BYTES = 50 * 1024 * 1024
+            if length > MAX_PDF_BYTES + 65_536:
+                return self._json({"ok": False, "error": "PDF too large (>50 MiB)"}, status=413)
+            body = self.rfile.read(length) if length else b""
+            try:
+                fields = _parse_multipart(self.headers, body)
+            except Exception as e:  # noqa: BLE001
+                return self._json({"ok": False, "error": f"bad multipart: {e}"}, status=400)
+            try:
+                import tempfile
+                from pathlib import Path as _Path
+                pdf_field = fields.get("pdf") or fields.get("file")
+                if not pdf_field or not pdf_field.get("data"):
+                    return self._json({"ok": False, "error": "missing PDF in 'pdf' field"}, status=400)
+                sys_id = (fields.get("system_id", {}).get("data") or b"").decode("utf-8", "replace").strip()
+                rom    = (fields.get("rom_name",  {}).get("data") or b"").decode("utf-8", "replace").strip()
+                if not sys_id or not rom:
+                    return self._json({"ok": False, "error": "missing system_id or rom_name"}, status=400)
+                # Stash bytes to a temp .pdf the extractor can read.
+                with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tf:
+                    tf.write(pdf_field["data"])
+                    tmp_path = _Path(tf.name)
+                try:
+                    import manual_user_contribution as muc
+                    result = muc.extract_user_pdf(tmp_path, sys_id, rom)
+                finally:
+                    try: tmp_path.unlink()
+                    except OSError: pass
+                return self._json({"ok": True, "result": result})
+            except Exception as e:  # noqa: BLE001
+                return self._json({"ok": False, "error": str(e)}, status=500)
+
         # The controller-image endpoint speaks multipart/form-data; handle
         # it before the JSON-decoding block below.
         if u.path == "/api/controller-image":
@@ -2768,6 +2836,32 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             if result.get("ok") and data.get("apply"):
                 result["apply"] = run_apply()
             return self._json(result)
+        # v0.1.5 Task 1 + Task 5: persist user-confirmed bindings to the
+        # per-machine user DB. Accepts the bindings list directly (the
+        # GUI may have let the user edit auto-extracted suggestions
+        # before save). With submit=true, also queues for community
+        # submission (local-only stub today; the Task-15 GitHub flow
+        # adopts this queue file as its input when wired).
+        if u.path == "/api/contribute-save":
+            try:
+                import manual_user_contribution as muc
+                payload = {
+                    "system_id": (data.get("system_id") or "").strip(),
+                    "rom_name":  (data.get("rom_name")  or "").strip(),
+                    "title":     (data.get("title") or data.get("rom_name") or "").strip(),
+                    "bindings":  data.get("bindings") or [],
+                    "extra":     data.get("extra") or {},
+                }
+                if not payload["system_id"] or not payload["rom_name"]:
+                    return self._json({"ok": False, "error": "missing system_id or rom_name"}, status=400)
+                res = muc.save_and_optionally_submit(
+                    payload,
+                    submit=bool(data.get("submit")),
+                    edited_bindings=data.get("bindings"),
+                )
+                return self._json({"ok": True, "result": res})
+            except Exception as e:  # noqa: BLE001
+                return self._json({"ok": False, "error": str(e)}, status=500)
         if u.path == "/api/apply":
             return self._json(run_apply())
         if u.path == "/api/launch-test":

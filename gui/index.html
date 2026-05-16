@@ -131,12 +131,36 @@
   <div class="mappings-grid" id="mappings-grid"></div>
 </div>
 
+<!-- v0.1.5 Task 1 + 5 + 15: Suggestions panel host. Holds the
+     auto-fetched bindings_db suggestions for the current game +
+     the user-contribution PDF drop zone + the community-submit
+     trigger. Same hidden/popover/pinned three-host pattern as the
+     other tuckable panels. -->
+<div id="suggestions-host" hidden aria-hidden="true">
+  <div id="suggestions-body">
+    <div class="rbcf-suggestions-empty" data-rbcf-empty>
+      Pick a system + game above. If we have manual-extracted
+      bindings for it, they'll appear here.
+    </div>
+  </div>
+</div>
+
 <!-- v0.1.5 13e: inline render slot for pinned panels ("Always keep
      visible" toggle). Each panel has a card stub here; when pinned,
      the stub is shown and the panel body is reparented in. When
      unpinned, the body goes back to its hidden host and the stub
      hides. setPinned()/applyPinnedStates() drive the toggle. -->
 <div id="rbcf-pinned-slot" class="pinned-slot">
+  <section class="pane pinned-card" id="suggestions-pinned-card" hidden>
+    <h2>
+      <svg class="h2-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 0 0-7 7c0 3 2 5 3 6.5.7 1 .9 1.7 1 2.5h6c.1-.8.3-1.5 1-2.5 1-1.5 3-3.5 3-6.5a7 7 0 0 0-7-7z"/></svg>
+      Suggestions from manual
+      <span class="hint" data-rbcf-suggestions-count>—</span>
+      <button type="button" class="pinned-unpin" data-unpin="suggestions"
+              title="Unpin — return to icon-bar popover" aria-label="Unpin">×</button>
+    </h2>
+    <div class="rbcf-pinned-suggestions-host"></div>
+  </section>
   <section class="pane pinned-card" id="mappings-pinned-card" hidden>
     <h2>
       <svg class="h2-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M8 12h.01M12 12h.01M16 12h.01M7 16h10"/></svg>

@@ -456,6 +456,11 @@ async function loadProfile(systemId, rom) {
     GAME_DETAIL.dirty = false;
     renderGameDetailHeader(null, null, null);
     applyInheritanceOverlay();
+    // v0.1.5: also clear the suggestions state so a stale "5 bindings"
+    // badge doesn't linger from the previously-loaded game.
+    if (typeof refreshSuggestionsFor === 'function') {
+      refreshSuggestionsFor('', '');
+    }
     return;
   }
   const data = await api('GET',
@@ -472,6 +477,12 @@ async function loadProfile(systemId, rom) {
   renderGameDetailHeader(systemId, profile, systemDefault);
   applyInheritanceOverlay();
   maybeShowOverlayTooltip(systemId, profile, systemDefault);
+  // v0.1.5 Task 1: auto-fetch bindings_db suggestions for this game.
+  // Fire-and-forget — refreshSuggestionsFor handles its own errors and
+  // updates the icon badge so the user notices manual-extracted hits.
+  if (typeof refreshSuggestionsFor === 'function') {
+    refreshSuggestionsFor(systemId, rom);
+  }
 }
 
 function setTargetForSystem(systemId) {
@@ -2576,6 +2587,503 @@ function showMappingsPopover() {
 }
 
 // ============================================================
+// v0.1.5 Task 1 + 5 + 15 — Suggestions / contribution / community
+// ============================================================
+// Three flows live behind the 💡 icon:
+//   1. Auto-load: when a (system, rom) pair selects, fetch the
+//      bindings_db hit and surface it as per-row Apply / Reject.
+//   2. PDF contribution: drag a PDF onto the popover → backend runs
+//      pypdf-only extraction (no OCR on end-user machine) → results
+//      render in the same suggestions list.
+//   3. Community submit: ticking "submit to community" on Save Profile
+//      builds a pre-filled GitHub Issue URL and opens it. No OAuth in
+//      this MVP — the project owner triages issues into bindings_db
+//      manually until the full Task-15 PR flow lands.
+
+let _rbcfSuggestionsOutsideHandler = null;
+let _rbcfSuggestionsKeyHandler = null;
+// Most-recent successful hit. Drives the count badge + the suggestions
+// list rendering. Cleared on system/game change before re-fetching.
+let _rbcfSuggestionsState = { system: '', rom: '', hit: null, source: '' };
+
+function injectSuggestionsIcon() {
+  let actions = document.querySelector('.page-actions');
+  if (!actions) {
+    const header = document.querySelector('header');
+    if (!header) return;
+    actions = document.createElement('div');
+    actions.className = 'page-actions';
+    header.appendChild(actions);
+  }
+  if ($('rbcf-suggestions-icon')) return;
+  const btn = document.createElement('button');
+  btn.id = 'rbcf-suggestions-icon';
+  btn.type = 'button';
+  btn.className = 'secondary rbcf-apply-settings-toggle';
+  btn.title = 'Suggested bindings from the game manual';
+  btn.setAttribute('aria-label', 'Suggestions');
+  btn.setAttribute('aria-haspopup', 'dialog');
+  btn.setAttribute('aria-expanded', 'false');
+  btn.innerHTML = `
+    <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M9 18h6"/>
+      <path d="M10 22h4"/>
+      <path d="M12 2a7 7 0 0 0-7 7c0 3 2 5 3 6.5.7 1 .9 1.7 1 2.5h6c.1-.8.3-1.5 1-2.5 1-1.5 3-3.5 3-6.5a7 7 0 0 0-7-7z"/>
+    </svg>
+    <span class="rbcf-icon-badge" hidden></span>
+  `;
+  // Suggestions is the FIRST icon (upstream of mappings — the
+  // suggestions feed the mapping work). Insert before everything else.
+  const mappings = $('rbcf-mappings-icon');
+  const overrides = $('rbcf-overrides-icon');
+  const notes = $('rbcf-notes-icon');
+  const cog = $('rbcf-apply-settings-cog');
+  const anchor = mappings || overrides || notes || cog;
+  if (anchor) actions.insertBefore(btn, anchor);
+  else actions.appendChild(btn);
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if ($('rbcf-suggestions-popover')) dismissSuggestionsPopover();
+    else showSuggestionsPopover();
+  });
+}
+
+function dismissSuggestionsPopover() {
+  const pop = $('rbcf-suggestions-popover');
+  if (pop) {
+    const dest = getPinned('suggestions')
+      ? document.querySelector('.rbcf-pinned-suggestions-host')
+      : $('suggestions-host');
+    _moveSuggestionsContent(dest);
+    pop.remove();
+  }
+  const icon = $('rbcf-suggestions-icon');
+  if (icon) icon.setAttribute('aria-expanded', 'false');
+  if (_rbcfSuggestionsOutsideHandler) {
+    document.removeEventListener('mousedown', _rbcfSuggestionsOutsideHandler, true);
+    _rbcfSuggestionsOutsideHandler = null;
+  }
+  if (_rbcfSuggestionsKeyHandler) {
+    document.removeEventListener('keydown', _rbcfSuggestionsKeyHandler, true);
+    _rbcfSuggestionsKeyHandler = null;
+  }
+}
+
+function showSuggestionsPopover() {
+  dismissSuggestionsPopover();
+  const icon = $('rbcf-suggestions-icon');
+  if (!icon) return;
+
+  const pop = document.createElement('div');
+  pop.id = 'rbcf-suggestions-popover';
+  pop.className = 'rbcf-apply-settings-popover rbcf-suggestions-popover';
+  pop.setAttribute('role', 'dialog');
+  pop.setAttribute('aria-label', 'Suggested bindings');
+  pop.innerHTML = `
+    <div class="rbcf-apply-settings-head">
+      <h3 class="rbcf-apply-settings-title">Suggestions from manual</h3>
+      <button type="button" class="rbcf-apply-modal-x" aria-label="Close" data-act="close">×</button>
+    </div>
+    <div class="rbcf-apply-settings-body">
+      <p class="rbcf-mappings-help">
+        Bindings the manual extraction found for this game. Review each one,
+        apply what looks right, edit or reject the rest. Saved choices land
+        in your local profile and the per-machine user DB.
+      </p>
+      <div class="rbcf-suggestions-host"></div>
+      <div class="rbcf-pdf-drop" data-rbcf-pdf-drop>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="17 8 12 3 7 8"/>
+          <line x1="12" y1="3" x2="12" y2="15"/>
+        </svg>
+        <div>
+          <strong>Got the manual?</strong> Drop the PDF here.
+          <div class="rbcf-pdf-drop-note">Text-PDFs only (no OCR on your machine). Scanned manuals will surface a warning.</div>
+        </div>
+        <input type="file" accept="application/pdf,.pdf" data-rbcf-pdf-input hidden>
+        <button type="button" class="rbcf-pdf-pick" data-rbcf-pdf-pick>Choose file…</button>
+      </div>
+      <div class="rbcf-community-foot">
+        <label class="rbcf-pin-toggle">
+          <input type="checkbox" data-rbcf-submit-toggle>
+          Submit my approved bindings to the community DB on Save Profile
+          <span class="rbcf-pin-note">opens a pre-filled GitHub Issue in your browser</span>
+        </label>
+      </div>
+    </div>
+    <div class="rbcf-pin-foot">
+      <label class="rbcf-pin-toggle">
+        <input type="checkbox" data-pin-panel="suggestions">
+        Always keep suggestions visible
+        <span class="rbcf-pin-note">renders inline below the controllers</span>
+      </label>
+    </div>
+  `;
+  document.body.appendChild(pop);
+
+  // Move the suggestions body into the popover (from hidden or pinned host).
+  const host = pop.querySelector('.rbcf-suggestions-host');
+  _moveSuggestionsContent(host);
+
+  // Re-render the body in case state changed while the popover was closed.
+  renderSuggestions();
+
+  // Anchor below the icon, right-aligned to the page-actions edge.
+  const r = icon.getBoundingClientRect();
+  pop.style.position = 'absolute';
+  pop.style.top = (r.bottom + 8 + window.scrollY) + 'px';
+  pop.style.right = (window.innerWidth - r.right) + 'px';
+  icon.setAttribute('aria-expanded', 'true');
+
+  // Pin checkbox
+  const pinChk = pop.querySelector('input[data-pin-panel="suggestions"]');
+  if (pinChk) {
+    pinChk.checked = getPinned('suggestions');
+    pinChk.addEventListener('change', () => {
+      setPinned('suggestions', pinChk.checked);
+      applyPinnedStates();
+    });
+  }
+  // Restore "submit to community" pref from localStorage
+  const submitChk = pop.querySelector('input[data-rbcf-submit-toggle]');
+  if (submitChk) {
+    submitChk.checked = localStorage.getItem('rbcf-community-submit') === '1';
+    submitChk.addEventListener('change', () => {
+      localStorage.setItem('rbcf-community-submit', submitChk.checked ? '1' : '0');
+    });
+  }
+  // PDF drop wiring
+  wirePdfDropZone(pop);
+
+  pop.querySelector('[data-act="close"]').addEventListener('click', dismissSuggestionsPopover);
+  _rbcfSuggestionsOutsideHandler = (e) => {
+    if (pop.contains(e.target)) return;
+    if (icon.contains(e.target)) return;
+    dismissSuggestionsPopover();
+  };
+  _rbcfSuggestionsKeyHandler = (e) => {
+    if (e.key === 'Escape') dismissSuggestionsPopover();
+  };
+  document.addEventListener('mousedown', _rbcfSuggestionsOutsideHandler, true);
+  document.addEventListener('keydown', _rbcfSuggestionsKeyHandler, true);
+}
+
+function _moveSuggestionsContent(toHost) {
+  if (!toHost) return;
+  const body = $('suggestions-body');
+  if (body && body.parentElement !== toHost) toHost.appendChild(body);
+}
+
+// Render the current state into #suggestions-body wherever it lives
+// (hidden host / popover / inline pinned card).
+function renderSuggestions() {
+  const body = $('suggestions-body');
+  if (!body) return;
+  const state = _rbcfSuggestionsState;
+  if (!state.system || !state.rom) {
+    body.innerHTML = `
+      <div class="rbcf-suggestions-empty" data-rbcf-empty>
+        Pick a system + game above. If we have manual-extracted
+        bindings for it, they'll appear here.
+      </div>`;
+    return;
+  }
+  const hit = state.hit;
+  const bindings = (hit && hit.bindings) || [];
+  if (!bindings.length) {
+    body.innerHTML = `
+      <div class="rbcf-suggestions-empty" data-rbcf-empty>
+        No manual bindings on file for <strong>${rbcfEsc(state.rom)}</strong>
+        (<code>${rbcfEsc(state.system)}</code>). You can drop a PDF below
+        to extract some, or map controls manually.
+      </div>`;
+    return;
+  }
+  const title = rbcfEsc(hit.title || state.rom);
+  const src   = (hit.source || state.source || 'bundled');
+  const hdr = `
+    <div class="rbcf-suggestions-head">
+      <strong>${title}</strong>
+      <span class="rbcf-suggestion-src-chip src-${rbcfEsc(src)}">${rbcfEsc(src)}</span>
+      <button type="button" class="rbcf-apply-all" data-rbcf-apply-all>Apply all</button>
+    </div>`;
+  const rows = bindings.map((b, i) => {
+    const btn  = rbcfEsc(b.button || '?');
+    const act  = rbcfEsc(b.action || '');
+    const conf = (b.confidence || 'medium').toLowerCase();
+    const ext  = (b.extractor || b.matched_by || 'unknown').toLowerCase();
+    let kind = 'regex';
+    if (ext.includes('llm')) kind = 'llm';
+    else if (ext.includes('controls.dat') || ext.includes('arcade')) kind = 'arcade';
+    else if (ext.includes('user')) kind = 'user';
+    return `
+      <div class="rbcf-suggestion-row" data-i="${i}">
+        <span class="rbcf-suggestion-btn">${btn}</span>
+        <span class="rbcf-suggestion-action">${act}</span>
+        <span class="rbcf-suggestion-chips">
+          <span class="rbcf-conf-chip conf-${rbcfEsc(conf)}">${rbcfEsc(conf)}</span>
+          <span class="rbcf-kind-chip kind-${kind}">${kind}</span>
+        </span>
+        <span class="rbcf-suggestion-actions">
+          <button type="button" class="rbcf-apply-row" data-rbcf-apply-row="${i}" title="Apply this binding">apply</button>
+          <button type="button" class="rbcf-reject-row" data-rbcf-reject-row="${i}" title="Reject (hide)">reject</button>
+        </span>
+      </div>`;
+  }).join('');
+  body.innerHTML = hdr + `<div class="rbcf-suggestion-rows">${rows}</div>`;
+  // Update inline pinned-card count hint
+  document.querySelectorAll('[data-rbcf-suggestions-count]').forEach(el => {
+    el.textContent = `${bindings.length} ${bindings.length === 1 ? 'binding' : 'bindings'}`;
+  });
+  // Wire row buttons
+  body.querySelectorAll('[data-rbcf-apply-row]').forEach(b => {
+    b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const idx = +b.getAttribute('data-rbcf-apply-row');
+      applySuggestion(idx);
+    });
+  });
+  body.querySelectorAll('[data-rbcf-reject-row]').forEach(b => {
+    b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const idx = +b.getAttribute('data-rbcf-reject-row');
+      rejectSuggestion(idx);
+    });
+  });
+  const allBtn = body.querySelector('[data-rbcf-apply-all]');
+  if (allBtn) allBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    applyAllSuggestions();
+  });
+}
+
+// Apply a single suggestion to the live mapping grid. The binding's
+// "button" maps to a PAD button; the "action" is the keyboard key
+// (RETROK_*) we'll write into the input. If "action" doesn't start
+// with RETROK_, we coerce — the validator on the server accepts
+// either form for now.
+function applySuggestion(i) {
+  const hit = _rbcfSuggestionsState.hit;
+  if (!hit) return;
+  const b = (hit.bindings || [])[i];
+  if (!b) return;
+  const padBtn = (b.button || '').toLowerCase();
+  let act = (b.action || '').trim();
+  if (act && !/^RETROK_/i.test(act)) act = `RETROK_${act.toUpperCase().replace(/[^A-Z0-9_]+/g,'_')}`;
+  const inp = document.querySelector(`input[data-map-btn="${padBtn}"]`);
+  if (!inp) {
+    showToast(`No row for pad button '${padBtn}' — skipped.`, 'warn', 2400);
+    return;
+  }
+  inp.value = act;
+  inp.dispatchEvent(new Event('input', { bubbles: true }));
+  inp.dispatchEvent(new Event('change', { bubbles: true }));
+  showToast(`Applied ${padBtn.toUpperCase()} → ${act}`, 'success', 1800);
+}
+function applyAllSuggestions() {
+  const hit = _rbcfSuggestionsState.hit;
+  if (!hit) return;
+  let n = 0;
+  (hit.bindings || []).forEach((_, i) => {
+    const b = hit.bindings[i];
+    if (!b) return;
+    const padBtn = (b.button || '').toLowerCase();
+    let act = (b.action || '').trim();
+    if (!act || !padBtn) return;
+    if (!/^RETROK_/i.test(act)) act = `RETROK_${act.toUpperCase().replace(/[^A-Z0-9_]+/g,'_')}`;
+    const inp = document.querySelector(`input[data-map-btn="${padBtn}"]`);
+    if (!inp) return;
+    inp.value = act;
+    inp.dispatchEvent(new Event('input', { bubbles: true }));
+    inp.dispatchEvent(new Event('change', { bubbles: true }));
+    n++;
+  });
+  showToast(`Applied ${n} suggestion${n === 1 ? '' : 's'} to the mapping grid.`, 'success', 2200);
+}
+function rejectSuggestion(i) {
+  const hit = _rbcfSuggestionsState.hit;
+  if (!hit || !hit.bindings) return;
+  hit.bindings.splice(i, 1);
+  renderSuggestions();
+  updateIconBadges();
+}
+
+// Fetch suggestions for the current (system, game) pair and re-render.
+// Safe to call repeatedly — uses the cached _rbcfSuggestionsState so
+// no-op when nothing changed.
+async function refreshSuggestionsFor(system, rom) {
+  system = (system || '').trim();
+  rom    = (rom || '').trim();
+  // Reset if pair changed
+  if (system !== _rbcfSuggestionsState.system || rom !== _rbcfSuggestionsState.rom) {
+    _rbcfSuggestionsState = { system, rom, hit: null, source: '' };
+  }
+  if (!system || !rom) {
+    renderSuggestions();
+    updateIconBadges();
+    return;
+  }
+  try {
+    const r = await fetch(`/api/suggestions?system=${encodeURIComponent(system)}&rom=${encodeURIComponent(rom)}`);
+    const j = await r.json();
+    _rbcfSuggestionsState.hit    = (j && j.hit) || null;
+    _rbcfSuggestionsState.source = (j && j.hit && j.hit.source) || '';
+  } catch (e) {
+    _rbcfSuggestionsState.hit = null;
+  }
+  renderSuggestions();
+  updateIconBadges();
+}
+
+// PDF drop / click-to-pick — multipart POST to /api/contribute-pdf
+function wirePdfDropZone(scope) {
+  const dz = scope.querySelector('[data-rbcf-pdf-drop]');
+  const inp = scope.querySelector('[data-rbcf-pdf-input]');
+  const pick = scope.querySelector('[data-rbcf-pdf-pick]');
+  if (!dz || !inp || !pick) return;
+  pick.addEventListener('click', (e) => { e.preventDefault(); inp.click(); });
+  inp.addEventListener('change', () => {
+    if (inp.files && inp.files[0]) uploadPdf(inp.files[0]);
+  });
+  ['dragenter','dragover'].forEach(ev => dz.addEventListener(ev, (e) => {
+    e.preventDefault(); e.stopPropagation();
+    dz.classList.add('drag-over');
+  }));
+  ['dragleave','drop'].forEach(ev => dz.addEventListener(ev, (e) => {
+    e.preventDefault(); e.stopPropagation();
+    dz.classList.remove('drag-over');
+  }));
+  dz.addEventListener('drop', (e) => {
+    const f = (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]);
+    if (f) uploadPdf(f);
+  });
+}
+async function uploadPdf(file) {
+  const system = (selSystem && selSystem.value) || _rbcfSuggestionsState.system;
+  const rom    = (selGame && selGame.value)    || _rbcfSuggestionsState.rom;
+  if (!system || !rom) {
+    showToast('Pick a system + game first, then drop the PDF.', 'warn', 2600);
+    return;
+  }
+  if (!/\.pdf$/i.test(file.name) && file.type !== 'application/pdf') {
+    showToast('That doesn\'t look like a PDF.', 'error', 2400);
+    return;
+  }
+  const fd = new FormData();
+  fd.append('pdf', file, file.name);
+  fd.append('system_id', system);
+  fd.append('rom_name', rom);
+  showToast(`Extracting bindings from ${file.name}…`, 'info', 1400);
+  try {
+    const r = await fetch('/api/contribute-pdf', { method: 'POST', body: fd });
+    const j = await r.json();
+    if (!j.ok) {
+      showToast(`Extraction failed: ${j.error || 'unknown error'}`, 'error', 3000);
+      return;
+    }
+    const res = j.result || {};
+    const warn = res.extra && res.extra.warning;
+    const nb = (res.bindings || []).length;
+    if (warn) {
+      showToast(warn, 'warn', 4200);
+    }
+    if (nb === 0) {
+      showToast(`No bindings auto-extracted from ${file.name}.`, 'info', 2400);
+      return;
+    }
+    // Merge into the current state so the suggestions panel shows them.
+    _rbcfSuggestionsState.hit = {
+      source: 'user_pdf',
+      title:  res.title || rom,
+      bindings: res.bindings,
+    };
+    _rbcfSuggestionsState.source = 'user_pdf';
+    renderSuggestions();
+    updateIconBadges();
+    showToast(`Extracted ${nb} binding${nb === 1 ? '' : 's'} from ${file.name}. Review and apply.`, 'success', 2800);
+  } catch (e) {
+    showToast(`Upload failed: ${e.message || e}`, 'error', 2800);
+  }
+}
+
+// Build a pre-filled GitHub Issue URL with the user's confirmed
+// bindings as the body. No OAuth — opens the user's browser to a
+// GitHub Issue compose page with title + body + labels prefilled.
+// The project owner triages issues into bindings_db manually until
+// the full Task-15 OAuth-backed PR flow lands.
+function buildCommunitySubmitUrl(system, rom, bindings) {
+  const owner = (window.RBCF_GH_OWNER || 'ITViking-FIN');
+  const repo  = (window.RBCF_GH_REPO  || 'RetroControlMapper');
+  const title = `[bindings] ${system}: ${rom}`;
+  const body  = [
+    '<!-- Auto-generated by RetroControlMapper. Paste any context after this block. -->',
+    '',
+    `**System:** \`${system}\``,
+    `**Game:** \`${rom}\``,
+    `**Submitted:** ${new Date().toISOString()}`,
+    `**Client version:** v0.1.5`,
+    '',
+    '## Bindings',
+    '',
+    '```json',
+    JSON.stringify({ system_id: system, rom_name: rom, bindings }, null, 2),
+    '```',
+    '',
+    '<!-- Optional: please describe the manual source (link, archive, etc.) -->',
+  ].join('\n');
+  const url = `https://github.com/${owner}/${repo}/issues/new`
+            + `?labels=community-binding,bindings-submission`
+            + `&title=${encodeURIComponent(title)}`
+            + `&body=${encodeURIComponent(body)}`;
+  return url;
+}
+// Called by save flow when user ticked "Submit to community DB on save".
+async function submitBindingsToCommunity() {
+  const hit = _rbcfSuggestionsState.hit;
+  const system = _rbcfSuggestionsState.system || (selSystem && selSystem.value) || '';
+  const rom    = _rbcfSuggestionsState.rom    || (selGame && selGame.value)    || '';
+  if (!system || !rom) return false;
+  // Also collect any user-edited keystroke bindings from the mapping grid
+  // so the submission reflects the user's final state, not just the
+  // suggestions snapshot.
+  const collected = [];
+  $$('input[data-map-btn]').forEach(inp => {
+    const v = (inp.value || '').trim();
+    if (!v || v === '---') return;
+    collected.push({
+      button: inp.dataset.mapBtn,
+      action: v,
+      confidence: 'high',
+      matched_by: 'user',
+      extractor:  'rbcf-gui-v0.1.5',
+    });
+  });
+  if (!collected.length && !(hit && hit.bindings && hit.bindings.length)) {
+    showToast('No bindings to submit yet — apply or enter some first.', 'warn', 2600);
+    return false;
+  }
+  const url = buildCommunitySubmitUrl(system, rom, collected.length ? collected : hit.bindings);
+  // Also persist a local queue copy via the backend (idempotent — backend
+  // is the source of truth for the local copy).
+  try {
+    await fetch('/api/contribute-save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        system_id: system, rom_name: rom, title: rom,
+        bindings: collected.length ? collected : hit.bindings,
+        submit: true,
+      }),
+    });
+  } catch (e) { /* non-fatal — the GH issue is the primary submit path */ }
+  window.open(url, '_blank', 'noopener');
+  showToast('Opened a pre-filled GitHub Issue in your browser. Submit when you\'re ready.', 'info', 3200);
+  return true;
+}
+
+// ============================================================
 // v0.1.5 13e — Pin state + reparent helpers
 // ============================================================
 // Each tuckable panel has three possible homes:
@@ -2639,18 +3147,20 @@ function _moveOverridesContent(toHost) {
 // correct host. Called on init and whenever pin state changes.
 function applyPinnedStates() {
   const panels = [
-    { name: 'mappings',  cardId: 'mappings-pinned-card',  pinnedHost: '.rbcf-pinned-mappings-host',  hiddenHostId: 'mappings-host',     move: _moveMappingsContent,  popoverOpen: () => !!$('rbcf-mappings-popover'),  popoverHost: '.rbcf-mappings-host' },
-    { name: 'overrides', cardId: 'overrides-pinned-card', pinnedHost: '.rbcf-pinned-overrides-host', hiddenHostId: 'game-options-host', move: _moveOverridesContent, popoverOpen: () => !!$('rbcf-overrides-popover'), popoverHost: '.rbcf-overrides-host' },
-    { name: 'notes',     cardId: 'notes-pinned-card',     pinnedHost: '.rbcf-pinned-notes-host',     hiddenHostId: 'notes-host',        move: _moveNotesContent,     popoverOpen: () => !!$('rbcf-notes-popover'),     popoverHost: '.rbcf-notes-textarea-host' },
+    { name: 'suggestions', cardId: 'suggestions-pinned-card', pinnedHost: '.rbcf-pinned-suggestions-host', hiddenHostId: 'suggestions-host',  move: _moveSuggestionsContent, popoverOpen: () => !!$('rbcf-suggestions-popover'), popoverHost: '.rbcf-suggestions-host' },
+    { name: 'mappings',    cardId: 'mappings-pinned-card',    pinnedHost: '.rbcf-pinned-mappings-host',    hiddenHostId: 'mappings-host',     move: _moveMappingsContent,    popoverOpen: () => !!$('rbcf-mappings-popover'),    popoverHost: '.rbcf-mappings-host' },
+    { name: 'overrides',   cardId: 'overrides-pinned-card',   pinnedHost: '.rbcf-pinned-overrides-host',   hiddenHostId: 'game-options-host', move: _moveOverridesContent,   popoverOpen: () => !!$('rbcf-overrides-popover'),   popoverHost: '.rbcf-overrides-host' },
+    { name: 'notes',       cardId: 'notes-pinned-card',       pinnedHost: '.rbcf-pinned-notes-host',       hiddenHostId: 'notes-host',        move: _moveNotesContent,       popoverOpen: () => !!$('rbcf-notes-popover'),       popoverHost: '.rbcf-notes-textarea-host' },
   ];
   for (const p of panels) {
     const pinned = getPinned(p.name);
     const card = $(p.cardId);
     if (card) card.hidden = !pinned;
     // Reflect pinned state on the icon (small dot indicator)
-    const iconId = p.name === 'mappings'  ? 'rbcf-mappings-icon'
-                : p.name === 'overrides' ? 'rbcf-overrides-icon'
-                : p.name === 'notes'     ? 'rbcf-notes-icon' : null;
+    const iconId = p.name === 'suggestions' ? 'rbcf-suggestions-icon'
+                : p.name === 'mappings'     ? 'rbcf-mappings-icon'
+                : p.name === 'overrides'    ? 'rbcf-overrides-icon'
+                : p.name === 'notes'        ? 'rbcf-notes-icon' : null;
     if (iconId) {
       const icon = $(iconId);
       if (icon) {
@@ -2731,6 +3241,11 @@ function _renderBadge(iconId, count) {
 function updateIconBadges() {
   _renderBadge('rbcf-mappings-icon',  _countMappings());
   _renderBadge('rbcf-overrides-icon', _countOverrides());
+  // Suggestions badge — count of pending (not-yet-applied) bindings
+  // from the currently-loaded game's manual hit.
+  const hit = (typeof _rbcfSuggestionsState !== 'undefined' && _rbcfSuggestionsState) ? _rbcfSuggestionsState.hit : null;
+  const sn = (hit && hit.bindings) ? hit.bindings.length : 0;
+  _renderBadge('rbcf-suggestions-icon', sn);
 }
 
 // ============================================================
@@ -3065,6 +3580,13 @@ async function onSave() {
     }
     await loadGames(profile.system);
     selGame.value = profile.rom;
+    // v0.1.5 Task 15: if the user ticked "Submit my approved bindings
+    // to the community DB" in the Suggestions popover footer, kick off
+    // the GitHub-Issue submit flow now that the local save has landed.
+    if (localStorage.getItem('rbcf-community-submit') === '1'
+        && typeof submitBindingsToCommunity === 'function') {
+      try { await submitBindingsToCommunity(); } catch (e) { /* non-fatal */ }
+    }
   } catch (e) {
     setStatus('save error');
     showToast('Save error: ' + e.message, 'error');
@@ -4232,6 +4754,7 @@ function setupCollapsibles() {
   injectNotesIcon();
   injectOverridesIcon();
   injectMappingsIcon();
+  injectSuggestionsIcon();      // v0.1.5 Task 1 — first icon in workflow order
   wireTargetOverridesButton();   // legacy no-op kept for back-compat
   // v0.1.5 13e: pin state + pinned-card wiring. Must run AFTER the
   // injections (so the icons exist to receive [data-pinned] markers)

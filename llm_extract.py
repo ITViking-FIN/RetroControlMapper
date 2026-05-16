@@ -456,10 +456,15 @@ def _quote_in_text(quote: str, text: str) -> bool:
 
 
 def validate(raw_response: str, section_text: str,
-             passport: SystemPassport) -> ValidationResult:
+             passport: SystemPassport,
+             model: str = DEFAULT_MODEL) -> ValidationResult:
     """Parse + validate the LLM's JSON response per the protocol. Drops
     invalid bindings; survivors get returned in ``bindings``. Rejected
-    bindings get returned with reasons for the rejection log."""
+    bindings get returned with reasons for the rejection log.
+
+    ``model`` is recorded into the per-binding ``extractor`` provenance
+    tag so records show which checkpoint produced them (3b vs 7b etc).
+    """
     out = ValidationResult()
     try:
         parsed = json.loads(raw_response)
@@ -513,7 +518,9 @@ def validate(raw_response: str, section_text: str,
             "confidence":   conf,
             "source_quote": quote,
             "matched_by":   "llm",
-            "extractor":    "llm-qwen2.5-3b",
+            # v0.1.5: derive provenance tag from actual model in use so
+            # records show which checkpoint produced them (3b vs 7b etc).
+            "extractor":    f"llm-{model.replace(':', '-')}",
         })
 
     # Uncertain items: the LLM flagged these as ambiguous. Don't enter
@@ -693,7 +700,7 @@ class LLMExtractor:
                 "attempt":           attempt + 1,
             }
             last_resp = resp.get("response", "")
-            val = validate(last_resp, section_text, passport)
+            val = validate(last_resp, section_text, passport, model=self.model)
             # Retry if JSON outright invalid; otherwise accept
             invalid_json = any(r.get("reason") == "invalid_json"
                               for r in val.rejected)

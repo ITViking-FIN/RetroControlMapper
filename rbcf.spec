@@ -78,6 +78,15 @@ a = Analysis(
         # so the runtime app has a writable copy. The bundled tree
         # itself is read-only (it lives inside the .exe).
         ('profiles',  'profiles'),
+
+        # v0.1.5: Bindings database — per-system JSON files extracted
+        # via the OCR + regex + LLM hybrid pipeline (~7.2 MB across
+        # 62 systems). bindings_lookup.py resolves these via
+        # Path(__file__).parent / "data" / "bindings_db", which lands
+        # at _MEIPASS/data/bindings_db at runtime. Read-only — user
+        # contributions overlay via data/bindings_user (separate scope,
+        # see v0.1.6 GitHub-as-database task).
+        ('data/bindings_db',    'data/bindings_db'),
     ],
     hiddenimports=[
         # pystray's win32 backend is loaded via importlib at runtime;
