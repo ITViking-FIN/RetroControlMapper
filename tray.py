@@ -426,7 +426,7 @@ def start_tray_app(open_browser_on_start: bool = True,
                  on_toggle_autostart,
                  checked=lambda item: _autostart_enabled()),  # noqa: ARG005
         Menu.SEPARATOR,
-        MenuItem("About RB-Controller_fix", on_about),
+        MenuItem("About RetroControlMapper", on_about),
         Menu.SEPARATOR,
         MenuItem("Quit", on_quit),
     )
@@ -434,7 +434,7 @@ def start_tray_app(open_browser_on_start: bool = True,
     icon = pystray.Icon(
         name="rb-controller-fix",
         icon=image,
-        title="RB-Controller_fix",
+        title="RetroControlMapper",
         menu=menu,
     )
     icon_holder["icon"] = icon

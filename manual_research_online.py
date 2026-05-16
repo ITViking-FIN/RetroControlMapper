@@ -87,7 +87,8 @@ ONLINE_CACHE_INDEX = DATA_DIR / "manuals_online_cache.json"
 
 FLARESOLVERR_URL = "http://localhost:8191/v1"
 DEFAULT_TIMEOUT_MS = 60_000          # 60s per request
-USER_AGENT = "RB-Controller_fix/0.1.4 manual-research"
+from config import __version__ as _rbcf_v
+USER_AGENT = f"RetroControlMapper/{_rbcf_v} manual-research"
 
 
 # ============================================================

@@ -2980,7 +2980,7 @@ def serve_http(host: str = "127.0.0.1",
         sys.exit(1)
 
     url = f"http://localhost:{port}/"
-    print(f"RB-Controller_fix GUI -> {url}")
+    print(f"RetroControlMapper GUI -> {url}")
     print(f"  ROMs root:    {ROMS_ROOT}")
     print(f"  Profiles dir: {PROFILES_DIR}")
     print("Ctrl-C to stop (or use the tray menu's Quit item).\n")

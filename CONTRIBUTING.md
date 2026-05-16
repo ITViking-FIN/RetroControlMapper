@@ -1,4 +1,4 @@
-# Contributing to RB-Controller_fix
+# Contributing to RetroControlMapper
 
 Thanks for considering a contribution! This project is small and
 opinionated, so contributions land best when they fit one of the

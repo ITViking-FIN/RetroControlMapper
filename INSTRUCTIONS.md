@@ -458,7 +458,7 @@ We make outbound network requests in **two** circumstances. Both are explicitly 
 
 ### Update check
 
-- **What it does.** Compares the local `__version__` (currently `0.1.5`) against the latest release tag of `ITViking-FIN/RetroControlMapper` on GitHub.
+- **What it does.** Compares the local `__version__` (currently `0.1.5.2`) against the latest release tag of `ITViking-FIN/RetroControlMapper` on GitHub.
 - **When it runs.** Only after you click **Check now** in Settings cog → Updates, OR if you've enabled "Auto-check at startup" (default off).
 - **Caching.** Result cached for 24h (errors cached for 1h). Stored at `%APPDATA%\RB-Controller_fix\update-check.json`.
 - **Source.** Public GitHub releases API only. No auth, no cookies.
@@ -695,7 +695,7 @@ Bugs and feature requests: [GitHub issues](https://github.com/ITViking-FIN/Retro
 
 Please include:
 
-- **Version** — found in Settings cog → About. Currently `0.1.5`.
+- **Version** — found in Settings cog → About. Currently `0.1.5.2`.
 - **Windows version** — Windows 10 / 11, build number if you have it.
 - **RetroBat version** — found in RetroBat's own About screen.
 - **What you expected vs. what happened.**

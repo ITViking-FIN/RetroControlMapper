@@ -1520,7 +1520,7 @@ function showSettingsPopover() {
   pop.id = 'rbcf-apply-settings-popover';
   pop.className = 'rbcf-apply-settings-popover';
   pop.setAttribute('role', 'dialog');
-  pop.setAttribute('aria-label', 'RB-Controller_fix Settings');
+  pop.setAttribute('aria-label', 'RetroControlMapper Settings');
   const currentTheme = getTheme();
   const themeBtn = (val, label, icon) => `
     <button type="button" class="rbcf-apply-theme-btn${currentTheme === val ? ' rbcf-apply-theme-btn-active' : ''}"
@@ -1533,7 +1533,7 @@ function showSettingsPopover() {
 
   pop.innerHTML = `
     <div class="rbcf-apply-settings-head">
-      <h3 class="rbcf-apply-settings-title">RB-Controller_fix Settings</h3>
+      <h3 class="rbcf-apply-settings-title">RetroControlMapper Settings</h3>
       <button type="button" class="rbcf-apply-modal-x" aria-label="Close" data-act="close">×</button>
     </div>
     <div class="rbcf-apply-settings-body">
@@ -2087,7 +2087,7 @@ function injectSettingsCog() {
   btn.id = 'rbcf-apply-settings-cog';
   btn.type = 'button';
   btn.className = 'secondary rbcf-apply-settings-toggle';
-  btn.title = 'RB-Controller_fix Settings';
+  btn.title = 'RetroControlMapper Settings';
   btn.setAttribute('aria-label', 'Settings');
   btn.setAttribute('aria-haspopup', 'dialog');
   btn.setAttribute('aria-expanded', 'false');
@@ -4617,7 +4617,7 @@ function exportUserSettings() {
   try {
     const payload = {
       schema:    SETTINGS_BACKUP_VERSION,
-      app:       'RB-Controller_fix',
+      app:       'RetroControlMapper',
       app_version: (typeof rbcfUpdateLocalVersion === 'function')
                      ? rbcfUpdateLocalVersion() : 'unknown',
       exported:  new Date().toISOString(),
@@ -4652,9 +4652,14 @@ function importUserSettings(file) {
       if (!payload || typeof payload !== 'object') {
         throw new Error('not a JSON object');
       }
-      if (payload.app !== 'RB-Controller_fix') {
+      // Accept either the legacy 'RB-Controller_fix' (pre-v0.1.5.2) or
+      // the new 'RetroControlMapper' app ID — backwards-compat for users
+      // restoring older settings backups.
+      const validApp = (payload.app === 'RetroControlMapper'
+                     || payload.app === 'RB-Controller_fix');
+      if (!validApp) {
         if (!confirm(
-          'This file does not look like an RB-Controller_fix settings backup '
+          'This file does not look like a RetroControlMapper settings backup '
           + `(app field = ${JSON.stringify(payload.app)}). Import anyway?`)) {
           return;
         }

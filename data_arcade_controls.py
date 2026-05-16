@@ -59,7 +59,8 @@ BUTTONS_SOURCE_URL = (
     "https://raw.githubusercontent.com/yo1dog/controls-dat-json/master/"
     "json/controls.json"
 )
-USER_AGENT = "RB-Controller_fix/0.1.4 arcade-controls-fetcher (+https://github.com/ITViking-FIN/RetroControlMapper)"
+from config import __version__ as _rbcf_v
+USER_AGENT = f"RetroControlMapper/{_rbcf_v} arcade-controls-fetcher (+https://github.com/ITViking-FIN/RetroControlMapper)"
 TIMEOUT_S = 30
 
 # Systems whose ROMs are looked up against this catalog. Each system's

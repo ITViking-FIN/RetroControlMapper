@@ -1,4 +1,4 @@
-# RB-Controller_fix — UX Flows
+# RetroControlMapper — UX Flows
 
 > Stream D output. Design-only, no implementation. The UI agent will pick this
 > up in a later iteration. **Do not hand-edit the existing GUI based on this
@@ -104,7 +104,7 @@ If RetroBat is found, systems exist, but **0 ROMs** in any of them:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│  Welcome to RB-Controller_fix                            [skip] │
+│  Welcome to RetroControlMapper                           [skip] │
 │                                                                 │
 │  We had a quick look around your machine.                       │
 │                                                                 │

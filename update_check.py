@@ -42,7 +42,7 @@ from pathlib import Path
 
 from config import GITHUB_OWNER, GITHUB_REPO, __version__
 
-USER_AGENT = f"RB-Controller_fix/{__version__}"
+USER_AGENT = f"RetroControlMapper/{__version__}"
 HTTP_TIMEOUT = 10  # seconds — every outbound request
 
 # Cache TTLs.

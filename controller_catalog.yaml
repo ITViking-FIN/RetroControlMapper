@@ -1,4 +1,4 @@
-# RB-Controller_fix — controller image catalog.
+# RetroControlMapper — controller image catalog.
 #
 # Maps USB VID:PID identifiers to Wikimedia Commons file names. The sync
 # tool (controller_sync.py) re-downloads each file from Commons and caches

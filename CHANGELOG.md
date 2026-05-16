@@ -4,6 +4,51 @@ All notable changes to RetroControlMapper. Format follows [Keep a
 Changelog](https://keepachangelog.com); versioning follows
 [SemVer](https://semver.org).
 
+## [v0.1.5.2] — 2026-05-16
+
+**Brand consistency.** v0.1.5.1 still surfaced the legacy
+`RB-Controller_fix` codename in several user-visible places (GUI brand
+title, Settings popover header, tray menu, onboarding wizard text,
+outbound User-Agent strings). v0.1.5.2 finishes the renaming pass —
+everywhere the user sees the product name, it's now `RetroControlMapper`.
+
+The `%APPDATA%\RB-Controller_fix\` user-data folder stays as-is in
+this release: renaming it would migrate existing users' profiles +
+settings + snapshots on first launch and that's worth its own
+migration step. Slated for v0.1.6.
+
+### Changed
+
+- **GUI brand title** (`<h1>` in header) `RB-Controller_fix` →
+  `RetroControlMapper`.
+- **Settings popover header** + aria-label + button tooltip.
+- **Onboarding wizard greeting** ("RetroControlMapper needs to know
+  where RetroBat lives…").
+- **Tray menu**: "About RB-Controller_fix" → "About RetroControlMapper";
+  tray tooltip title likewise.
+- **GUI footer** profile-path example now reads
+  `%APPDATA%\RB-Controller_fix\profiles\<system>\<rom>.yaml`
+  (was a developer-machine `D:/RB-Controller_fix/...` path).
+- **Outbound User-Agent strings** across `update_check.py`,
+  `controller_sync.py`, `data_arcade_controls.py`,
+  `manual_research_online.py`, `system_lookup.py`, `rbcf.py`:
+  rebranded to `RetroControlMapper/<version>` and now derive the
+  version from `config.__version__` instead of hardcoded strings
+  (so future bumps don't leave stale UAs behind).
+- **Settings backup file format**: `app` field now emits
+  `"RetroControlMapper"`. Imports still accept the legacy
+  `"RB-Controller_fix"` ID so older backups restore cleanly.
+- **CONTRIBUTING.md** title + **`docs/UX_FLOWS.md`** prose +
+  **`controller_catalog.yaml`** header comment.
+
+### Kept (intentional)
+
+- `%APPDATA%\RB-Controller_fix\` data folder — see TL;DR above.
+- Dev workspace path `D:\RB-Controller_fix\` in docs — that's the
+  development checkout location; user installs don't see it.
+- Internal Python module / file-header comments (low value, no
+  user impact).
+
 ## [v0.1.5.1] — 2026-05-16
 
 **Hotfix.** Caught during post-release screenshot capture: the v0.1.5

@@ -673,7 +673,8 @@ def cmd_pull_community(args):
     ROOT = Path(__file__).resolve().parent
     PROFILES_DIR = ROOT / "profiles"
     COMM_DIR = PROFILES_DIR / "community"
-    USER_AGENT = "RB-Controller_fix/0.1.3 pull-community"
+    from config import __version__ as _rbcf_v
+    USER_AGENT = f"RetroControlMapper/{_rbcf_v} pull-community"
 
     repo = args.repo
     ref = args.ref

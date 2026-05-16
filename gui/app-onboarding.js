@@ -270,7 +270,7 @@
     state.bodyEl.innerHTML = '';
     state.bodyEl.appendChild(el('p', {
       class: 'rbcf-onb-lede',
-      text: 'RB-Controller_fix needs to know where RetroBat lives so it can edit the right config files. We never write outside that folder without confirming first.',
+      text: 'RetroControlMapper needs to know where RetroBat lives so it can edit the right config files. We never write outside that folder without confirming first.',
     }));
 
     const status = el('div', { class: 'rbcf-onb-status', id: 'rbcf-onb-root-status' }, [

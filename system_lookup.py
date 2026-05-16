@@ -30,7 +30,8 @@ import urllib.request
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-USER_AGENT = "RB-Controller_fix/0.1.3 (+https://github.com/ITViking-FIN/RetroControlMapper)"
+from config import __version__ as _rbcf_v
+USER_AGENT = f"RetroControlMapper/{_rbcf_v} (+https://github.com/ITViking-FIN/RetroControlMapper)"
 HTTP_TIMEOUT = 10  # seconds — every outbound request
 
 # system_id sanity. Anything outside this is rejected (path-traversal guard).
