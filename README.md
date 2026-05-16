@@ -65,6 +65,7 @@ RetroControlMapper fixes all three.
 
 ## Quick links
 
+- **[Feature list](FeatureList.md)** — scannable one-line inventory of everything the app does.
 - **[Full instruction manual](INSTRUCTIONS.md)** — every screen, every setting, plus troubleshooting and an FAQ.
 - **[Report a bug](https://github.com/ITViking-FIN/RetroControlMapper/issues)** — please include the version (`0.1.5`), your Windows version, and a description of what you expected versus what happened.
 - **[Latest release](https://github.com/ITViking-FIN/RetroControlMapper/releases/latest)** — installers and release notes.
