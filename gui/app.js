@@ -778,6 +778,11 @@ function buildMappingRows() {
         .replace('UP','D-UP').replace('DOWN','D-DOWN')
         .replace('LEFT','D-LEFT').replace('RIGHT','D-RIGHT');
       const swatch = FACE_COLOR[btn] ? '<span class="swatch" aria-hidden="true"></span>' : '';
+      // v0.1.5 13e: rows with a bound value get .has-value applied,
+      // which tints the input field green so the user can scan the
+      // grid and immediately spot which buttons are mapped. The stored
+      // value is the full RETROK_* constant — no display-side prefix
+      // stripping (keeps the data model + collectProfile() untouched).
       row.innerHTML = `
         <span class="btn-name">${swatch}${label}</span>
         <input type="text" data-map-btn="${btn}" placeholder="e.g. RETROK_F1, RETROK_SPACE, --- to clear">
@@ -857,6 +862,9 @@ function clearForm() {
     else el.value = '';
   });
   notesEl.value = '';
+  // v0.1.5 13e: also clear has-value visual + recount badges
+  syncMappingRowsVisualState();
+  if (typeof updateIconBadges === 'function') updateIconBadges();
 }
 
 function populateForm(profile) {
@@ -881,6 +889,23 @@ function populateForm(profile) {
     else el.value = v;
   }
   notesEl.value = profile.notes || '';
+  // v0.1.5 13e: after populating, sync row visuals + badges
+  syncMappingRowsVisualState();
+  if (typeof updateIconBadges === 'function') updateIconBadges();
+}
+
+// v0.1.5 13e: after any bulk mutation of mapping input values
+// (populateForm / clearForm / listen-bind), refresh the .has-value
+// class on each row so the green-tint + RETROK_ prefix visual stays
+// in sync. Per-keystroke input events are handled by the global
+// 'input' delegation (~line 3560) — this is for non-input mutations.
+function syncMappingRowsVisualState() {
+  $$('input[data-map-btn]').forEach(inp => {
+    const row = inp.closest('.map-row');
+    if (!row) return;
+    const v = (inp.value || '').trim();
+    row.classList.toggle('has-value', !!v && v !== '---');
+  });
 }
 
 function collectProfile() {
@@ -2125,11 +2150,13 @@ function injectNotesIcon() {
 function dismissNotesPopover() {
   const pop = $('rbcf-notes-popover');
   if (pop) {
-    // Move the textarea back to its hidden host so it stays in the DOM
-    // (existing notesEl.value accessors keep working).
-    const ta = pop.querySelector('#notes');
-    const host = $('notes-host');
-    if (ta && host) host.appendChild(ta);
+    // v0.1.5 13e: route the textarea to the inline pinned host (if
+    // user ticked "Always keep visible") or back to the hidden host.
+    // Either way it stays in the DOM and notesEl accessors keep working.
+    const dest = getPinned('notes')
+      ? document.querySelector('.rbcf-pinned-notes-host')
+      : $('notes-host');
+    _moveNotesContent(dest);
     pop.remove();
   }
   const icon = $('rbcf-notes-icon');
@@ -2163,18 +2190,31 @@ function showNotesPopover() {
       <p class="rbcf-notes-help">Free-text notes about this game's controls. Kept in the profile YAML.</p>
       <div class="rbcf-notes-textarea-host"></div>
     </div>
+    <div class="rbcf-pin-foot">
+      <label class="rbcf-pin-toggle">
+        <input type="checkbox" data-pin-panel="notes">
+        Always keep notes visible
+        <span class="rbcf-pin-note">renders inline below the controllers</span>
+      </label>
+    </div>
   `;
   document.body.appendChild(pop);
 
-  // Move the existing textarea (with current value + listeners) into the popover.
-  const ta = $('notes');
+  // v0.1.5 13e: move the textarea into the popover, from wherever it
+  // currently lives (hidden host or inline pinned host).
   const taHost = pop.querySelector('.rbcf-notes-textarea-host');
-  if (ta && taHost) {
-    taHost.appendChild(ta);
-    // Ensure it's visible inside the popover (its #notes-host parent had hidden).
-    ta.hidden = false;
-    ta.style.display = '';
-    setTimeout(() => ta.focus(), 0);
+  _moveNotesContent(taHost);
+  const ta = $('notes');
+  if (ta) setTimeout(() => ta.focus(), 0);
+
+  // Pin checkbox
+  const pinChk = pop.querySelector('input[data-pin-panel="notes"]');
+  if (pinChk) {
+    pinChk.checked = getPinned('notes');
+    pinChk.addEventListener('change', () => {
+      setPinned('notes', pinChk.checked);
+      applyPinnedStates();
+    });
   }
 
   // Anchor below the icon, right-aligned to the page-actions edge.
@@ -2216,20 +2256,20 @@ let _rbcfOverridesKeyHandler = null;
 function dismissOverridesPopover() {
   const pop = $('rbcf-overrides-popover');
   if (pop) {
-    // Move all transient overrides content back to its hidden host so
-    // the renderers and gameOpts reference keep working. This includes
-    // both #game-options AND the .rbcf-game-detail-header strip.
-    const host = $('game-options-host');
-    const overridesContent = pop.querySelector('.rbcf-overrides-host');
-    if (host && overridesContent) {
-      while (overridesContent.firstChild) {
-        host.appendChild(overridesContent.firstChild);
-      }
-    }
+    // v0.1.5 13e: route content to either the inline pinned host or
+    // back to the hidden host. Keeps renderers + gameOpts ref intact.
+    const dest = getPinned('overrides')
+      ? document.querySelector('.rbcf-pinned-overrides-host')
+      : $('game-options-host');
+    _moveOverridesContent(dest);
     pop.remove();
   }
-  const btn = $('btn-target-overrides');
-  if (btn) btn.setAttribute('aria-expanded', 'false');
+  // Reflect collapsed state on the icon-bar trigger (the legacy
+  // btn-target-overrides stub is hidden; the real toggle is the icon).
+  const icon = $('rbcf-overrides-icon');
+  if (icon) icon.setAttribute('aria-expanded', 'false');
+  const legacy = $('btn-target-overrides');
+  if (legacy) legacy.setAttribute('aria-expanded', 'false');
   if (_rbcfOverridesOutsideHandler) {
     document.removeEventListener('mousedown', _rbcfOverridesOutsideHandler, true);
     _rbcfOverridesOutsideHandler = null;
@@ -2242,8 +2282,9 @@ function dismissOverridesPopover() {
 
 function showOverridesPopover() {
   dismissOverridesPopover();
-  const btn = $('btn-target-overrides');
-  if (!btn) return;
+  // v0.1.5 13e: the trigger is now the icon-bar icon, not target-h2.
+  const icon = $('rbcf-overrides-icon');
+  if (!icon) return;
 
   const pop = document.createElement('div');
   pop.id = 'rbcf-overrides-popover';
@@ -2259,32 +2300,43 @@ function showOverridesPopover() {
       <p class="rbcf-overrides-help">Keyboard pass-through, focus capture, joy-port — writes <code>es_settings.cfg</code> per-game keys.</p>
       <div class="rbcf-overrides-host"></div>
     </div>
+    <div class="rbcf-pin-foot">
+      <label class="rbcf-pin-toggle">
+        <input type="checkbox" data-pin-panel="overrides">
+        Always keep overrides visible
+        <span class="rbcf-pin-note">renders inline below the controllers</span>
+      </label>
+    </div>
   `;
   document.body.appendChild(pop);
 
-  // Move ALL content from the hidden host (game-detail header strip
-  // + #game-options) into the popover so the strip and the options
-  // grid travel together.
-  const gameOptsHost = $('game-options-host');
+  // v0.1.5 13e: move overrides content into the popover, from wherever
+  // it currently lives (hidden host or inline pinned host).
   const host = pop.querySelector('.rbcf-overrides-host');
-  if (gameOptsHost && host) {
-    while (gameOptsHost.firstChild) {
-      host.appendChild(gameOptsHost.firstChild);
-    }
-  }
+  _moveOverridesContent(host);
 
-  // Anchor below the button, right-aligned with it.
-  const r = btn.getBoundingClientRect();
+  // Anchor below the icon, right-aligned to the page-actions edge.
+  const r = icon.getBoundingClientRect();
   pop.style.position = 'absolute';
   pop.style.top = (r.bottom + 8 + window.scrollY) + 'px';
   pop.style.right = (window.innerWidth - r.right) + 'px';
 
-  btn.setAttribute('aria-expanded', 'true');
+  icon.setAttribute('aria-expanded', 'true');
+
+  // Pin checkbox
+  const pinChk = pop.querySelector('input[data-pin-panel="overrides"]');
+  if (pinChk) {
+    pinChk.checked = getPinned('overrides');
+    pinChk.addEventListener('change', () => {
+      setPinned('overrides', pinChk.checked);
+      applyPinnedStates();
+    });
+  }
 
   pop.querySelector('[data-act="close"]').addEventListener('click', dismissOverridesPopover);
   _rbcfOverridesOutsideHandler = (e) => {
     if (pop.contains(e.target)) return;
-    if (btn.contains(e.target)) return;
+    if (icon.contains(e.target)) return;
     dismissOverridesPopover();
   };
   _rbcfOverridesKeyHandler = (e) => {
@@ -2294,15 +2346,391 @@ function showOverridesPopover() {
   document.addEventListener('keydown', _rbcfOverridesKeyHandler, true);
 }
 
-function wireTargetOverridesButton() {
-  const btn = $('btn-target-overrides');
-  if (!btn || btn._rbcfWired) return;
-  btn._rbcfWired = true;
+// v0.1.5 13e: legacy stub. The btn-target-overrides element is now an
+// inert <button hidden> placeholder in index.html (backwards-compat).
+// The real Overrides trigger lives in the .page-actions icon-bar via
+// injectOverridesIcon(). Kept as a no-op so any old callers don't crash.
+function wireTargetOverridesButton() { /* no-op — see injectOverridesIcon */ }
+
+// ============================================================
+// v0.1.5 13e — Overrides icon in the page-actions icon-bar
+// ============================================================
+// Lifts the per-game overrides trigger out of the target-h2 button
+// and into the global icon-bar alongside Mappings / Notes / Settings.
+// All four panels now share the same entry-point pattern and the same
+// "Always keep visible" pin toggle.
+
+function injectOverridesIcon() {
+  let actions = document.querySelector('.page-actions');
+  if (!actions) {
+    const header = document.querySelector('header');
+    if (!header) return;
+    actions = document.createElement('div');
+    actions.className = 'page-actions';
+    header.appendChild(actions);
+  }
+  if ($('rbcf-overrides-icon')) return;
+  const btn = document.createElement('button');
+  btn.id = 'rbcf-overrides-icon';
+  btn.type = 'button';
+  btn.className = 'secondary rbcf-apply-settings-toggle';
+  btn.title = 'Advanced game overrides';
+  btn.setAttribute('aria-label', 'Game overrides');
+  btn.setAttribute('aria-haspopup', 'dialog');
+  btn.setAttribute('aria-expanded', 'false');
+  btn.innerHTML = `
+    <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <line x1="4" y1="21" x2="4" y2="14"/>
+      <line x1="4" y1="10" x2="4" y2="3"/>
+      <line x1="12" y1="21" x2="12" y2="12"/>
+      <line x1="12" y1="8" x2="12" y2="3"/>
+      <line x1="20" y1="21" x2="20" y2="16"/>
+      <line x1="20" y1="12" x2="20" y2="3"/>
+      <line x1="1" y1="14" x2="7" y2="14"/>
+      <line x1="9" y1="8" x2="15" y2="8"/>
+      <line x1="17" y1="16" x2="23" y2="16"/>
+    </svg>
+    <span class="rbcf-icon-badge" hidden></span>
+  `;
+  // Workflow ordering: Mappings → Overrides → Notes → Settings.
+  // Insert before notes (if present), else before settings cog, else append.
+  const notes = $('rbcf-notes-icon');
+  const cog = $('rbcf-apply-settings-cog');
+  if (notes) actions.insertBefore(btn, notes);
+  else if (cog) actions.insertBefore(btn, cog);
+  else actions.appendChild(btn);
   btn.addEventListener('click', (e) => {
     e.stopPropagation();
     if ($('rbcf-overrides-popover')) dismissOverridesPopover();
     else showOverridesPopover();
   });
+}
+
+// ============================================================
+// v0.1.5 13e — Mappings icon + popover
+// ============================================================
+// Lifts the "Custom button → keystroke mappings" grid out of the
+// removed <section id="sec-mappings"> into a popover anchored to
+// the ⌨ icon in the page-actions icon-bar. The #mappings-grid div
+// reparents between #mappings-host (hidden), .rbcf-mappings-host
+// (popover), and .rbcf-pinned-mappings-host (inline pinned).
+// buildMappingRows() doesn't care where the grid currently lives.
+
+let _rbcfMappingsOutsideHandler = null;
+let _rbcfMappingsKeyHandler = null;
+
+function injectMappingsIcon() {
+  let actions = document.querySelector('.page-actions');
+  if (!actions) {
+    const header = document.querySelector('header');
+    if (!header) return;
+    actions = document.createElement('div');
+    actions.className = 'page-actions';
+    header.appendChild(actions);
+  }
+  if ($('rbcf-mappings-icon')) return;
+  const btn = document.createElement('button');
+  btn.id = 'rbcf-mappings-icon';
+  btn.type = 'button';
+  btn.className = 'secondary rbcf-apply-settings-toggle';
+  btn.title = 'Button → keystroke mappings';
+  btn.setAttribute('aria-label', 'Button mappings');
+  btn.setAttribute('aria-haspopup', 'dialog');
+  btn.setAttribute('aria-expanded', 'false');
+  btn.innerHTML = `
+    <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <rect x="2" y="4" width="20" height="16" rx="2"/>
+      <path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M8 12h.01M12 12h.01M16 12h.01M7 16h10"/>
+    </svg>
+    <span class="rbcf-icon-badge" hidden></span>
+  `;
+  // Mappings is first in workflow order — insert before everything else.
+  const overrides = $('rbcf-overrides-icon');
+  const notes = $('rbcf-notes-icon');
+  const cog = $('rbcf-apply-settings-cog');
+  const anchor = overrides || notes || cog;
+  if (anchor) actions.insertBefore(btn, anchor);
+  else actions.appendChild(btn);
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if ($('rbcf-mappings-popover')) dismissMappingsPopover();
+    else showMappingsPopover();
+  });
+}
+
+function dismissMappingsPopover() {
+  const pop = $('rbcf-mappings-popover');
+  if (pop) {
+    // Route the grid back to either the inline pinned host (if pinned)
+    // or the hidden host. Either way it stays in the DOM.
+    const dest = getPinned('mappings')
+      ? document.querySelector('.rbcf-pinned-mappings-host')
+      : $('mappings-host');
+    _moveMappingsContent(dest);
+    pop.remove();
+  }
+  const icon = $('rbcf-mappings-icon');
+  if (icon) icon.setAttribute('aria-expanded', 'false');
+  if (_rbcfMappingsOutsideHandler) {
+    document.removeEventListener('mousedown', _rbcfMappingsOutsideHandler, true);
+    _rbcfMappingsOutsideHandler = null;
+  }
+  if (_rbcfMappingsKeyHandler) {
+    document.removeEventListener('keydown', _rbcfMappingsKeyHandler, true);
+    _rbcfMappingsKeyHandler = null;
+  }
+}
+
+function showMappingsPopover() {
+  dismissMappingsPopover();
+  const icon = $('rbcf-mappings-icon');
+  if (!icon) return;
+
+  const pop = document.createElement('div');
+  pop.id = 'rbcf-mappings-popover';
+  pop.className = 'rbcf-apply-settings-popover rbcf-mappings-popover';
+  pop.setAttribute('role', 'dialog');
+  pop.setAttribute('aria-label', 'Button mappings');
+  pop.innerHTML = `
+    <div class="rbcf-apply-settings-head">
+      <h3 class="rbcf-apply-settings-title">Button mappings</h3>
+      <button type="button" class="rbcf-apply-modal-x" aria-label="Close" data-act="close">×</button>
+    </div>
+    <div class="rbcf-apply-settings-body">
+      <p class="rbcf-mappings-help">Map a pad button to a keyboard key. Writes <code>core_options</code> to <code>retroarch-core-options.cfg</code>.</p>
+      <div class="rbcf-kbd-tip" data-rbcf-tip="mappings-intro">
+        <svg class="rbcf-kbd-tip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="2" y="6" width="20" height="14" rx="2"/>
+          <path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M8 14h.01M12 14h.01M16 14h.01M7 18h10"/>
+        </svg>
+        <span>
+          Click <strong>listen</strong> on a row, then press the key you want bound to that pad button.
+          <span class="rbcf-kbd-tip-note">Mappings apply <strong>per system</strong> (libretro core options), not per game.</span>
+        </span>
+        <button type="button" class="rbcf-kbd-tip-dismiss" title="Dismiss this tip" aria-label="Dismiss">×</button>
+      </div>
+      <div class="rbcf-mappings-host"></div>
+    </div>
+    <div class="rbcf-pin-foot">
+      <label class="rbcf-pin-toggle">
+        <input type="checkbox" data-pin-panel="mappings">
+        Always keep mappings visible
+        <span class="rbcf-pin-note">renders inline below the controllers</span>
+      </label>
+    </div>
+  `;
+  document.body.appendChild(pop);
+
+  // Move the grid into the popover (from wherever it currently lives).
+  const host = pop.querySelector('.rbcf-mappings-host');
+  _moveMappingsContent(host);
+
+  // Honour any dismissed-tip preference
+  if (localStorage.getItem('rbcf-tip-mappings-intro-dismissed') === '1') {
+    const tip = pop.querySelector('[data-rbcf-tip="mappings-intro"]');
+    if (tip) tip.hidden = true;
+  }
+
+  // Anchor below the icon, right-aligned to the page-actions edge.
+  const r = icon.getBoundingClientRect();
+  pop.style.position = 'absolute';
+  pop.style.top = (r.bottom + 8 + window.scrollY) + 'px';
+  pop.style.right = (window.innerWidth - r.right) + 'px';
+
+  icon.setAttribute('aria-expanded', 'true');
+
+  // Initialise pin checkbox + wire its handler
+  const pinChk = pop.querySelector('input[data-pin-panel="mappings"]');
+  if (pinChk) {
+    pinChk.checked = getPinned('mappings');
+    pinChk.addEventListener('change', () => {
+      setPinned('mappings', pinChk.checked);
+      applyPinnedStates();
+    });
+  }
+
+  // Tip dismiss
+  const tipDismiss = pop.querySelector('.rbcf-kbd-tip-dismiss');
+  if (tipDismiss) {
+    tipDismiss.addEventListener('click', (e) => {
+      e.stopPropagation();
+      localStorage.setItem('rbcf-tip-mappings-intro-dismissed', '1');
+      const tip = pop.querySelector('[data-rbcf-tip="mappings-intro"]');
+      if (tip) tip.hidden = true;
+    });
+  }
+
+  pop.querySelector('[data-act="close"]').addEventListener('click', dismissMappingsPopover);
+  _rbcfMappingsOutsideHandler = (e) => {
+    if (pop.contains(e.target)) return;
+    if (icon.contains(e.target)) return;
+    dismissMappingsPopover();
+  };
+  _rbcfMappingsKeyHandler = (e) => {
+    if (e.key === 'Escape') dismissMappingsPopover();
+  };
+  document.addEventListener('mousedown', _rbcfMappingsOutsideHandler, true);
+  document.addEventListener('keydown', _rbcfMappingsKeyHandler, true);
+}
+
+// ============================================================
+// v0.1.5 13e — Pin state + reparent helpers
+// ============================================================
+// Each tuckable panel has three possible homes:
+//   1. hidden host (in DOM, hidden)        — default state
+//   2. popover (transient, body element)   — when icon clicked
+//   3. inline pinned card (visible card)   — when user ticked "Always keep visible"
+// Pin state is global (localStorage), not per-system. Persists across
+// sessions. getPinned/setPinned + applyPinnedStates drive the toggle.
+
+const RBCF_PIN_KEY = 'rbcf-pinned-panels';
+
+function getPinned(panel) {
+  try {
+    const raw = localStorage.getItem(RBCF_PIN_KEY) || '{}';
+    const map = JSON.parse(raw);
+    return !!map[panel];
+  } catch (e) { return false; }
+}
+
+function setPinned(panel, value) {
+  let map = {};
+  try { map = JSON.parse(localStorage.getItem(RBCF_PIN_KEY) || '{}'); } catch (e) {}
+  if (value) map[panel] = true;
+  else delete map[panel];
+  try { localStorage.setItem(RBCF_PIN_KEY, JSON.stringify(map)); } catch (e) {}
+}
+
+// Per-panel content-mover. Each finds the panel's body wherever it
+// currently is (hidden host, popover, or inline pinned host) and
+// moves it to the destination element. If already there, noop.
+function _moveMappingsContent(toHost) {
+  if (!toHost) return;
+  const grid = $('mappings-grid');
+  if (grid && grid.parentElement !== toHost) toHost.appendChild(grid);
+}
+function _moveNotesContent(toHost) {
+  if (!toHost) return;
+  const ta = $('notes');
+  if (ta && ta.parentElement !== toHost) {
+    toHost.appendChild(ta);
+    ta.hidden = false;
+    ta.style.display = '';
+  }
+}
+function _moveOverridesContent(toHost) {
+  if (!toHost) return;
+  // Overrides has multiple children (game-detail header + #game-options).
+  // Collect from any host they might currently be in.
+  const sources = [
+    $('game-options-host'),
+    document.querySelector('.rbcf-overrides-host'),
+    document.querySelector('.rbcf-pinned-overrides-host'),
+  ].filter(Boolean);
+  for (const src of sources) {
+    if (src === toHost) continue;
+    while (src.firstChild) toHost.appendChild(src.firstChild);
+  }
+}
+
+// Apply pin state to DOM: show/hide pinned cards, route content to
+// correct host. Called on init and whenever pin state changes.
+function applyPinnedStates() {
+  const panels = [
+    { name: 'mappings',  cardId: 'mappings-pinned-card',  pinnedHost: '.rbcf-pinned-mappings-host',  hiddenHostId: 'mappings-host',     move: _moveMappingsContent,  popoverOpen: () => !!$('rbcf-mappings-popover'),  popoverHost: '.rbcf-mappings-host' },
+    { name: 'overrides', cardId: 'overrides-pinned-card', pinnedHost: '.rbcf-pinned-overrides-host', hiddenHostId: 'game-options-host', move: _moveOverridesContent, popoverOpen: () => !!$('rbcf-overrides-popover'), popoverHost: '.rbcf-overrides-host' },
+    { name: 'notes',     cardId: 'notes-pinned-card',     pinnedHost: '.rbcf-pinned-notes-host',     hiddenHostId: 'notes-host',        move: _moveNotesContent,     popoverOpen: () => !!$('rbcf-notes-popover'),     popoverHost: '.rbcf-notes-textarea-host' },
+  ];
+  for (const p of panels) {
+    const pinned = getPinned(p.name);
+    const card = $(p.cardId);
+    if (card) card.hidden = !pinned;
+    // Reflect pinned state on the icon (small dot indicator)
+    const iconId = p.name === 'mappings'  ? 'rbcf-mappings-icon'
+                : p.name === 'overrides' ? 'rbcf-overrides-icon'
+                : p.name === 'notes'     ? 'rbcf-notes-icon' : null;
+    if (iconId) {
+      const icon = $(iconId);
+      if (icon) {
+        if (pinned) icon.setAttribute('data-pinned', '1');
+        else icon.removeAttribute('data-pinned');
+      }
+    }
+    // Route content. If a popover is open, leave the content there —
+    // it'll be re-routed correctly on dismiss. Otherwise: pinned →
+    // inline host, unpinned → hidden host.
+    if (!p.popoverOpen()) {
+      const dest = pinned
+        ? document.querySelector(p.pinnedHost)
+        : $(p.hiddenHostId);
+      if (dest) p.move(dest);
+    }
+  }
+  // Hide the whole slot wrapper if nothing pinned (the :has() CSS
+  // already does this, but belt-and-braces for older browsers).
+  const slot = $('rbcf-pinned-slot');
+  if (slot) {
+    const anyVisible = Array.from(slot.querySelectorAll('.pinned-card')).some(c => !c.hidden);
+    slot.style.display = anyVisible ? '' : 'none';
+  }
+}
+
+// Wire the × buttons on inline pinned cards to unpin the panel.
+function wirePinnedUnpinButtons() {
+  document.querySelectorAll('.pinned-unpin').forEach(btn => {
+    if (btn._rbcfWired) return;
+    btn._rbcfWired = true;
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const panel = btn.getAttribute('data-unpin');
+      if (!panel) return;
+      setPinned(panel, false);
+      applyPinnedStates();
+      updateIconBadges();
+    });
+  });
+}
+
+// ============================================================
+// v0.1.5 13e — Icon count badges
+// ============================================================
+// Mappings badge = number of populated #mappings-grid inputs.
+// Overrides badge = number of [data-opt-key] controls with non-default values.
+
+function _countMappings() {
+  let n = 0;
+  document.querySelectorAll('#mappings-grid input[data-map-btn]').forEach(i => {
+    const v = (i.value || '').trim();
+    if (v && v !== '---') n++;
+  });
+  return n;
+}
+function _countOverrides() {
+  let n = 0;
+  document.querySelectorAll('[data-opt-key]').forEach(el => {
+    if (el.type === 'checkbox') { if (el.checked) n++; }
+    else { if ((el.value || '').trim() !== '') n++; }
+  });
+  return n;
+}
+function _renderBadge(iconId, count) {
+  const icon = $(iconId);
+  if (!icon) return;
+  const badge = icon.querySelector('.rbcf-icon-badge');
+  if (!badge) return;
+  if (count > 0) {
+    badge.textContent = String(count);
+    badge.hidden = false;
+  } else {
+    badge.textContent = '';
+    badge.hidden = true;
+  }
+}
+function updateIconBadges() {
+  _renderBadge('rbcf-mappings-icon',  _countMappings());
+  _renderBadge('rbcf-overrides-icon', _countOverrides());
 }
 
 // ============================================================
@@ -3157,6 +3585,16 @@ document.addEventListener('input', (e) => {
     // Recompute badges live so the user sees their edit shift a row from
     // 'inherited' to 'override' (and vice versa when cleared).
     if (GAME_DETAIL.system) applyInheritanceOverlay();
+    // v0.1.5 13e: toggle .has-value on the map-row for green-tint + RETROK_
+    // prefix visual, and refresh icon-bar count badges.
+    if (t.matches('input[data-map-btn]')) {
+      const row = t.closest('.map-row');
+      if (row) {
+        const v = (t.value || '').trim();
+        row.classList.toggle('has-value', !!v && v !== '---');
+      }
+    }
+    if (typeof updateIconBadges === 'function') updateIconBadges();
   }
 });
 document.addEventListener('change', (e) => {
@@ -3165,6 +3603,7 @@ document.addEventListener('change', (e) => {
   if (t.matches('[data-opt-key]')) {
     markGameDetailDirty();
     if (GAME_DETAIL.system) applyInheritanceOverlay();
+    if (typeof updateIconBadges === 'function') updateIconBadges();
   }
 });
 
@@ -3785,9 +4224,23 @@ function setupCollapsibles() {
     await loadGames(SYSTEMS[0].id);
   }
   setupCollapsibles();
+  // v0.1.5 13e: icon-bar injection. Each function inserts itself at the
+  // correct workflow position via anchor-relative insertion, so call
+  // order doesn't matter for final DOM order: Mappings → Overrides →
+  // Notes → Settings (left-to-right).
   injectSettingsCog();
   injectNotesIcon();
-  wireTargetOverridesButton();
+  injectOverridesIcon();
+  injectMappingsIcon();
+  wireTargetOverridesButton();   // legacy no-op kept for back-compat
+  // v0.1.5 13e: pin state + pinned-card wiring. Must run AFTER the
+  // injections (so the icons exist to receive [data-pinned] markers)
+  // and AFTER buildMappingRows + buildGameOptions (so content exists
+  // to be routed). The function checks for popover-open state and
+  // leaves transient content alone.
+  applyPinnedStates();
+  wirePinnedUnpinButtons();
+  updateIconBadges();
   setupClickAcross();
   // Initial templates pass for the default system (after loadSystems set it)
   if (selSystem.value) {

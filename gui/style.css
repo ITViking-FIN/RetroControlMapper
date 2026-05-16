@@ -4131,3 +4131,244 @@ button.secondary:hover,
   padding: 12px 18px 14px;
   border-top: 1px solid var(--bd-1, #1f242d);
 }
+
+/* =========================================================
+   v0.1.5 13e — sleek default + tuckable panels
+   ---------------------------------------------------------
+   Page actions becomes a card-styled icon-bar holding four
+   peer entry points (Mappings / Overrides / Notes / Settings).
+   Each opens a popover. Each popover has an "Always keep
+   visible" toggle in its footer that pins the panel inline
+   below the side-by-side via #rbcf-pinned-slot.
+========================================================= */
+
+/* Icon-bar — same visual family as .pad-list (card-wrapped pill row) */
+.page-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 4px;
+  padding: 4px;
+  background: var(--card-fill, rgba(40, 46, 58, 0.55));
+  border: 1px solid var(--edge-bottom);
+  border-radius: 10px;
+}
+
+/* Each icon button inside .page-actions */
+.page-actions .rbcf-apply-settings-toggle {
+  width: 34px;
+  height: 34px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--tx-muted);
+  border-radius: 7px;
+  position: relative;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--dur-base) var(--ease),
+              color var(--dur-base) var(--ease),
+              border-color var(--dur-base) var(--ease);
+}
+.page-actions .rbcf-apply-settings-toggle:hover {
+  background: var(--content-fill);
+  color: var(--tx-primary);
+}
+.page-actions .rbcf-apply-settings-toggle[aria-expanded="true"] {
+  background: var(--acc-bg, rgba(167, 108, 255, 0.15));
+  color: var(--acc, #a76cff);
+  border-color: var(--acc, #a76cff);
+}
+
+/* Count badge — sits top-right on the icon */
+.rbcf-icon-badge {
+  position: absolute;
+  top: 1px; right: 1px;
+  min-width: 14px; height: 14px;
+  padding: 0 3px;
+  border-radius: 7px;
+  background: var(--kbd-fg, #7BC47F);
+  color: #1a1f2a;
+  font-size: 9px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  pointer-events: none;
+}
+
+/* Pinned indicator — small dot below the icon when pinned */
+.page-actions .rbcf-apply-settings-toggle[data-pinned="1"]::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 4px; height: 4px;
+  border-radius: 50%;
+  background: var(--kbd-fg, #7BC47F);
+}
+
+/* Mappings popover — same family as overrides (table-ish content needs width) */
+.rbcf-mappings-popover {
+  width: 720px;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 96px);
+  overflow-y: auto;
+}
+.rbcf-mappings-help {
+  font-size: 12px;
+  color: var(--tx-hint);
+  margin: 0 0 12px 0;
+}
+.rbcf-mappings-host { display: block; width: 100%; }
+#mappings-host {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+}
+
+/* Tip banner inside the mappings popover */
+.rbcf-kbd-tip {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 14px;
+  margin: 0 0 12px;
+  background: rgba(123, 196, 127, 0.08);
+  border: 1px solid rgba(123, 196, 127, 0.25);
+  border-radius: 8px;
+  font-size: 12px;
+  color: var(--tx-secondary);
+  line-height: 1.5;
+}
+.rbcf-kbd-tip-icon {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  color: var(--kbd-fg, #7BC47F);
+  margin-top: 2px;
+}
+.rbcf-kbd-tip strong {
+  color: var(--kbd-fg, #7BC47F);
+  font-weight: 600;
+}
+.rbcf-kbd-tip-note {
+  color: var(--tx-hint);
+  font-size: 11px;
+}
+.rbcf-kbd-tip-dismiss {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: var(--tx-hint);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.rbcf-kbd-tip-dismiss:hover { color: var(--tx); }
+
+/* Filled map-row: green-tinted target field (signals "this button is
+   bound" at a glance — RETROK_* prefix already lives in the value
+   itself, so no separate prefix label is rendered). */
+.map-row.has-value input[data-map-btn] {
+  background: rgba(123, 196, 127, 0.06);
+  border-color: rgba(123, 196, 127, 0.35);
+}
+
+/* Pin toggle inside popover footer */
+.rbcf-pin-foot {
+  margin-top: 14px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--edge-bottom);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  background: linear-gradient(180deg, transparent, rgba(0, 0, 0, 0.08));
+}
+.rbcf-pin-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--tx-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+.rbcf-pin-toggle input[type="checkbox"] {
+  width: 14px; height: 14px;
+  accent-color: var(--kbd-fg, #7BC47F);
+  cursor: pointer;
+  margin: 0;
+}
+.rbcf-pin-note {
+  font-size: 11px;
+  color: var(--tx-hint);
+}
+
+/* Pinned slot — renders inline below the side-by-side */
+.pinned-slot {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+.pinned-slot:empty,
+.pinned-slot:not(:has(.pinned-card:not([hidden]))) {
+  display: none;
+}
+.pinned-card {
+  position: relative;
+}
+.pinned-card h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.pinned-unpin {
+  margin-left: auto;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--tx-hint);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.pinned-unpin:hover {
+  background: var(--content-fill);
+  color: var(--tx);
+  border-color: var(--edge-bottom);
+}
+/* The reparented content host fills the card body */
+.rbcf-pinned-mappings-host,
+.rbcf-pinned-overrides-host,
+.rbcf-pinned-notes-host {
+  display: block;
+  width: 100%;
+  margin-top: 10px;
+}
+.rbcf-pinned-notes-host > textarea {
+  width: 100%;
+  min-height: 160px;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  padding: 10px 12px;
+  background: var(--content-fill);
+  color: var(--tx);
+  border: 1px solid var(--edge-bottom);
+  border-radius: 8px;
+  resize: vertical;
+}
