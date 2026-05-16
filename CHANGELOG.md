@@ -4,6 +4,43 @@ All notable changes to RetroControlMapper. Format follows [Keep a
 Changelog](https://keepachangelog.com); versioning follows
 [SemVer](https://semver.org).
 
+## [v0.1.5.1] — 2026-05-16
+
+**Hotfix.** Caught during post-release screenshot capture: the v0.1.5
+headline feature (bindings DB suggestions in the GUI) was returning
+zero hits for real-world ROM filenames because the DB key normalisation
+didn't account for the trailing `<year> <publisher>` suffix on bundled
+DB keys. Plus a small batch of GUI screenshots added to the repo and
+linked from the README.
+
+### Fixed
+
+- **`bindings_lookup`: key normalisation gap (HEADLINE FEATURE).** The
+  bundled bindings DB uses keys like `"bionic commando 1988 us gold ltd"`
+  (title + year + publisher) but `_candidate_keys()` only generated the
+  plain title (`"bionic commando"`). Every user ROM filename was a miss
+  → the GUI Suggestions popover was always empty in v0.1.5. Fix: new
+  `_match_db_key()` helper does exact-match first then word-boundary
+  prefix match where the next DB-key token is a 4-digit year
+  (year-shape guard prevents `"impossible mission"` from wrongly
+  matching `"impossible mission ii 1988 epyx"`). Verified end-to-end:
+  Bruce Lee / Turrican / Wizball / Shadow of the Beast / Spy vs Spy
+  / 1943 / Bruce Lee + 9 more c64 ROMs now produce real suggestions.
+- **`_candidate_keys`: handle "The" / "A" / "An" article variants.**
+  Adds dropped-article candidates so `"Addams Family, The"` and
+  `"The Addams Family"` both resolve.
+
+### Added
+
+- **`gui/img/screenshots/` — first batch of v0.1.5 GUI screenshots.**
+  Captured live against c64 + Bruce Lee with the patched bindings DB
+  reading 5 suggestions through.
+  - `01-main.png` — sleek default view with five-icon toolbar
+  - `02-suggestions.png` — 💡 Suggestions panel (Bruce Lee bindings)
+  - `03-mappings.png` — ⌨ Mappings panel with face-button colour swatches
+  - `04-notes.png` — 📄 Notes panel with sample game-controls notes
+- **README screenshots link** in the Quick links section.
+
 ## [v0.1.5] — 2026-05-16
 
 **From data to delivery.** v0.1.4 *produced* the bindings DB;

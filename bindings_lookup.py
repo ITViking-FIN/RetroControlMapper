@@ -109,7 +109,53 @@ def _candidate_keys(rom_name: str) -> list[str]:
     if " 2" in base:   out.append(base.replace(" 2", " ii"))
     if " iii" in base: out.append(base.replace(" iii", " 3"))
     if " 3" in base:   out.append(base.replace(" 3", " iii"))
-    return out
+    # v0.1.5.1: drop "The" / "A" / "An" prefix variants so
+    # "Addams Family, The" matches DB key "addams family 1991 ocean"
+    # (and "The Addams Family" matches the same way).
+    leading_re = re.compile(r"^(the|a|an)\s+")
+    trailing_re = re.compile(r",\s*(the|a|an)$")
+    for k in list(out):
+        if leading_re.match(k):
+            out.append(leading_re.sub("", k))
+        if trailing_re.search(k):
+            out.append(trailing_re.sub("", k))
+    # De-dupe while preserving order
+    seen = set(); deduped = []
+    for k in out:
+        if k not in seen:
+            seen.add(k); deduped.append(k)
+    return deduped
+
+
+_YEAR_RE = re.compile(r"^(19|20)\d{2}$")
+
+
+def _match_db_key(games: dict, candidate: str) -> tuple[str, dict] | None:
+    """v0.1.5.1: DB keys often include trailing year + publisher
+    (e.g. ``bionic commando 1988 us gold``). User ROM filenames are
+    just ``bionic commando``. Match exact first, then word-boundary
+    prefix where the next token after the candidate is a 4-digit
+    year — that guards against false positives like ``impossible
+    mission`` wrongly matching ``impossible mission ii 1988 epyx``.
+    If multiple DB entries share the same title (different publishers
+    or years for the same game), pick the one with the most bindings.
+    """
+    rec = games.get(candidate)
+    if rec is not None:
+        return (candidate, rec)
+    needle = candidate + " "
+    matches = []
+    for k, v in games.items():
+        if not k.startswith(needle):
+            continue
+        tail = k[len(needle):]
+        first_token = tail.split(" ", 1)[0]
+        if _YEAR_RE.fullmatch(first_token):
+            matches.append((k, v))
+    if not matches:
+        return None
+    matches.sort(key=lambda kv: -len((kv[1] or {}).get("bindings") or []))
+    return matches[0]
 
 
 # ============================================================
@@ -126,8 +172,9 @@ def _lookup_user(system_id: str, rom_name: str) -> dict | None:
         return None
     games = db.get("games") or {}
     for k in _candidate_keys(rom_name):
-        if k in games:
-            rec = games[k]
+        match = _match_db_key(games, k)
+        if match:
+            rec = match[1]
             return {
                 "source":    "user",
                 "system_id": system_id,
@@ -149,11 +196,13 @@ def _lookup_bundled(system_id: str, rom_name: str) -> dict | None:
         return None
     games = db.get("games") or {}
     for k in _candidate_keys(rom_name):
-        if k in games:
-            rec = games[k]
-            if not rec.get("bindings"):
-                continue   # entry exists but extraction failed; try next
-            return {
+        match = _match_db_key(games, k)
+        if not match:
+            continue
+        rec = match[1]
+        if not rec.get("bindings"):
+            continue   # entry exists but extraction failed; try next
+        return {
                 "source":    "bundled",
                 "system_id": system_id,
                 "rom_name":  rom_name,
