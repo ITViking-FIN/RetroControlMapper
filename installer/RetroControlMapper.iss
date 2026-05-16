@@ -23,7 +23,7 @@
 ; ============================================================================
 
 #define AppName        "RetroControlMapper"
-#define AppVersion     "0.1.4"
+#define AppVersion     "0.1.5"
 #define AppPublisher   "ITViking-FIN"
 #define AppURL         "https://github.com/ITViking-FIN/RetroControlMapper"
 #define AppExeName     "RetroControlMapper.exe"

@@ -4,6 +4,135 @@ All notable changes to RetroControlMapper. Format follows [Keep a
 Changelog](https://keepachangelog.com); versioning follows
 [SemVer](https://semver.org).
 
+## [v0.1.5] — 2026-05-16
+
+**From data to delivery.** v0.1.4 *produced* the bindings DB;
+v0.1.5 *ships* it. The DB is now bundled into the installer, surfaced
+as in-GUI suggestions on every game profile, extensible via user-PDF
+drop, and contributable back via a pre-filled GitHub Issue submission
+flow. Coverage more than doubled (~1,900 → 4,143 games, +118%; 47
+systems with any bindings, up from 33). The v0.1.4 LLM spike got
+promoted to a production extractor that now produces 58.6% of all
+bindings in the DB. Plus a sleek GUI refresh that strips the
+controllers-first view of clutter and tucks everything else behind
+a five-icon toolbar. Full notes:
+[RELEASE_NOTES_v0.1.5.md](RELEASE_NOTES_v0.1.5.md).
+
+### Added
+
+- **LLM hybrid extraction in production.** `llm_extract.py` +
+  `llm_hybrid_feed.py` now contribute 5,741 bindings (58.6% of the
+  shipped DB) across 47 systems. Qwen 2.5 3B over local LAN via
+  Ollama, system-aware passport prompts, strict output validation
+  (drops hallucinated buttons, verifies source quotes verbatim).
+- **Per-system few-shot memory pool** (`llm_memory.py`) — quality-
+  scored 0-10, capped at 20 examples per system, evicted by score.
+  Prompts inject 2 best examples per call → Ollama prompt-cache
+  compounds the speedup.
+- **Style-guide prompt scaffolding** (`llm_style_guide.py`) — teaches
+  the LLM 6 recognised manual variation patterns + 7 explicit
+  pitfalls to avoid (cross-references, combos, navigation flavour,
+  story text, OCR-garbled input, etc.).
+- **Retry-mode sweeps** — `llm_hybrid_feed.py --retry-mode uncertain-only`
+  re-attempts records the LLM saw candidates in but didn't commit.
+  Final sweep recovered +206 bindings against a now-mature pool.
+- **`--skip-single-button` flag** — skip systems where the binding is
+  trivially "FIRE → primary action" (Atari 2600, Vectrex, etc.) so
+  LLM cycles go to systems that actually benefit.
+- **Model selection via env var** — `RBCF_LLM_MODEL=qwen2.5:7b`
+  swaps the extractor model without code edits. Provenance tag
+  derived from the actual model in use (`extractor: "llm-qwen2.5-3b"`
+  etc.) for audit + selective re-runs.
+- **GUI icon-bar (13e).** Top-right five-icon toolbar (💡 Suggestions,
+  ⌨ Mappings, 🎚 Overrides, 📄 Notes, ⚙ Settings) replaces the bottom
+  accordion stack. Each opens a popover; each popover has an "Always
+  keep ___ visible" pin checkbox that renders the panel inline below
+  the controllers. Pin state persists in localStorage.
+- **Tier 1 Task 1: Bindings DB → GUI suggestions.** `bindings_lookup.lookup()`
+  is now wired into the profile-load flow via new `/api/suggestions`
+  endpoint. Suggestions appear in the 💡 popover with per-row
+  Apply / Reject + Apply-all. Source chip distinguishes bundled vs
+  arcade vs user_pdf vs LLM vs regex. Count badge on the icon shows
+  pending suggestions at-a-glance.
+- **Tier 1 Task 2: Bindings DB as installer payload.** `data/bindings_db/`
+  (62 systems, 7.2 MB) bundles into the PyInstaller exe via `rbcf.spec`
+  datas directive, lands at `_MEIPASS/data/bindings_db/` at runtime
+  where `bindings_lookup` finds it automatically. No separate post-
+  install copy step needed.
+- **Tier 1 Task 5 (BW-8): User PDF drop-zone.** New `/api/contribute-pdf`
+  multipart endpoint wires `manual_user_contribution.extract_user_pdf`
+  into the GUI. Drag a PDF onto the 💡 popover → pypdf-only extraction
+  (no OCR; end-user safe) → results surface in the suggestions list.
+  Scanned (image-only) PDFs return a friendly warning.
+- **Tier 4 Task 15 MVP: Community submission flow.** Suggestions popover
+  footer has "Submit to community DB" toggle. On Save Profile, builds
+  a pre-filled GitHub Issue URL with the binding JSON + labels and
+  opens it in the user's browser. No OAuth in v0.1.5 — the project
+  maintainer triages issues into the next release's bundled DB. Full
+  Tier 4 OAuth-backed PR flow lands in v0.1.6. Schema + contract
+  documented in `docs/COMMUNITY_BINDINGS.md`.
+- **Mapping rows visual polish.** Filled rows get a green-tinted
+  input field signalling "this button is bound."
+- **Count badges** on Mappings and Overrides icons show currently-set
+  binding/override counts at-a-glance.
+- **NOTES popover (13b).** Profile notes lifted out of the accordion
+  into a document-icon popover. Same textarea element, no data
+  migration needed.
+- **Overrides popover (13d).** Advanced game overrides lifted out of
+  the accordion into the icon-bar (moved from the target-pane h2
+  position used during the 13d intermediate stage for symmetry).
+- **Controller silhouette tweak (13c first pass).** Extended grips,
+  deeper notch, slimmer main body — closer to 8BitDo Ultimate
+  proportions. Internal elements (sticks, d-pad, face buttons)
+  unchanged.
+- **llm_unstick utility.** Detects + resets records stamped
+  `llm_attempted=true` with empty bindings + no skip reason + no
+  uncertain count (the BW-1 signature) so they re-attempt on the
+  next feed run.
+
+### Fixed
+
+- **BW-1: LLMError swallowed on retry exhaustion.** When the Llama
+  box was unreachable for the full retry budget, `llm_extract.py`
+  returned a `persistent_failure` record stamping the title as
+  permanently failed. Records were then skipped on every subsequent
+  run, even after the box came back. Fix: `LLMError` now propagates
+  up and the orchestrator aborts the run with
+  `abort_reason='ollama_unreachable'` instead.
+- **Pre-stamping bug.** `llm_attempted=true` was being set
+  speculatively before the call resolved. Caught exceptions left
+  records stamped as attempted with no real outcome, blocking
+  retries. Fix: stamp only on real outcomes
+  (success/uncertain/rejected/skipped).
+- **Windows cp1252 console Unicode arrows.** `print_summary` in
+  `llm_hybrid_feed.py` crashed on Windows cmd.exe when emitting `→`.
+  Fix: `sys.stdout.reconfigure(encoding="utf-8")` + ASCII `->`
+  fallback when reconfigure fails.
+
+### Changed
+
+- **Bindings DB bundled into installer.** `data/bindings_db/` (62
+  per-system JSON files, ~7.2 MB) ships as PyInstaller payload at
+  `_MEIPASS/data/bindings_db/`. `bindings_lookup.py` finds it
+  automatically via `Path(__file__).parent / "data" / "bindings_db"`.
+- **Per-system yield summary** — replaced the misleading
+  "bindings/calls × 100" display with two clearer columns: "hit"
+  (% calls that produced bindings) and "avg/hit" (bindings per
+  successful call).
+- **Mappings input placeholder** — restored to `"e.g. RETROK_F1,
+  RETROK_SPACE, --- to clear"` (the v0.1.4 working value); the green
+  tint signals binding-present without need for an inline prefix label.
+
+### Deferred to v0.1.6
+
+- GitHub-as-database community contribution pool (Tier 4 of the
+  original v0.1.5 plan).
+- Live bindings_db updates without reinstall.
+- Qwen 2.5 7B sweep against the 2,291 still-uncertain records.
+- Controller silhouette proper-proportions iteration.
+- Tier 1 user-contribution flow (drop a PDF → extract bindings →
+  optional submit).
+
 ## [v0.1.4] — 2026-05-12
 
 **Intelligence release.** This version starts knowing about your games.

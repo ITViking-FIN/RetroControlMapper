@@ -35,7 +35,7 @@ except ImportError:  # non-Windows; tool is Windows-only but keep import safe
     winreg = None  # type: ignore[assignment]
 
 
-__version__ = "0.1.4"
+__version__ = "0.1.5"
 
 # GitHub repo coordinates — used by update_check.py for releases polling.
 GITHUB_OWNER = "ITViking-FIN"
