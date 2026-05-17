@@ -77,7 +77,7 @@ pitch see [`README.md`](README.md).
 - Optional "Run at Windows startup" entry
 - GUID watcher daemon (background controller-drift fix)
 - Installer detects + upgrades-in-place over prior versions
-- All user-writable data under `%APPDATA%\RB-Controller_fix\`
+- All user-writable data under `%APPDATA%\RetroControlMapper\`
 
 ## Extraction pipeline (dev-side, off-line)
 

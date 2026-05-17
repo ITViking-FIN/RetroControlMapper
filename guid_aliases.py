@@ -35,7 +35,7 @@ import xml_safe
 def _history_dir() -> Path:
     appdata = os.environ.get("APPDATA")
     if appdata:
-        return Path(appdata) / "RB-Controller_fix" / "history"
+        return Path(appdata) / "RetroControlMapper" / "history"
     return Path(__file__).resolve().parent / ".history"
 
 
@@ -213,7 +213,7 @@ def _ring_buffer_snapshot(src: Path) -> Path | None:
     """Copy ``src`` into the rolling history dir and prune to HISTORY_KEEP.
 
     Per decision #5: keep the last 10 mutations under
-    ``%APPDATA%/RB-Controller_fix/history/``. Returns the path of the
+    ``%APPDATA%/RetroControlMapper/history/``. Returns the path of the
     snapshot, or None if the source was missing.
     """
     if not src.exists():
@@ -268,7 +268,7 @@ def expand_inputconfig(
 
     Atomicity: writes via temp + ``os.replace``. A daily one-shot
     ``.bak.rbcf.<YYYYMMDD>`` is created on first mutation per day, plus a
-    ring-buffer snapshot under ``%APPDATA%/RB-Controller_fix/history/``
+    ring-buffer snapshot under ``%APPDATA%/RetroControlMapper/history/``
     pruned to the last 10 mutations (decision #5).
 
     Path-traversal guarded: ``es_input_path`` must resolve under

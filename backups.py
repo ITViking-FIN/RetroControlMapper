@@ -3,18 +3,18 @@
 Tier 1 — Pre-install ("factory") snapshot.
     Captured during onboarding/install when the user clicks
     *"Yes, back up current RetroBat settings"*. Stored permanently
-    under ``%APPDATA%/RB-Controller_fix/factory/``. Never overwritten —
+    under ``%APPDATA%/RetroControlMapper/factory/``. Never overwritten —
     this is the "nothing else works, get me out" revert.
 
 Tier 2 — Working snapshots.
     Per-edit, rolling history at
-    ``%APPDATA%/RB-Controller_fix/snapshots/<YYYYMMDD-HHMMSS>/``.
+    ``%APPDATA%/RetroControlMapper/snapshots/<YYYYMMDD-HHMMSS>/``.
     Capped at ``SNAPSHOT_HISTORY_CAP`` entries (oldest pruned by mtime).
     Auto-snapshots are taken before ``rbcf apply`` and before any
     ``restore()`` so the restore itself is revertible.
 
 Storage layout:
-    %APPDATA%/RB-Controller_fix/
+    %APPDATA%/RetroControlMapper/
     ├── factory/                                 (tier 1, at most one)
     │   ├── manifest.json
     │   └── <relative RetroBat paths preserved>
@@ -49,11 +49,11 @@ from config import RETROBAT_ROOT
 # ---------------------------------------------------------------------------
 
 def _appdata_subdir(name: str) -> Path:
-    """Return ``%APPDATA%/RB-Controller_fix/<name>``, falling back to a
+    """Return ``%APPDATA%/RetroControlMapper/<name>``, falling back to a
     project-local hidden dir if APPDATA is unset (CI / containers)."""
     appdata = os.environ.get("APPDATA")
     if appdata:
-        return Path(appdata) / "RB-Controller_fix" / name
+        return Path(appdata) / "RetroControlMapper" / name
     return Path(__file__).resolve().parent / f".{name}"
 
 

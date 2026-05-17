@@ -205,8 +205,8 @@ The Suggestions popover footer has a toggle: **"Submit my approved bindings to t
 Schema, field stability guarantees, and the per-system file format are documented in [`docs/COMMUNITY_BINDINGS.md`](docs/COMMUNITY_BINDINGS.md).
 
 **Where the local data lives:**
-- Approved bindings → `%APPDATA%\RB-Controller_fix\data\bindings_user\<system>.json` (frozen builds) or `data/bindings_user/<system>.json` (dev runs).
-- Submission queue (your local record of what you've submitted) → `%APPDATA%\RB-Controller_fix\data\bindings_user_submission_queue\<timestamp>_<sys>_<rom>.json`.
+- Approved bindings → `%APPDATA%\RetroControlMapper\data\bindings_user\<system>.json` (frozen builds) or `data/bindings_user/<system>.json` (dev runs).
+- Submission queue (your local record of what you've submitted) → `%APPDATA%\RetroControlMapper\data\bindings_user_submission_queue\<timestamp>_<sys>_<rom>.json`.
 
 ---
 
@@ -317,7 +317,7 @@ Two tiers. The pre-install snapshot is your nuclear undo; the working snapshots 
 ### Tier 1 — Pre-install (factory) snapshot
 
 - Captured **once**, during install, only if you ticked "Back up current RetroBat settings".
-- Stored permanently under `%APPDATA%\RB-Controller_fix\factory\`.
+- Stored permanently under `%APPDATA%\RetroControlMapper\factory\`.
 - **Never overwritten.** This is the "nothing else worked, give me my pre-RetroControlMapper RetroBat back" revert.
 - Surfaces as the last entry in the snapshot picker, always.
 
@@ -326,7 +326,7 @@ If you skipped this during install, you can capture one at any time from the CLI
 ### Tier 2 — Working snapshots
 
 - Auto-captured **before every Apply** writes anything.
-- Stored under `%APPDATA%\RB-Controller_fix\snapshots\<timestamp>\`.
+- Stored under `%APPDATA%\RetroControlMapper\snapshots\<timestamp>\`.
 - Capped at **30 entries**, oldest pruned as new ones arrive.
 - Each snapshot has a description (e.g. "Apply: c64/Boulder Dash.crt + 4 others") for context.
 
@@ -458,9 +458,9 @@ We make outbound network requests in **two** circumstances. Both are explicitly 
 
 ### Update check
 
-- **What it does.** Compares the local `__version__` (currently `0.1.5.2`) against the latest release tag of `ITViking-FIN/RetroControlMapper` on GitHub.
+- **What it does.** Compares the local `__version__` (currently `0.1.6`) against the latest release tag of `ITViking-FIN/RetroControlMapper` on GitHub.
 - **When it runs.** Only after you click **Check now** in Settings cog → Updates, OR if you've enabled "Auto-check at startup" (default off).
-- **Caching.** Result cached for 24h (errors cached for 1h). Stored at `%APPDATA%\RB-Controller_fix\update-check.json`.
+- **Caching.** Result cached for 24h (errors cached for 1h). Stored at `%APPDATA%\RetroControlMapper\update-check.json`.
 - **Source.** Public GitHub releases API only. No auth, no cookies.
 - **What we send.** Just an HTTP GET to `https://api.github.com/repos/ITViking-FIN/RetroControlMapper/releases/latest`. No identifying info beyond a standard User-Agent.
 
@@ -483,7 +483,7 @@ The settings cog (top-right of the header) opens a popover with these rows:
 |-----|--------------|--------------|
 | Theme | Light / Dark / Auto | `localStorage['rbcf-theme']` |
 | **Accent colour** | Override the theme's primary accent (any colour). Resets to theme default via the Reset button. | `localStorage['rbcf-user-accent']` |
-| RetroBat install path | Override the auto-detected install location | `%APPDATA%\RB-Controller_fix\rbcfrc` |
+| RetroBat install path | Override the auto-detected install location | `%APPDATA%\RetroControlMapper\rbcfrc` |
 | Re-run onboarding | Reopens the first-run wizard | `localStorage['rbcf-onboarded']` |
 | One-Click Save & Apply | Skip preview, apply immediately on save | `localStorage['rbcf-one-click']` |
 | GUID watcher (auto-fold) | Background watcher re-folds alias groups when new aliases appear | server-side config |
@@ -495,7 +495,7 @@ The settings cog (top-right of the header) opens a popover with these rows:
 | Inheritance overlay default | Show inheritance tags by default in game-detail | `localStorage['rbcf-show-inheritance']` |
 | Clear local UI state | Wipes all `rbcf-*` localStorage keys | — |
 | Open profiles folder | Opens `profiles/` in Explorer | — |
-| Open backups folder | Opens `%APPDATA%\RB-Controller_fix\` in Explorer | — |
+| Open backups folder | Opens `%APPDATA%\RetroControlMapper\` in Explorer | — |
 | Sync log | Tail the controller catalog sync log | — |
 | About | Version, license, credits | — |
 
@@ -594,10 +594,10 @@ In our own folders:
 |------|---------|
 | `profiles/<system>/<rom>.yaml` | Per-game profile YAMLs you've created/edited. |
 | `profiles/<system>/_default.yaml` | System default profile. |
-| `%APPDATA%\RB-Controller_fix\rbcfrc` | Persisted RetroBat install path override. |
-| `%APPDATA%\RB-Controller_fix\factory\` | Tier-1 pre-install snapshot. |
-| `%APPDATA%\RB-Controller_fix\snapshots\` | Tier-2 working snapshots (rolling, capped at 30). |
-| `%APPDATA%\RB-Controller_fix\update-check.json` | Cached update-check result (24h TTL). |
+| `%APPDATA%\RetroControlMapper\rbcfrc` | Persisted RetroBat install path override. |
+| `%APPDATA%\RetroControlMapper\factory\` | Tier-1 pre-install snapshot. |
+| `%APPDATA%\RetroControlMapper\snapshots\` | Tier-2 working snapshots (rolling, capped at 30). |
+| `%APPDATA%\RetroControlMapper\update-check.json` | Cached update-check result (24h TTL). |
 
 ---
 
@@ -640,7 +640,7 @@ That system doesn't have a curated controller diagram in our bundled set yet.
 We probed the registry, common paths, and any user override.
 
 - **Settings cog → Set RetroBat root manually.** Paste the path to your install root (the folder that contains `emulationstation/`, `emulators/`, `roms/`).
-- Click Save. The path is persisted to `%APPDATA%\RB-Controller_fix\rbcfrc`. Restart the server (the cog will offer to do this for you).
+- Click Save. The path is persisted to `%APPDATA%\RetroControlMapper\rbcfrc`. Restart the server (the cog will offer to do this for you).
 
 ### 4. "I made a bad change, how do I revert?"
 
@@ -655,7 +655,7 @@ If neither works, the RetroBat-side `.bak.rbcf.YYYYMMDD` files in the same folde
 
 Profiles are at `<install dir>\profiles\<system>\<rom>.yaml` (or `_default.yaml`). They're plain YAML — feel free to edit them by hand. The GUI re-reads them on the next page load.
 
-User-data files (snapshots, caches, the install-path override) are under `%APPDATA%\RB-Controller_fix\`.
+User-data files (snapshots, caches, the install-path override) are under `%APPDATA%\RetroControlMapper\`.
 
 The bundled installer extracts the program files to `%LOCALAPPDATA%\Programs\RetroControlMapper\` by default.
 
@@ -685,7 +685,7 @@ A: No — we disambiguate via the Windows HID InstanceId, which is unique per ph
 A: Yes. The GUI re-reads `profiles/` on every page load. The schema is documented at the top of each generated YAML file and in the validate command (`rbcf validate`).
 
 **Q: What happens if I uninstall?**
-A: The app removes its program files. Your profiles, snapshots, and `%APPDATA%\RB-Controller_fix\` user data are left in place by default — uninstaller offers an opt-in "remove all user data" checkbox. RetroBat's config is left in whatever state your last Apply left it; if you want it back to pre-install, restore the factory snapshot **before** uninstalling.
+A: The app removes its program files. Your profiles, snapshots, and `%APPDATA%\RetroControlMapper\` user data are left in place by default — uninstaller offers an opt-in "remove all user data" checkbox. RetroBat's config is left in whatever state your last Apply left it; if you want it back to pre-install, restore the factory snapshot **before** uninstalling.
 
 ---
 
@@ -695,7 +695,7 @@ Bugs and feature requests: [GitHub issues](https://github.com/ITViking-FIN/Retro
 
 Please include:
 
-- **Version** — found in Settings cog → About. Currently `0.1.5.2`.
+- **Version** — found in Settings cog → About. Currently `0.1.6`.
 - **Windows version** — Windows 10 / 11, build number if you have it.
 - **RetroBat version** — found in RetroBat's own About screen.
 - **What you expected vs. what happened.**

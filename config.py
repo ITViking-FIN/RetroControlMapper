@@ -35,7 +35,7 @@ except ImportError:  # non-Windows; tool is Windows-only but keep import safe
     winreg = None  # type: ignore[assignment]
 
 
-__version__ = "0.1.5.2"
+__version__ = "0.1.6"
 
 # GitHub repo coordinates — used by update_check.py for releases polling.
 GITHUB_OWNER = "ITViking-FIN"
@@ -43,19 +43,102 @@ GITHUB_REPO = "RetroControlMapper"
 
 ENV_OVERRIDE = "RBCF_RETROBAT_ROOT"
 
+# v0.1.6: user-data folder rename. The product's canonical name is
+# `RetroControlMapper`; the legacy `RB-Controller_fix` codename used
+# in v0.1.0–v0.1.5.2 is migrated on first launch via the function
+# below. Importers should call ``user_data_root()`` rather than
+# hardcoding the folder name so future renames stay one-place.
+USER_DATA_FOLDER = "RetroControlMapper"
+LEGACY_USER_DATA_FOLDER = "RB-Controller_fix"
+
+
+def user_data_root() -> Path:
+    """Return %APPDATA%/RetroControlMapper/ (or the dev source dir
+    when %APPDATA% is unavailable — e.g. running from source without
+    Windows env vars set)."""
+    appdata = os.environ.get("APPDATA")
+    if appdata:
+        return Path(appdata) / USER_DATA_FOLDER
+    return Path(__file__).resolve().parent
+
+
+def _migrate_legacy_user_data() -> dict:
+    """v0.1.6 first-launch migration. If the legacy
+    ``%APPDATA%/RB-Controller_fix/`` folder is present, move its
+    contents under the new ``%APPDATA%/RetroControlMapper/`` name.
+
+    Handles three cases:
+      * Legacy-only: atomic rename of the whole folder.
+      * Legacy + new (mixed): per-entry move; conflicting entries
+        keep whichever is already in new (the installer-placed copy).
+      * New-only / neither: no-op.
+
+    Idempotent. Never raises — failures are logged into the return
+    dict and the app continues with the legacy path readable via
+    fall-through lookups.
+    """
+    import shutil
+    result: dict = {"performed": False, "mode": "none", "errors": []}
+    appdata = os.environ.get("APPDATA")
+    if not appdata:
+        return result
+    legacy = Path(appdata) / LEGACY_USER_DATA_FOLDER
+    new = Path(appdata) / USER_DATA_FOLDER
+    if not legacy.exists():
+        return result
+    try:
+        if not new.exists():
+            # Clean case — atomic rename.
+            shutil.move(str(legacy), str(new))
+            result["performed"] = True
+            result["mode"] = "rename"
+            return result
+        # Mixed state. Per-entry move: anything in legacy not present
+        # in new gets moved across. Conflicts keep the new side
+        # (typically the installer's freshly bundled bindings_db).
+        moved: list[str] = []
+        kept_conflicts: list[str] = []
+        for entry in legacy.iterdir():
+            target = new / entry.name
+            if target.exists():
+                kept_conflicts.append(entry.name)
+                continue
+            try:
+                shutil.move(str(entry), str(target))
+                moved.append(entry.name)
+            except OSError as e:
+                result["errors"].append(f"{entry.name}: {e}")
+        # If legacy is now empty, remove it. If anything's left,
+        # leave it for the user to inspect.
+        try:
+            if not any(legacy.iterdir()):
+                legacy.rmdir()
+        except OSError:
+            pass
+        result["performed"] = bool(moved)
+        result["mode"] = "merge"
+        result["moved"] = moved
+        result["kept_conflicts"] = kept_conflicts
+        return result
+    except Exception as e:  # noqa: BLE001 — never crash on migration
+        result["errors"].append(str(e))
+        return result
+
+
+# Run migration at import time so every downstream path resolution
+# sees the new location. Cheap on the no-op path (just one stat()).
+_MIGRATION_RESULT = _migrate_legacy_user_data()
+
 
 def _rbcfrc_path() -> Path:
     """Location of the persisted user override file.
 
-    Stored under %APPDATA%\\RB-Controller_fix\\rbcfrc (single-line text:
-    the RetroBat install root). Created by PUT /api/retrobat-root and
-    read here at module import time. If %APPDATA% is unavailable, falls
-    back to the project directory.
+    Stored under ``%APPDATA%/RetroControlMapper/rbcfrc`` (single-line
+    text: the RetroBat install root). Created by PUT /api/retrobat-root
+    and read here at module import time. If %APPDATA% is unavailable,
+    falls back to the project directory.
     """
-    appdata = os.environ.get("APPDATA")
-    if appdata:
-        return Path(appdata) / "RB-Controller_fix" / "rbcfrc"
-    return Path(__file__).resolve().parent / ".rbcfrc"
+    return user_data_root() / "rbcfrc"
 
 
 RBCFRC_PATH = _rbcfrc_path()

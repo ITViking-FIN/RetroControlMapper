@@ -4,6 +4,95 @@ All notable changes to RetroControlMapper. Format follows [Keep a
 Changelog](https://keepachangelog.com); versioning follows
 [SemVer](https://semver.org).
 
+## [v0.1.6] — 2026-05-17
+
+**Out of beta.** v0.1.5.x was the "first cut + tighten the screws"
+phase. v0.1.6 ships the binding gains from the 7b LLM sweeps (+43%
+total bindings, +27% game coverage vs v0.1.5), completes the
+`%APPDATA%` folder rename with a first-launch migration, and adds a
+pre-build smoke test that would have caught the v0.1.5 → v0.1.5.1
+key-normaliser regression. v0.2 is reserved for the theme-engine
+expansion described in `docs/THEMES.md`.
+
+### Coverage uplift (the DB)
+
+| Metric | v0.1.5 | v0.1.6 |
+|---|---:|---:|
+| Games with bindings | 4,143 | **5,272** |
+| Coverage | 46.5% | **59.2%** |
+| Total bindings | 9,804 | **14,047** |
+| LLM-sourced share | 58.6% | **71.1%** |
+| Systems with bindings | 47 | 47 |
+
+The lift came from two Qwen 2.5 **7b** sweeps: a targeted retry of
+uncertain-only records (+360 bindings, ~47% conversion) and a broader
+empty-retry pass for records the 3b run gave up on (+769 bindings,
+~34% conversion). Total 1,129 new bindings across 3,050 retry records.
+
+### Added
+
+- **`tests/smoke_bindings_lookup.py`** — pre-build gate. Verifies
+  end-to-end that real ROM filenames produce non-zero suggestions.
+  Wired into `build.ps1`; refuses to build if the smoke test fails.
+  Codifies the lesson from v0.1.5's headline-feature regression.
+- **`.github/ISSUE_TEMPLATE/community-binding.yml`** — form-style
+  issue template aligned with the v0.1.5 MVP community submit flow.
+  The GUI's `buildCommunitySubmitUrl()` now pre-fills the template's
+  fields (system / game / bindings / client_version) via URL params.
+- **`config.user_data_root()`** + **`config.USER_DATA_FOLDER`** /
+  **`LEGACY_USER_DATA_FOLDER`** constants. Centralises the
+  user-data folder name so future renames stay one-place.
+- **`config._migrate_legacy_user_data()`** — first-launch migration
+  that moves `%APPDATA%/RB-Controller_fix/` to
+  `%APPDATA%/RetroControlMapper/`. Idempotent. Handles three cases:
+  clean rename (only legacy exists), mixed-state merge (both exist;
+  prefers new-side on conflicts), and no-op (only new). Failures
+  are logged into `config._MIGRATION_RESULT` rather than raised.
+- **`/api/systems` response now includes `version`** — surfaces the
+  client version to the GUI so the community-submit form's
+  `client_version` field pre-fills correctly.
+
+### Changed
+
+- **User-data folder name**: `RB-Controller_fix` → `RetroControlMapper`
+  everywhere. Path constants updated in `config.py`, `backups.py`,
+  `guid_aliases.py`, `system_lookup.py`, `update_check.py`,
+  `rbcf_gui.py`, `bindings_lookup.py`. Installer `.iss` updated.
+  Existing v0.1.5.x installs migrate their data automatically on
+  first v0.1.6 launch.
+- **Bundled bindings DB**: refreshed with the +4,243 new bindings
+  from the 7b sweeps. Same 62 per-system JSON files in
+  `data/bindings_db/`, now ~9.3 MB total (was 7.2 MB).
+- **`bindings_lookup._user_data_dir()`** now routes through
+  `config.user_data_root()` instead of hardcoding the folder name.
+- **Documentation** (`README.md`, `INSTRUCTIONS.md`, `BUILD.md`,
+  `FeatureList.md`) updated to reference the new folder name for
+  forward-pointing examples. Historical CHANGELOG entries left as-is.
+
+### Deferred to v0.1.7
+
+- **Promote-uncertain CLI** (`llm_promote_uncertain.py`) — interactive
+  walk of `data/llm_uncertain.jsonl` to mine the ~2,700 flagged
+  candidates that the LLM saw but didn't commit. v0.1.6's empty-retry
+  sweep already converted ~47% of these; the remainder needs human
+  judgement, not another model pass.
+- **Confidence-scored section detection** — improves yield on manuals
+  with verbose surrounding context. Heuristic tuning work, slated
+  for v0.1.7 alongside another targeted LLM sweep.
+
+### Deferred to v0.2
+
+- **Full theme engine expansion** — tactical / synthwave / paper
+  themes, theme picker UX upgrade, CSS literal cleanup. v0.2's
+  headline feature. Touches every visual surface — earns the
+  SemVer bump.
+- **OAuth-backed PR community-submit flow** — the v0.1.5 MVP
+  GitHub-Issue path stays the production flow for now. OAuth +
+  companion-repo + CI is a multi-day chunk that didn't make the
+  v0.1.6 ship-fast cut.
+- **Docked game viewport** — Windows-API reparent of the
+  RetroBat-spawned game window to dock next to the mapper.
+
 ## [v0.1.5.2] — 2026-05-16
 
 **Brand consistency.** v0.1.5.1 still surfaced the legacy

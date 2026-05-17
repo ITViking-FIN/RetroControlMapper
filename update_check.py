@@ -13,7 +13,7 @@ Usage (typical, from the GUI server):
         ...
 
 Cache:
-    %APPDATA%/RB-Controller_fix/update-check.json   (Windows)
+    %APPDATA%/RetroControlMapper/update-check.json   (Windows)
     <project_root>/.update-check.json               (fallback)
 
 The cache is a single file, not a per-key directory: there is exactly
@@ -55,7 +55,7 @@ def _resolve_cache_path() -> Path:
     appdata = os.environ.get("APPDATA")
     if appdata:
         try:
-            d = Path(appdata) / "RB-Controller_fix"
+            d = Path(appdata) / "RetroControlMapper"
             d.mkdir(parents=True, exist_ok=True)
             return d / "update-check.json"
         except OSError:
@@ -439,7 +439,7 @@ def check_for_updates(allow_online: bool = False, force: bool = False) -> Update
 
     # Find the installer asset. GitHub releases attach build artifacts
     # under "assets". We look for the first .exe — by convention this
-    # is the Inno-Setup installer (e.g. RB-Controller_fix-Setup-0.1.4.exe).
+    # is the Inno-Setup installer (e.g. RetroControlMapper-Setup-0.1.4.exe).
     # If none found, the frontend falls back to release_url.
     installer_url: str | None = None
     assets = body.get("assets")

@@ -1,5 +1,5 @@
 """
-RB-Controller_fix GUI — local web app.
+RetroControlMapper GUI — local web app.
 
 Usage:
     py rbcf_gui.py [--port 8765] [--no-open]
@@ -1329,7 +1329,7 @@ def _scan_systems() -> dict:
 
 # -------- per-user scaffold excludes (v0.1.1) --------
 #
-# Lives at %APPDATA%/RB-Controller_fix/scaffold-excludes.json with shape:
+# Lives at %APPDATA%/RetroControlMapper/scaffold-excludes.json with shape:
 #   {"<system_id>": ["Demos", "Other-subdir"], ...}
 # Entries are top-level subdirectory names under the system's ROM dir.
 # `.rbcf-ignore` drop-in files are also honoured by _iter_rom_files —
@@ -1339,7 +1339,7 @@ def _scan_systems() -> dict:
 def _scaffold_excludes_path() -> Path:
     appdata = os.environ.get("APPDATA")
     if appdata:
-        return Path(appdata) / "RB-Controller_fix" / "scaffold-excludes.json"
+        return Path(appdata) / "RetroControlMapper" / "scaffold-excludes.json"
     return ROOT / ".scaffold-excludes.json"
 
 
@@ -2617,6 +2617,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 "system_options": SYSTEM_OPTIONS,
                 "core_mapper_prefix": CORE_MAPPER_PREFIX,
                 "pad_buttons": PAD_BUTTONS,
+                # v0.1.6: surface client version for the community-submit
+                # template (gui/app.js reads window.RBCF_VERSION).
+                "version": RBCF_VERSION,
             })
         if u.path == "/api/devices":
             return self._json({"devices": probe_devices()})
@@ -3085,7 +3088,7 @@ def _seed_profiles_on_first_run() -> None:
     %APPDATA% profiles dir doesn't exist, copy the bundled defaults.
 
     The bundle ships profiles/ as read-only inside sys._MEIPASS; the
-    user's editable copy lives at %APPDATA%/RB-Controller_fix/profiles/.
+    user's editable copy lives at %APPDATA%/RetroControlMapper/profiles/.
     Loader switches to the APPDATA copy after the seed.
     """
     if not getattr(sys, 'frozen', False):
@@ -3093,7 +3096,7 @@ def _seed_profiles_on_first_run() -> None:
     appdata = os.environ.get("APPDATA")
     if not appdata:
         return  # nothing we can do
-    user_profiles = Path(appdata) / "RB-Controller_fix" / "profiles"
+    user_profiles = Path(appdata) / "RetroControlMapper" / "profiles"
     if user_profiles.exists():
         return  # already seeded
     bundle_profiles = Path(sys._MEIPASS) / "profiles"  # type: ignore[attr-defined]

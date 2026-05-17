@@ -55,7 +55,7 @@ The bundle includes:
   to `_MEIPASS/data/bindings_db/` inside the frozen exe.
 
 User-writable data lives **outside** the .exe, under
-`%APPDATA%/RB-Controller_fix/`:
+`%APPDATA%/RetroControlMapper/`:
 
 - `profiles/` — the editable user copy
 - `sync_manifest.json`
@@ -64,7 +64,7 @@ User-writable data lives **outside** the .exe, under
 - `backups/` — daily snapshot archive
 - `data/bindings_user/` — user-applied bindings (v0.1.5 onwards).
   `bindings_lookup._user_data_dir()` resolves this to
-  `%APPDATA%/RB-Controller_fix/data/bindings_user/` when
+  `%APPDATA%/RetroControlMapper/data/bindings_user/` when
   `sys.frozen` is true, or to the source tree's `data/bindings_user/`
   in dev runs.
 - `data/bindings_user_submission_queue/` — local record of
@@ -79,7 +79,7 @@ The runtime app reads + writes from `%APPDATA%/.../profiles/` instead.
 Bridging the two is the **installer's** job, not this build's:
 
 - **Stream IS installer** (Inno Setup) extracts the .exe's bundled
-  `profiles/` to `%APPDATA%/RB-Controller_fix/profiles/` at install
+  `profiles/` to `%APPDATA%/RetroControlMapper/profiles/` at install
   time, only if that directory does not already exist.
 - This means the .exe alone, without the installer, will start with
   no editable profiles — that's expected and tracked. Running the

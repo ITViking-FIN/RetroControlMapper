@@ -12,6 +12,17 @@
 
 $ErrorActionPreference = 'Stop'
 
+# v0.1.6: pre-build smoke test. Fail the build if the headline feature
+# (bindings_lookup → bindings_db) regresses end-to-end. v0.1.5 shipped
+# this feature 0%-functional because nothing caught the key-normaliser
+# gap; this gate makes sure we don't repeat that.
+Write-Host "==> Running bindings_lookup smoke test..."
+py tests\smoke_bindings_lookup.py
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "bindings_lookup smoke test failed — refusing to build a regressed release."
+    exit $LASTEXITCODE
+}
+
 # Ensure pyinstaller is available. Pinned to >=6 because earlier majors
 # have known bugs with --onefile + pystray on Windows 11.
 Write-Host "==> Ensuring PyInstaller is installed..."

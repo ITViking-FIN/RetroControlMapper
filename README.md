@@ -42,9 +42,9 @@ RetroControlMapper fixes all three.
 
 ## Install
 
-> **Current version: v0.1.5.2** ([changelog](CHANGELOG.md)).
+> **Current version: v0.1.6** ([changelog](CHANGELOG.md)).
 
-1. Download `RetroControlMapper_0.1.5.2_setup.exe` from the [latest release](https://github.com/ITViking-FIN/RetroControlMapper/releases/latest).
+1. Download `RetroControlMapper_0.1.6_setup.exe` from the [latest release](https://github.com/ITViking-FIN/RetroControlMapper/releases/latest).
 2. Run the installer. The setup wizard will offer to back up your current RetroBat settings — **leave this on, it's free insurance**.
 3. Optionally let the installer add a "Run at Windows startup" entry so the GUID watcher can keep your controller mappings stable in the background.
 
@@ -78,7 +78,7 @@ the bundled manual-extraction DB — 4,143 games across 47 systems.)
 
 - **[Feature list](FeatureList.md)** — scannable one-line inventory of everything the app does.
 - **[Full instruction manual](INSTRUCTIONS.md)** — every screen, every setting, plus troubleshooting and an FAQ.
-- **[Report a bug](https://github.com/ITViking-FIN/RetroControlMapper/issues)** — please include the version (`0.1.5.2`), your Windows version, and a description of what you expected versus what happened.
+- **[Report a bug](https://github.com/ITViking-FIN/RetroControlMapper/issues)** — please include the version (`0.1.6`), your Windows version, and a description of what you expected versus what happened.
 - **[Latest release](https://github.com/ITViking-FIN/RetroControlMapper/releases/latest)** — installers and release notes.
 
 ---
@@ -93,7 +93,7 @@ RetroControlMapper reads your RetroBat install and writes config files there. Th
   - **Update check** — your call. Defaults to off until you click "Check now". Caches the result for 24 hours; only ever hits the GitHub releases API for this project.
   - **System lookup** — when you ask the app to search online for an unknown system's controller bindings. Asks every time. Consent is **not** cached — you'll get the prompt on each lookup.
 
-The two-tier backup feature also stores snapshots of your RetroBat config under `%APPDATA%\RB-Controller_fix\` so you can roll back any change.
+The two-tier backup feature also stores snapshots of your RetroBat config under `%APPDATA%\RetroControlMapper\` so you can roll back any change.
 
 ---
 

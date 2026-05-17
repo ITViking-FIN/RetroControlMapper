@@ -66,17 +66,20 @@ ROOT = Path(__file__).resolve().parent
 DATA_DIR = ROOT / "data"
 BUNDLED_DB_DIR = DATA_DIR / "bindings_db"
 
-# v0.1.5: user-writable data lives under %APPDATA%/RB-Controller_fix/data/
-# when running as a frozen PyInstaller exe; under the source tree's
-# data/ when running from source. The bundled DB stays read-only at
-# the frozen-bundle path (or the source tree's data/bindings_db/ in
-# dev). Matches the same pattern used for profiles/ and the controller
-# sync log (see rbcf.spec header comment for the architecture).
+# v0.1.5 introduced this resolver; v0.1.6 routes through config.user_data_root()
+# so the folder rename (RB-Controller_fix → RetroControlMapper) is one-place.
+# When frozen: %APPDATA%/RetroControlMapper/data/.
+# When running from source: the source tree's data/.
 def _user_data_dir() -> Path:
     if getattr(sys, "frozen", False):
-        appdata = os.environ.get("APPDATA") or os.environ.get("LOCALAPPDATA")
-        if appdata:
-            return Path(appdata) / "RB-Controller_fix" / "data"
+        try:
+            from config import user_data_root
+            return user_data_root() / "data"
+        except Exception:
+            # Fallback for any edge case where config isn't importable yet.
+            appdata = os.environ.get("APPDATA") or os.environ.get("LOCALAPPDATA")
+            if appdata:
+                return Path(appdata) / "RetroControlMapper" / "data"
     return DATA_DIR
 
 USER_DATA_DIR = _user_data_dir()

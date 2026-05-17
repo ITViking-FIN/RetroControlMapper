@@ -11,7 +11,7 @@ Usage:
         print(res.mapping_note, "from", res.source_url)
 
 Cache:
-    %APPDATA%/RB-Controller_fix/system-lookups/<system_id>.json   (Windows)
+    %APPDATA%/RetroControlMapper/system-lookups/<system_id>.json   (Windows)
     <project_root>/.system-lookups/<system_id>.json                (fallback)
 
 Cache is also written for failures so we don't pummel the network. Use
@@ -43,7 +43,7 @@ def _resolve_cache_dir() -> Path:
     appdata = os.environ.get("APPDATA")
     if appdata:
         try:
-            p = Path(appdata) / "RB-Controller_fix" / "system-lookups"
+            p = Path(appdata) / "RetroControlMapper" / "system-lookups"
             p.mkdir(parents=True, exist_ok=True)
             return p
         except OSError:

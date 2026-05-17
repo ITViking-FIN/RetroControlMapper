@@ -23,12 +23,12 @@
 ; ============================================================================
 
 #define AppName        "RetroControlMapper"
-#define AppVersion     "0.1.5.2"
+#define AppVersion     "0.1.6"
 #define AppPublisher   "ITViking-FIN"
 #define AppURL         "https://github.com/ITViking-FIN/RetroControlMapper"
 #define AppExeName     "RetroControlMapper.exe"
 #define AppRegKey      "Software\RetroControlMapper"
-#define AppDataFolder  "RB-Controller_fix"
+#define AppDataFolder  "RetroControlMapper"
 
 [Setup]
 ; AppId is a stable UUID — DO NOT change between versions. The same AppId

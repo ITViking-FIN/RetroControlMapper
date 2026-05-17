@@ -1,0 +1,85 @@
+name: "Community binding submission"
+description: "Submit a button-mapping for a game to grow the bundled DB. The RetroControlMapper GUI pre-fills this form from your profile on Save."
+title: "[bindings] <system>: <game>"
+labels: ["community-binding", "bindings-submission"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for contributing — this is how the bundled bindings DB grows.
+
+        The fastest path here is to use the in-app submit flow:
+        1. Open the game in the GUI (system + ROM selectors).
+        2. Click the **💡 Suggestions** icon (top-right toolbar).
+        3. Apply / edit / extend the bindings until they're right.
+        4. Tick **"Submit my approved bindings to the community DB on Save Profile"** in the popover footer.
+        5. Hit **Save Profile** — your browser opens this form pre-filled.
+
+        If you're filing manually, fill in the fields below.
+
+  - type: input
+    id: system
+    attributes:
+      label: "System ID"
+      description: "RetroBat system identifier — `c64`, `snes`, `psx`, etc."
+      placeholder: "snes"
+    validations:
+      required: true
+
+  - type: input
+    id: game
+    attributes:
+      label: "Game title"
+      description: "Best-effort match against the user's ROM stem. Include year + publisher if known."
+      placeholder: "Earthbound"
+    validations:
+      required: true
+
+  - type: textarea
+    id: bindings
+    attributes:
+      label: "Bindings JSON"
+      description: |
+        Paste the binding-list JSON block. Schema documented in [`docs/COMMUNITY_BINDINGS.md`](https://github.com/ITViking-FIN/RetroControlMapper/blob/main/docs/COMMUNITY_BINDINGS.md).
+        The in-app submit fills this automatically.
+      render: json
+      placeholder: |
+        {
+          "system_id": "snes",
+          "rom_name": "Earthbound",
+          "bindings": [
+            { "button": "a", "action": "RETROK_RETURN", "confidence": "high", "matched_by": "user" }
+          ]
+        }
+    validations:
+      required: true
+
+  - type: input
+    id: client_version
+    attributes:
+      label: "Client version"
+      description: "Value of `__version__` from RetroControlMapper (auto-filled by the GUI)."
+      placeholder: "0.1.6"
+
+  - type: textarea
+    id: source
+    attributes:
+      label: "Manual / reference source (optional)"
+      description: "Link to the manual PDF, archive page, or other reference you used. Helps with triage."
+      placeholder: "e.g. archive.org/details/..., or 'extracted via in-app PDF drop'"
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: "Additional context (optional)"
+      description: "Anything else the maintainer should know — control quirks, region differences, button-mapping rationale, etc."
+
+  - type: checkboxes
+    id: agreements
+    attributes:
+      label: "Submission agreements"
+      options:
+        - label: "These bindings are my own work or sourced from publicly available manuals — not copied from another community DB without attribution."
+          required: true
+        - label: "I understand this is a public GitHub Issue and the binding data will be merged into the public DB if accepted."
+          required: true
