@@ -1,6 +1,6 @@
 # RetroControlMapper
 
-**Per-game and per-system controller fixes for RetroBat — without the GUID-drift headaches.**
+**Stop configuring controls from scratch.** Ships with a bundled database of **14,047 button mappings across 5,272 retro games**, surfaced as one-click suggestions in the GUI — plus fixes for RetroBat's per-game-options, GUID-drift, and bezel-crop sharp edges.
 
 <!-- screenshot: gui/img/icon/RetroControlMapper_256.png -->
 
@@ -8,20 +8,25 @@
 
 ## The problem
 
-RetroBat is a great front-end, but its controller pipeline has a few sharp edges. Per-game core options aren't actually honoured by the launcher — your tweaks get clobbered every time you start a game. The same physical controller can present under several different SDL GUIDs depending on which USB port you used or whether it's paired over Bluetooth, and because RetroBat keys its autoconfig on that GUID, mappings "disappear" mysteriously between sessions. Bezels sometimes crop the game viewport, hiding parts of the screen behind decorative artwork.
+RetroBat is a great front-end, but its controller pipeline has a few sharp edges:
 
-RetroControlMapper fixes all three.
+- **You start from scratch for every new game.** Open the manual, find the controls section, look up `RETROK_*` constants, type each binding into the GUI by hand. Multiply by your library.
+- **Per-game core options aren't actually honoured by the launcher** — your tweaks get clobbered every time you start a game.
+- **Controllers "disappear" between sessions.** The same physical pad presents under different SDL GUIDs depending on USB port / Bluetooth pairing / dongle re-pair / driver update, and RetroBat keys its autoconfig on that GUID. Mappings vanish mysteriously.
+- **Bezels sometimes crop the viewport,** hiding parts of the screen behind decorative artwork.
+
+RetroControlMapper fixes all four.
 
 ---
 
 ## Features
 
-- **🆕 4,143 games come with suggested bindings out of the box.** A bundled bindings database (62 systems, 9,804 mappings extracted from game-manual PDFs) means most popular titles open with one-click "Apply this suggestion" — no more configuring controls from scratch. Surfaced in the new **💡 Suggestions popover** in the GUI's top-right toolbar, with source chips (bundled / arcade / LLM-extracted / your own contribution) and confidence ratings.
-- **🆕 Drop a PDF to extract bindings for any game.** Don't see your game in the suggestions? Drag the manual onto the Suggestions popover — local pypdf extraction (no OCR install needed on your end) pulls candidate bindings into the same review UI.
-- **🆕 Contribute back to the community.** Tick "Submit my approved bindings to the community DB on Save Profile" — the app builds a pre-filled GitHub Issue with your bindings JSON and opens it in your browser. The project maintainer triages contributions into the next release's bundled DB. No accounts, no OAuth in v0.1.5 (full PR flow lands in v0.1.6).
-- **Sleek 5-icon toolbar.** v0.1.5 collapses non-controller UI into a card-styled toolbar in the top-right (💡 Suggestions, ⌨ Mappings, 🎚 Overrides, 📄 Notes, ⚙ Settings). Each opens a popover. Each has an "Always keep visible" pin toggle that drops the panel inline below the controllers if you prefer the old layout. Count badges show how many bindings/overrides are set at a glance.
+- **5,272 games come with suggested bindings out of the box.** A bundled bindings database — **14,047 button mappings across 47 systems**, extracted from real game-manual PDFs by a hybrid OCR + regex + local-LLM pipeline. Most popular titles open with one-click *"Apply this suggestion"* — no more configuring controls from scratch. Surfaced in the **💡 Suggestions popover** in the GUI's top-right toolbar, with source chips (bundled / arcade / LLM-extracted / your own contribution) and confidence ratings per binding.
+- **Drop a PDF to extract bindings for any game.** Don't see your game in the suggestions? Drag the manual onto the Suggestions popover — local pypdf extraction (no OCR install needed on your end) pulls candidate bindings into the same review UI.
+- **Contribute back to the community.** Tick *"Submit my approved bindings to the community DB on Save Profile"* — the app builds a pre-filled GitHub Issue with your bindings JSON and opens it in your browser. The project maintainer triages contributions into the next release's bundled DB. No accounts, no upload-on-your-behalf — every submission is a conscious click in your browser.
+- **Sleek 5-icon toolbar.** Non-controller UI collapses into a card-styled toolbar in the top-right (💡 Suggestions, ⌨ Mappings, 🎚 Overrides, 📄 Notes, ⚙ Settings). Each opens a popover. Each has an *"Always keep visible"* pin toggle that drops the panel inline below the controllers if you prefer the old always-visible layout. Count badges show how many bindings/overrides are set at a glance.
 - **200+ system dropdown** — every system from your local RetroBat install, automatically discovered.
-- **30+ pre-curated controller bindings** for popular systems out of the box: NES, SNES, Genesis / Mega Drive, Game Boy / GBA, N64, PSX, Saturn, Dreamcast, MAME, Neo Geo, CPS, C64, Amiga 500/1200/CD32, Atari ST, ZX Spectrum, and more.
+- **30+ verified per-system defaults** for popular systems: NES, SNES, Genesis / Mega Drive, Game Boy / GBA, N64, PSX, Saturn, Dreamcast, MAME, Neo Geo, CPS, C64, Amiga 500/1200/CD32, Atari ST, ZX Spectrum, and more. These are the click-across-locked baselines the bindings DB layers suggestions on top of.
 - **Side-by-side controller view** — your physical pad on the left, the target system's controller on the right, both lighting up live as you press buttons. Curated SVGs for the popular systems; **schematic auto-generated for the long tail** so you never see an empty pane no matter what system you pick.
 - **Per-game and per-system overrides** — set sensible defaults for a whole system, then override individual games where it matters.
 - **Profile templates per genre** — start a new game from a curated template (Menu-heavy C64, Joyport-1 Boulder Dash, CD32 default, mouse-driven Amiga, etc.) instead of a blank form.
@@ -36,7 +41,9 @@ RetroControlMapper fixes all three.
 - **Tray-resident** — closes to the system tray instead of quitting; tray menu controls Show/Hide and Quit, and an optional "run at Windows startup" toggle.
 - **Search-online lookup** for unknown systems' bindings — only fires after you click the button, no consent caching.
 - **Two-tier backups** — a permanent pre-install snapshot of your RetroBat config, plus rolling per-edit working snapshots; restore from any of them.
-- **Light / Dark / Auto theme** — frosted-acrylic visual design with translucent layered panels.
+- **Light / Dark / Auto theme** — frosted-acrylic visual design with translucent layered panels. (More themes — tactical, synthwave, paper — land in v0.2.)
+- **Pre-build smoke gate.** v0.1.6 onwards: every release build runs a 9-case end-to-end test that loads the bundled DB and verifies real ROM filenames produce non-zero suggestions. Codified after v0.1.5 shipped its headline feature 0%-functional. Won't happen again.
+- **Seamless in-place upgrades.** v0.1.5.x → v0.1.6 auto-migrates the user-data folder (legacy `RB-Controller_fix` → `RetroControlMapper`) on first launch. Profiles, snapshots, settings, caches all carry over without intervention.
 
 ---
 
@@ -72,7 +79,8 @@ RetroControlMapper fixes all three.
 | ![](gui/img/screenshots/03-mappings.png) | ![](gui/img/screenshots/04-notes.png) |
 
 (Captured live against C64 + *Bruce Lee*. Suggestion bindings come from
-the bundled manual-extraction DB — 4,143 games across 47 systems.)
+the bundled manual-extraction DB — **5,272 games across 47 systems**,
+14,047 button mappings.)
 
 ## Quick links
 
